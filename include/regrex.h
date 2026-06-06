@@ -33,6 +33,10 @@ typedef max_align_t REGREX_ALIGN_T;
 typedef long double REGREX_ALIGN_T;
 #endif
 
+void regrex_compile(void);
+void regrex_search(void);
+void regrex_match(void);
+void regrex_getAllMatches(void);
 
 #ifdef __cplusplus
 }

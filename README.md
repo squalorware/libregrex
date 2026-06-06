@@ -1,4 +1,4 @@
-# regrex
+# libregrex
 
 > A programmable regret - inevitable. Inexorable. The Crime and the Punishment.
 
