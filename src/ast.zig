@@ -8,7 +8,7 @@ pub const Node = union(enum) {
     CharRange: CharRange,
     CharClass: CharClass,
     Sequence: Sequence,
-    Alternate: Alternation,
+    Alternation: Alternation,
     Repeat: Repeat,
     CaptureGroup: CaptureGroup,
     NonCaptureGroup: NonCaptureGroup,
@@ -32,7 +32,7 @@ pub const CharRange = struct {
 pub const CharClass = struct {
     ranges: []const CharRange,
     chars: []const Rune,
-    negate: bool = false,
+    negated: bool = false,
 };
 
 pub const Sequence = struct {
