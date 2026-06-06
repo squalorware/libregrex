@@ -49,4 +49,20 @@ pub fn build(b: *std.Build) void {
     if (build_static) |lib| b.installArtifact(lib);
     if (build_dynamic) |lib| b.installArtifact(lib);
     b.getInstallStep().dependOn(&header.step);
+
+    const testing_step = b.step("test", "Run unit tests");
+
+    const lexer_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/lexer/root.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = switch (target.result.os.tag) {
+            .linux, .macos => true,
+            else => null,
+        },
+    });
+    const lexer_test = b.addTest(.{
+        .root_module = lexer_test_mod,
+    });
+    testing_step.dependOn(&b.addRunArtifact(lexer_test).step);
 }
