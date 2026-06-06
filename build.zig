@@ -9,7 +9,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/root.zig"),
     });
 
-    const build_static: ?*Step.Compile = lib: {
+    const static_lib: ?*Step.Compile = lib: {
         const static_lib = b.addLibrary(.{
             .linkage = .static,
             .name = "regrex",
@@ -27,7 +27,7 @@ pub fn build(b: *std.Build) void {
         break :lib static_lib;
     };
 
-    const build_dynamic: ?*Step.Compile = lib: {
+    const dynamic_lib: ?*Step.Compile = lib: {
         const dynamic_lib = b.addLibrary(.{
             .linkage = .dynamic,
             .name = "regrex",
@@ -46,7 +46,40 @@ pub fn build(b: *std.Build) void {
         "regrex.h"
     );
 
-    if (build_static) |lib| b.installArtifact(lib);
-    if (build_dynamic) |lib| b.installArtifact(lib);
+    const pkg: *Step.InstallFile = pkg: {
+        const file = b.addWriteFile("libregrex.pc", b.fmt(
+            \\prefix={s}
+            \\includedir=${{prefix}}/include
+            \\libdir=${{prefix}}/lib
+            \\
+            \\Name: libregrex
+            \\URL: https://github.com/squalorware/libregrex
+            \\Description: An amateurish implementation of regular expressions in Zig.
+            \\Version: 0.1.0
+            \\Cflags: -I${{includedir}}
+            \\Libs: -L${{libdir}} -lregrex
+        , .{b.install_prefix}));
+        break :pkg b.addInstallFileWithDir(
+            file.getDirectory().path(b,"libregrex.pc"),
+            .prefix,
+            "share/pkgconfig/libregrex.pc",
+        );
+    };
+
+    if (static_lib) |lib| b.installArtifact(lib);
+    if (dynamic_lib) |lib| b.installArtifact(lib);
     b.getInstallStep().dependOn(&header.step);
+    b.getInstallStep().dependOn(&pkg.step);
+
+    const testing_step = b.step("test", "Run unit tests");
+
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const test_run = b.addTest(.{
+        .root_module = test_mod,
+    });
+    testing_step.dependOn(&b.addRunArtifact(test_run).step);
 }

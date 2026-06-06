@@ -1,23 +1,30 @@
-// //! By convention, root.zig is the root source file when making a package.
-// const std = @import("std");
-// const Io = std.Io;
+pub const lexer = @import("lexer.zig");
+pub const ast = @import("ast.zig");
+pub const parser = @import("parser.zig");
 
-// /// This is a documentation comment to explain the `printAnotherMessage` function below.
-// ///
-// /// Accepting an `Io.Writer` instance is a handy way to write reusable code.
-// pub fn printAnotherMessage(writer: *Io.Writer) Io.Writer.Error!void {
-//     try writer.print("Run `zig build test` to run the tests.\n", .{});
-// }
 
-// pub fn add(a: i32, b: i32) i32 {
-//     return a + b;
-// }
-
-// test "basic add functionality" {
-//     try std.testing.expect(add(3, 7) == 10);
-// }
 pub fn compile() void {}
 pub fn search() void {}
 pub fn match() void {}
 pub fn getAllMatches() void {}
 
+
+comptime {
+    const root = @This();
+    for (@typeInfo(root).@"struct".decls) |decl| {
+        const _Decl = @TypeOf(@field(root, decl.name));
+        if (_Decl == void) continue;
+
+        if (!@hasDecl(root, decl.name)) {
+            @compileError("Missing declaration: " ++ decl.name);
+        }
+
+        if (_Decl != @TypeOf(@field(root, decl.name))) {
+            @compileError("Declaration has wrong type: " ++ decl.name);
+        }
+    }
+}
+
+test {
+    _ = @import("lexer.zig");
+}
