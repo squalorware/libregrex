@@ -1,3 +1,8 @@
+pub const lexer = @import("lexer.zig");
+pub const ast = @import("ast.zig");
+pub const parser = @import("parser.zig");
+
+
 pub fn compile() void {}
 pub fn search() void {}
 pub fn match() void {}
@@ -18,4 +23,8 @@ comptime {
             @compileError("Declaration has wrong type: " ++ decl.name);
         }
     }
+}
+
+test {
+    _ = @import("lexer.zig");
 }
