@@ -47,12 +47,12 @@ pub fn build(b: *std.Build) void {
     );
 
     const pkg: *Step.InstallFile = pkg: {
-        const file = b.addWriteFile("libregrex.pc", b.fmt(
+        const file = b.addWriteFile("regrex.pc", b.fmt(
             \\prefix={s}
             \\includedir=${{prefix}}/include
             \\libdir=${{prefix}}/lib
             \\
-            \\Name: libregrex
+            \\Name: regrex
             \\URL: https://github.com/squalorware/libregrex
             \\Description: An amateurish implementation of regular expressions in Zig.
             \\Version: 0.1.0
@@ -60,9 +60,9 @@ pub fn build(b: *std.Build) void {
             \\Libs: -L${{libdir}} -lregrex
         , .{b.install_prefix}));
         break :pkg b.addInstallFileWithDir(
-            file.getDirectory().path(b,"libregrex.pc"),
+            file.getDirectory().path(b,"regrex.pc"),
             .prefix,
-            "share/pkgconfig/libregrex.pc",
+            "share/pkgconfig/regrex.pc",
         );
     };
 
