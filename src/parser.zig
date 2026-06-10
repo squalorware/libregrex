@@ -2,10 +2,11 @@ const std = @import("std");
 const AST = @import("ast.zig");
 const Lexer = @import("lexer.zig");
 const Error = @import("errors.zig").Error;
+const Rune = @import("types.zig").Rune;
+const Token = @import("token.zig");
+
 const ParserError = Error || std.mem.Allocator.Error;
-const Rune = Lexer.Rune;
-const Token = Lexer.Token;
-const TokenType = Lexer.TokenType;
+const TokenType = Token.TokenType;
 
 pub const Parser = @This();
 
@@ -290,7 +291,7 @@ fn parseCharClass(self: *Parser) ParserError!AST.CharClass {
     };
 }
 
-pub fn parse(self: *Parser) !*AST.Node {
+pub fn parse(self: *Parser) ParserError!*AST.Node {
     const ast = try self.parseAlternation();
 
     if (self.current().typ != .EOF) {

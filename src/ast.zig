@@ -1,4 +1,4 @@
-const Rune = @import("lexer.zig").Rune;
+const Rune = @import("types.zig").Rune;
 
 pub const Node = union(enum) {
     Literal: Literal,

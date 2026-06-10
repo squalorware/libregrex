@@ -5,4 +5,5 @@ pub const Error = error {
     ExpectedExpression,
     ExpectedClosingParen,
     ExpectedClosingBracket,
+    UnsupportedRepeat,
 };
