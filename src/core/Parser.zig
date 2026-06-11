@@ -1,3 +1,17 @@
+//! Recursively descending parser of the regular expression grammar
+//! 
+//! Consumes a `Token` stream emitted by `Lexer` and produces 
+//! an arena-allocated Abstract Syntax Tree.
+//! Implements a simple basic PCRE/Python-inspired grammar:
+//! 
+//! ```text
+//! Branch      := Sequence ('|' Sequence)*
+//! Sequence    := Quantified+
+//! Quantified  := Atom ('*' | '+' | '?')?
+//! Atom        := Literal | '.' | '^' | '$' | Group | CharClass
+//! Group       := '(' Branch ')' | '(?:' Branch ')'
+//! CharClass  := '[' '^'? class_item* ']'
+//! ```
 const std = @import("std");
 const AST = @import("./ast.zig");
 const Error = @import("../common/errors.zig").Error;
@@ -8,13 +22,20 @@ const Token = @import("./Token.zig");
 const ParserError = Error || std.mem.Allocator.Error;
 const TokenType = Token.TokenType;
 
+/// Parser state instance for a single token stream
 pub const Self = @This();
 
+/// Controls AST lifetime.
 alloc: std.mem.Allocator,
 group_count: usize = 0,
 pos: usize = 0,
+/// Borrowed slice representing lexical token stream
 tokens: []const Token,
 
+/// `alloc`: controls AST nodes and owned child slices. 
+/// 
+/// Prefer an `ArenaAllocator`and release the whole 
+/// AST after compiling to bytecode
 pub fn init(
     alloc: std.mem.Allocator,
     tokens: []const Token
@@ -25,10 +46,13 @@ pub fn init(
     };
 }
 
+/// Returns a token at the current 'cursor' position
 fn current(self: *const Self) Token {
     return self.tokens[self.pos];
 }
 
+/// Returns a token at `pos + offset` or `null` 
+/// if index out of range
 fn peek(self: *Self, offset: usize) ?Token {
     const idx = self.pos + offset;
 
@@ -39,12 +63,15 @@ fn peek(self: *Self, offset: usize) ?Token {
     return self.tokens[idx];
 }
 
+/// Returns the current token and moves one position 'forward'
 fn advance(self: *Self) Token {
     const token = self.current();
     self.pos += 1;
     return token;
 }
 
+/// Takes `TokenType` and checks if current token 
+/// has matching type
 fn match(self: *Self, typ: TokenType) bool {
     if (self.current().typ == typ) {
         _ = self.advance();
@@ -53,6 +80,11 @@ fn match(self: *Self, typ: TokenType) bool {
     return false;
 }
 
+/// Takes `TokenType` and checks if current token 
+/// has matching type.
+/// 
+/// Returns `Error.UnexpectedToken` if type mismatch -
+/// current token doesn't match context
 fn expect(self: *Self, typ: TokenType) !Token {
     if (self.current().typ != typ) {
         return Error.UnexpectedToken;
@@ -60,12 +92,16 @@ fn expect(self: *Self, typ: TokenType) !Token {
     return self.advance();
 }
 
+/// Allocates and initializes an AST Node
 fn createNode(self: *Self, node: AST.Node) ParserError!*AST.Node {
     const ptr = try self.alloc.create(AST.Node);
     ptr.* = node;
     return ptr;
 }
 
+/// Parses branching.
+/// 
+/// Alteration has the lowest precedence in this grammar
 fn parseBranch(self: *Self) ParserError!*AST.Node {
     var left = try self.parseSequence();
 
@@ -81,6 +117,7 @@ fn parseBranch(self: *Self) ParserError!*AST.Node {
     return left;
 }
 
+/// Parses a sequence of quantified Atoms until `EOF`, `RPAREN` or `PIPE`
 fn parseSequence(self: *Self) ParserError!*AST.Node {
     var nodes = std.ArrayList(*AST.Node).empty;
     errdefer nodes.deinit(self.alloc);
@@ -113,9 +150,11 @@ fn parseSequence(self: *Self) ParserError!*AST.Node {
     });
 }
 
+/// Parses an Atom and an optional postfix quantifier (`*`, `+` or `?`)
 fn parseQuantified(self: *Self) ParserError!*AST.Node {
     const node = try self.parseAtom();
 
+    // Parse 'zero or more'
     if (self.match(.STAR)) {
         return self.createNode(.{
             .Repeat = .{
@@ -126,6 +165,7 @@ fn parseQuantified(self: *Self) ParserError!*AST.Node {
         });
     }
 
+    // Parse 'one or more'
     if (self.match(.PLUS)) {
         return self.createNode(.{
             .Repeat = .{
@@ -136,6 +176,7 @@ fn parseQuantified(self: *Self) ParserError!*AST.Node {
         });
     }
 
+    // Parse 'zero or one'
     if (self.match(.QUESTION)) {
         return self.createNode(.{
             .Repeat = .{
@@ -148,6 +189,7 @@ fn parseQuantified(self: *Self) ParserError!*AST.Node {
     return node;
 }
 
+/// Parses the base indivisible expression
 fn parseAtom(self: *Self) ParserError!*AST.Node {
     const token = self.current();
 
@@ -188,6 +230,7 @@ fn parseAtom(self: *Self) ParserError!*AST.Node {
     }
 }
 
+/// Parses a capturing `(...)` or non-capturing `(?:...)` group
 fn parseGroup(self: *Self) ParserError!*AST.Node {
     const first = self.peek(0);
     const next = self.peek(1);
@@ -232,6 +275,13 @@ fn parseGroup(self: *Self) ParserError!*AST.Node {
     });
 }
 
+/// Parses a character class after parsing the opening `LBRACKET`
+/// 
+/// Supports:
+/// - explicit characters
+/// - inclusive ranges (e.g. `a-z`, `0-9`)
+/// - escaped class members (e.g. `\*`)
+/// - leading negation (`^`)
 fn parseCharClass(self: *Self) ParserError!AST.CharClass {
     const negated = self.match(.CARET);
 
@@ -291,6 +341,13 @@ fn parseCharClass(self: *Self) ParserError!AST.CharClass {
     };
 }
 
+/// Top-level callable.
+/// 
+/// Parses the whole `Token` stream and returns the whole AST
+/// starting with root Node.
+/// 
+/// Returns `Error.UnexpectedToken` if the `Token` stream
+/// does not end with `EOF`
 pub fn parse(self: *Self) ParserError!*AST.Node {
     const ast = try self.parseBranch();
 
