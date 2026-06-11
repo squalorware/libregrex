@@ -5,9 +5,12 @@ const Token = @import("./token.zig");
 const TokenType = Token.TokenType;
 const mapRuneToTokenType = Token.mapRuneToTokenType;
 
+/// Stateful lexical analyzer and tokenizer for a single regex pattern.
 pub const Lexer = @This();
 
+/// String pattern buffer (borrowed)
 pattern: []const u8,
+/// Current code point (`Rune`) offset
 pos: usize = 0,
 
 pub fn init(pattern: []const u8) Lexer {
@@ -17,6 +20,15 @@ pub fn init(pattern: []const u8) Lexer {
     };
 }
 
+/// Transforms pattern into an owned slice of `Token`s.
+/// 
+/// If `Rune` in pattern is a metacharacter, emits a correspondent `TokenType`.
+/// Literals are emitted as `CHAR` or `ESCAPED_CHAR` if escaped.
+/// 
+/// The returned slice is allocated by `alloc` and must be freed by the caller,
+/// e.g. `alloc.free(tokens)`.
+/// 
+/// Returns `Error.TrailingEscape` if pattern ends after backslash.
 pub fn tokenize(self: *Lexer, alloc: std.mem.Allocator) ![]Token {
     var list: std.ArrayList(Token) = .empty;
     defer list.deinit(alloc);
@@ -33,7 +45,8 @@ pub fn tokenize(self: *Lexer, alloc: std.mem.Allocator) ![]Token {
             };
 
             self.pos += 1;
-
+            // Next Rune after backslash is emitted as literal
+            // even if is one of metacharacters
             try list.append(alloc, .{ 
                 .typ = .ESCAPED_CHAR, 
                 .val = escaped, 
@@ -41,7 +54,7 @@ pub fn tokenize(self: *Lexer, alloc: std.mem.Allocator) ![]Token {
             });
             continue;
         }
-
+        // if `null` - it's a regular literal
         const typ = mapRuneToTokenType(rune) orelse .CHAR;
 
         try list.append(alloc, .{ 
@@ -61,11 +74,7 @@ pub fn tokenize(self: *Lexer, alloc: std.mem.Allocator) ![]Token {
 
 const testing = std.testing;
 
-test {
-    _ = @import("token.zig");
-}
-
-test "Should break up a pattern into valid tokens" {
+test "Should break up a pattern into a valid token stream" {
     const allocator = testing.allocator;
     var lexer = Lexer.init("a\\.b*c");
     const tokens = try lexer.tokenize(allocator);

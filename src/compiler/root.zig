@@ -195,7 +195,7 @@ test "Should compile a sequence of literals" {
 
     var compiler = Compiler.init(allocator);
     const opcodes = try compiler.compile(root);
-    defer allocator.ree(opcodes);
+    defer allocator.free(opcodes);
 
     try testing.expectEqual(@as(usize, 6), opcodes.len);
 
