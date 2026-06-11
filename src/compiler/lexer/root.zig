@@ -29,7 +29,7 @@ pub fn tokenize(self: *Lexer, alloc: std.mem.Allocator) ![]Token {
     
         if (rune == '\\') {
             const escaped = iter.nextCodepoint() orelse {
-                return Error.DanglingEscape;
+                return Error.TrailingEscape;
             };
 
             self.pos += 1;

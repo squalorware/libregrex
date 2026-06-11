@@ -95,7 +95,7 @@ fn parseSequence(self: *Parser) ParserError!*AST.Node {
     }
 
     if (nodes.items.len == 0) {
-        return Error.ExpectedExpression;
+        return Error.ExpressionExpected;
     }
 
     if (nodes.items.len == 1) {
@@ -205,7 +205,7 @@ fn parseGroup(self: *Parser) ParserError!*AST.Node {
         const node= try self.parseBranch();
 
         if (!self.match(.RPAREN)) {
-            return Error.ExpectedClosingParen;
+            return Error.UnmatchedParen;
         }
 
         return self.createNode(.{
@@ -221,7 +221,7 @@ fn parseGroup(self: *Parser) ParserError!*AST.Node {
     const node = try self.parseBranch();
 
     if (!self.match(.RPAREN)) {
-        return Error.ExpectedClosingParen;
+        return Error.UnmatchedParen;
     }
 
     return self.createNode(.{
@@ -282,7 +282,7 @@ fn parseCharClass(self: *Parser) ParserError!AST.CharClass {
         }
     }
     if (!self.match(.RBRACKET)) {
-        return Error.ExpectedClosingBracket;
+        return Error.UnmatchedBracket;
     }
     return .{
         .ranges = try ranges.toOwnedSlice(self.alloc),

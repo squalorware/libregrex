@@ -131,7 +131,7 @@ fn compileRepeat(self: *Compiler, rep: AST.Repeat) CompilerError!void {
         });
         return;
     }
-    return Error.UnsupportedRepeat;
+    return Error.InvalidRepeat;
 }
 
 fn compileBranch(self: *Compiler, branch: AST.Branch) CompilerError!void {
@@ -195,7 +195,7 @@ test "Should compile a sequence of literals" {
 
     var compiler = Compiler.init(allocator);
     const opcodes = try compiler.compile(root);
-    defer allocator.free(opcodes);
+    defer allocator.ree(opcodes);
 
     try testing.expectEqual(@as(usize, 6), opcodes.len);
 

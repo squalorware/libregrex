@@ -1,11 +1,19 @@
 //! Shared error set for the regex frontend and compiler.
 
+/// Common parsing and compilation errors
 pub const Error = error {
-    DanglingEscape,
+    /// Expected an expression; found an empty branch/sequence.
+    ExpressionExpected,
+    /// Invalid use of repetition operator `*`
+    InvalidRepeat,
+    /// Trailing backslash at the pattern end
+    TrailingEscape,
+    /// Token invalid in current context
     UnexpectedToken,
+    /// Unexpected end of pattern (EOF before construct complete)
     UnexpectedEnd,
-    ExpectedExpression,
-    ExpectedClosingParen,
-    ExpectedClosingBracket,
-    UnsupportedRepeat,
+    /// Missing `)`
+    UnmatchedParen,
+    /// Missing `]`
+    UnmatchedBracket,
 };
