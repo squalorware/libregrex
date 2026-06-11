@@ -1,14 +1,14 @@
 const std = @import("std");
 const AST = @import("./ast.zig");
-const Error = @import("../../common/errors.zig").Error;
-const Lexer = @import("../lexer/root.zig");
-const Rune = @import("../../common/types.zig").Rune;
-const Token = @import("../lexer/token.zig");
+const Error = @import("../common/errors.zig").Error;
+const Lexer = @import("./Lexer.zig");
+const Rune = @import("../common/types.zig").Rune;
+const Token = @import("./Token.zig");
 
 const ParserError = Error || std.mem.Allocator.Error;
 const TokenType = Token.TokenType;
 
-pub const Parser = @This();
+pub const Self = @This();
 
 alloc: std.mem.Allocator,
 group_count: usize = 0,
@@ -18,18 +18,18 @@ tokens: []const Token,
 pub fn init(
     alloc: std.mem.Allocator,
     tokens: []const Token
-) Parser {
+) Self {
     return .{
         .alloc = alloc,
         .tokens = tokens,
     };
 }
 
-fn current(self: *const Parser) Token {
+fn current(self: *const Self) Token {
     return self.tokens[self.pos];
 }
 
-fn peek(self: *Parser, offset: usize) ?Token {
+fn peek(self: *Self, offset: usize) ?Token {
     const idx = self.pos + offset;
 
     if (idx >= self.tokens.len) {
@@ -39,13 +39,13 @@ fn peek(self: *Parser, offset: usize) ?Token {
     return self.tokens[idx];
 }
 
-fn advance(self: *Parser) Token {
+fn advance(self: *Self) Token {
     const token = self.current();
     self.pos += 1;
     return token;
 }
 
-fn match(self: *Parser, typ: TokenType) bool {
+fn match(self: *Self, typ: TokenType) bool {
     if (self.current().typ == typ) {
         _ = self.advance();
         return true;
@@ -53,20 +53,20 @@ fn match(self: *Parser, typ: TokenType) bool {
     return false;
 }
 
-fn expect(self: *Parser, typ: TokenType) !Token {
+fn expect(self: *Self, typ: TokenType) !Token {
     if (self.current().typ != typ) {
         return Error.UnexpectedToken;
     }
     return self.advance();
 }
 
-fn createNode(self: *Parser, node: AST.Node) ParserError!*AST.Node {
+fn createNode(self: *Self, node: AST.Node) ParserError!*AST.Node {
     const ptr = try self.alloc.create(AST.Node);
     ptr.* = node;
     return ptr;
 }
 
-fn parseBranch(self: *Parser) ParserError!*AST.Node {
+fn parseBranch(self: *Self) ParserError!*AST.Node {
     var left = try self.parseSequence();
 
     while (self.match(.PIPE)) {
@@ -81,7 +81,7 @@ fn parseBranch(self: *Parser) ParserError!*AST.Node {
     return left;
 }
 
-fn parseSequence(self: *Parser) ParserError!*AST.Node {
+fn parseSequence(self: *Self) ParserError!*AST.Node {
     var nodes = std.ArrayList(*AST.Node).empty;
     errdefer nodes.deinit(self.alloc);
 
@@ -113,7 +113,7 @@ fn parseSequence(self: *Parser) ParserError!*AST.Node {
     });
 }
 
-fn parseQuantified(self: *Parser) ParserError!*AST.Node {
+fn parseQuantified(self: *Self) ParserError!*AST.Node {
     const node = try self.parseAtom();
 
     if (self.match(.STAR)) {
@@ -148,7 +148,7 @@ fn parseQuantified(self: *Parser) ParserError!*AST.Node {
     return node;
 }
 
-fn parseAtom(self: *Parser) ParserError!*AST.Node {
+fn parseAtom(self: *Self) ParserError!*AST.Node {
     const token = self.current();
 
     switch (token.typ) {
@@ -188,7 +188,7 @@ fn parseAtom(self: *Parser) ParserError!*AST.Node {
     }
 }
 
-fn parseGroup(self: *Parser) ParserError!*AST.Node {
+fn parseGroup(self: *Self) ParserError!*AST.Node {
     const first = self.peek(0);
     const next = self.peek(1);
 
@@ -232,7 +232,7 @@ fn parseGroup(self: *Parser) ParserError!*AST.Node {
     });
 }
 
-fn parseCharClass(self: *Parser) ParserError!AST.CharClass {
+fn parseCharClass(self: *Self) ParserError!AST.CharClass {
     const negated = self.match(.CARET);
 
     var ranges = std.ArrayList(AST.CharRange).empty;
@@ -291,7 +291,7 @@ fn parseCharClass(self: *Parser) ParserError!AST.CharClass {
     };
 }
 
-pub fn parse(self: *Parser) ParserError!*AST.Node {
+pub fn parse(self: *Self) ParserError!*AST.Node {
     const ast = try self.parseBranch();
 
     if (self.current().typ != .EOF) {
@@ -311,7 +311,7 @@ test "Should parse anchored lowercase character class repeat" {
     const tokens = try lexer.tokenize(alloc);
     defer alloc.free(tokens);
 
-    var parser = Parser.init(alloc, tokens);
+    var parser = Self.init(alloc, tokens);
     const ast = try parser.parse();
 
     switch (ast.*) {
@@ -350,7 +350,7 @@ test "Should parse non-capturing group" {
     const tokens = try lexer.tokenize(alloc);
     defer alloc.free(tokens);
 
-    var parser = Parser.init(alloc, tokens);
+    var parser = Self.init(alloc, tokens);
     const ast = try parser.parse();
 
     switch (ast.*) {

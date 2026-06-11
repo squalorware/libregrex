@@ -1,7 +1,7 @@
 //! Defines the lexical tokens produced by lexer 
 //! and consumed by the parser.
 
-const Rune = @import("../../common/types.zig").Rune;
+const Rune = @import("../common/types.zig").Rune;
 
 /// Known types of tokens produced by lexer.
 /// 
@@ -42,7 +42,7 @@ pub const TokenType = enum {
 };
 
 /// Single lexical token.
-pub const Token = @This();
+pub const Self = @This();
 
 typ: TokenType,
 /// Contains a Unicode code point from input at `pos`; 

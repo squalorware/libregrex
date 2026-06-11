@@ -1,14 +1,14 @@
 const std = @import("std");
-const Instruction = @import("./compiler/icr.zig").Instruction;
+const Instruction = @import("./core/icr.zig").Instruction;
 
-pub const Regex = @This();
+pub const Self = @This();
 
 alloc: std.mem.Allocator,
 compiled: []const Instruction,
 group_count: usize,
 raw: []const u8,
 
-pub fn deinit(self: *Regex) void {
+pub fn deinit(self: *Self) void {
     for (self.compiled) |opcode| {
         switch (opcode) {
             .Class => |cls| {

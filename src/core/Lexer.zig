@@ -1,19 +1,26 @@
+//! Regular expression lexical analyzer.
+//! 
+//! Converts a UTF-8 regex pattern into a flat `Token` stream.
+//! The lexer decodes the input pattern as Unicode code points (`Rune`)
+//! so that literals like Cyrillic or Chinese characters are emitted 
+//! as single `CHAR` tokens rather than raw UTF-8 bytes
 const std = @import("std");
-const Error = @import("../../common/errors.zig").Error;
-const Rune = @import("../../common/types.zig").Rune;
-const Token = @import("./token.zig");
+const Error = @import("../common/errors.zig").Error;
+const Rune = @import("../common/types.zig").Rune;
+const Token = @import("./Token.zig");
 const TokenType = Token.TokenType;
 const mapRuneToTokenType = Token.mapRuneToTokenType;
 
-/// Stateful lexical analyzer and tokenizer for a single regex pattern.
-pub const Lexer = @This();
+/// Stateful lexical analyzer and tokenizer
+pub const Self = @This();
 
 /// String pattern buffer (borrowed)
 pattern: []const u8,
 /// Current code point (`Rune`) offset
 pos: usize = 0,
 
-pub fn init(pattern: []const u8) Lexer {
+/// Creates a lexer over a borrowed UTF-8 pattern buffer.
+pub fn init(pattern: []const u8) Self {
     return .{
         .pattern = pattern,
         .pos = 0,
@@ -29,7 +36,7 @@ pub fn init(pattern: []const u8) Lexer {
 /// e.g. `alloc.free(tokens)`.
 /// 
 /// Returns `Error.TrailingEscape` if pattern ends after backslash.
-pub fn tokenize(self: *Lexer, alloc: std.mem.Allocator) ![]Token {
+pub fn tokenize(self: *Self, alloc: std.mem.Allocator) ![]Token {
     var list: std.ArrayList(Token) = .empty;
     defer list.deinit(alloc);
     const view = try std.unicode.Utf8View.init(self.pattern);
@@ -76,7 +83,7 @@ const testing = std.testing;
 
 test "Should break up a pattern into a valid token stream" {
     const allocator = testing.allocator;
-    var lexer = Lexer.init("a\\.b*c");
+    var lexer = Self.init("a\\.b*c");
     const tokens = try lexer.tokenize(allocator);
     defer allocator.free(tokens);
 

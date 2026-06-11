@@ -1,8 +1,8 @@
 const std = @import("std");
-const Compiler = @import("./compiler/root.zig");
-const Lexer = @import("./compiler/lexer/root.zig");
-const Parser = @import("./compiler/parser/root.zig");
-const Regex = @import("./regex.zig");
+const Compiler = @import("./core/Compiler.zig");
+const Lexer = @import("./core/Lexer.zig");
+const Parser = @import("./core/Parser.zig");
+const Regex = @import("./Regex.zig");
 
 pub fn _compile(
     alloc: std.mem.Allocator,
@@ -33,8 +33,8 @@ pub fn _compile(
 pub fn compile() void {}
 
 test {
-    _ = @import("./compiler/lexer/token.zig");
-    _ = @import("./compiler/lexer/root.zig");
-    _ = @import("./compiler/parser/root.zig");
-    _ = @import("./compiler/root.zig");
+    _ = @import("./core/Token.zig");
+    _ = @import("./core/Lexer.zig");
+    _ = @import("./core/Parser.zig");
+    _ = @import("./core/Compiler.zig");
 }

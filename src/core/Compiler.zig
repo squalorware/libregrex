@@ -1,33 +1,34 @@
 const std = @import("std");
-const AST = @import("./parser/ast.zig");
+const AST = @import("./ast.zig");
 const Error = @import("../common/errors.zig").Error;
 const Rune = @import("../common/types.zig").Rune;
 const Instruction = @import("./icr.zig").Instruction;
 
-pub const Compiler = @This();
 const CompilerError = Error || std.mem.Allocator.Error;
+
+pub const Self = @This();
 
 alloc: std.mem.Allocator,
 bytecode: std.ArrayList(Instruction),
 
-pub fn init(alloc: std.mem.Allocator) Compiler {
+pub fn init(alloc: std.mem.Allocator) Self {
     return .{
         .alloc = alloc,
         .bytecode = .empty,
     };
 }
 
-fn emit(self: *Compiler, inst: Instruction) !usize {
+fn emit(self: *Self, inst: Instruction) !usize {
     const idx = self.bytecode.items.len;
     try self.bytecode.append(self.alloc, inst);
     return idx;
 }
 
-fn patch(self: *Compiler, idx: usize, inst: Instruction) void {
+fn patch(self: *Self, idx: usize, inst: Instruction) void {
     self.bytecode.items[idx] = inst;
 }
 
-fn compileNode(self: *Compiler, node: *const AST.Node) CompilerError!void {
+fn compileNode(self: *Self, node: *const AST.Node) CompilerError!void {
     switch (node.*) {
         .Literal => |lit| {
             _ = try self.emit(.{ .Rune = lit.value });
@@ -67,7 +68,7 @@ fn compileNode(self: *Compiler, node: *const AST.Node) CompilerError!void {
     }
 }
 
-fn cloneCharClass(self: *Compiler, cls: AST.CharClass) CompilerError!AST.CharClass {
+fn cloneCharClass(self: *Self, cls: AST.CharClass) CompilerError!AST.CharClass {
     const ranges = try self.alloc.dupe(AST.CharRange, cls.ranges);
     errdefer self.alloc.free(ranges);
 
@@ -81,7 +82,7 @@ fn cloneCharClass(self: *Compiler, cls: AST.CharClass) CompilerError!AST.CharCla
     };
 }
 
-fn compileRepeat(self: *Compiler, rep: AST.Repeat) CompilerError!void {
+fn compileRepeat(self: *Self, rep: AST.Repeat) CompilerError!void {
     if (rep.min == 0 and rep.max == null) {
         const split_idx = try self.emit(undefined);
 
@@ -134,7 +135,7 @@ fn compileRepeat(self: *Compiler, rep: AST.Repeat) CompilerError!void {
     return Error.InvalidRepeat;
 }
 
-fn compileBranch(self: *Compiler, branch: AST.Branch) CompilerError!void {
+fn compileBranch(self: *Self, branch: AST.Branch) CompilerError!void {
     const split_idx = try self.emit(undefined);
 
     const left_start = self.bytecode.items.len;
@@ -159,7 +160,7 @@ fn compileBranch(self: *Compiler, branch: AST.Branch) CompilerError!void {
     });
 }
 
-pub fn compile(self: *Compiler, node: *const AST.Node) CompilerError![]Instruction {
+pub fn compile(self: *Self, node: *const AST.Node) CompilerError![]Instruction {
     _ = try self.emit(.{ .Save = 0 });
     _ = try self.compileNode(node);
     _ = try self.emit(.{ .Save = 1 });
@@ -193,7 +194,7 @@ test "Should compile a sequence of literals" {
         },
     };
 
-    var compiler = Compiler.init(allocator);
+    var compiler = Self.init(allocator);
     const opcodes = try compiler.compile(root);
     defer allocator.free(opcodes);
 
