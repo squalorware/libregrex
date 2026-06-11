@@ -14,7 +14,7 @@ pub fn build(b: *std.Build) void {
             .linkage = .static,
             .name = "regrex",
             .root_module = b.createModule(.{
-                .root_source_file = b.path("src/ext.zig"),
+                .root_source_file = b.path("src/extern.zig"),
                 .target = target,
                 .optimize = optimize,
                 .link_libc = true,
@@ -32,7 +32,7 @@ pub fn build(b: *std.Build) void {
             .linkage = .dynamic,
             .name = "regrex",
             .root_module = b.createModule(.{
-                .root_source_file = b.path("src/ext.zig"),
+                .root_source_file = b.path("src/extern.zig"),
                 .target = target,
                 .optimize = optimize,
             }),
@@ -78,8 +78,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    const test_run = b.addTest(.{
+    const test_exe = b.addTest(.{
         .root_module = test_mod,
     });
-    testing_step.dependOn(&b.addRunArtifact(test_run).step);
+    testing_step.dependOn(&b.addRunArtifact(test_exe).step);
 }

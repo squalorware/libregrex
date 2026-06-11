@@ -1,9 +1,9 @@
 const std = @import("std");
-const AST = @import("ast.zig");
-const Lexer = @import("lexer.zig");
-const Error = @import("errors.zig").Error;
-const Rune = @import("types.zig").Rune;
-const Token = @import("token.zig");
+const AST = @import("./ast.zig");
+const Error = @import("../../common/errors.zig").Error;
+const Lexer = @import("../lexer/root.zig");
+const Rune = @import("../../common/types.zig").Rune;
+const Token = @import("../lexer/token.zig");
 
 const ParserError = Error || std.mem.Allocator.Error;
 const TokenType = Token.TokenType;
@@ -66,13 +66,13 @@ fn createNode(self: *Parser, node: AST.Node) ParserError!*AST.Node {
     return ptr;
 }
 
-fn parseAlternation(self: *Parser) ParserError!*AST.Node {
+fn parseBranch(self: *Parser) ParserError!*AST.Node {
     var left = try self.parseSequence();
 
     while (self.match(.PIPE)) {
         const right = try self.parseSequence();
         left = try self.createNode(.{
-            .Alternation = .{
+            .Branch = .{
                 .left = left,
                 .right = right,
             },
@@ -202,7 +202,7 @@ fn parseGroup(self: *Parser) ParserError!*AST.Node {
         _ = self.advance(); // QUESTION
         _ = self.advance(); // CHAR ':'
 
-        const node= try self.parseAlternation();
+        const node= try self.parseBranch();
 
         if (!self.match(.RPAREN)) {
             return Error.ExpectedClosingParen;
@@ -218,7 +218,7 @@ fn parseGroup(self: *Parser) ParserError!*AST.Node {
     self.group_count += 1;
     const pos = self.group_count;
 
-    const node = try self.parseAlternation();
+    const node = try self.parseBranch();
 
     if (!self.match(.RPAREN)) {
         return Error.ExpectedClosingParen;
@@ -292,7 +292,7 @@ fn parseCharClass(self: *Parser) ParserError!AST.CharClass {
 }
 
 pub fn parse(self: *Parser) ParserError!*AST.Node {
-    const ast = try self.parseAlternation();
+    const ast = try self.parseBranch();
 
     if (self.current().typ != .EOF) {
         return Error.UnexpectedToken;
@@ -300,6 +300,7 @@ pub fn parse(self: *Parser) ParserError!*AST.Node {
     return ast;
 }
 
+const testing = std.testing;
 
 test "Should parse anchored lowercase character class repeat" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -315,28 +316,28 @@ test "Should parse anchored lowercase character class repeat" {
 
     switch (ast.*) {
         .Sequence => |seq| {
-            try std.testing.expectEqual(@as(usize, 3), seq.nodes.len);
-            try std.testing.expect(seq.nodes[0].* == .StartAnchor);
+            try testing.expectEqual(@as(usize, 3), seq.nodes.len);
+            try testing.expect(seq.nodes[0].* == .StartAnchor);
             switch (seq.nodes[1].*) {
                 .Repeat => |rep| {
-                    try std.testing.expectEqual(@as(usize, 0), rep.min);
-                    try std.testing.expectEqual(@as(?usize, null), rep.max);
+                    try testing.expectEqual(@as(usize, 0), rep.min);
+                    try testing.expectEqual(@as(?usize, null), rep.max);
 
                     switch (rep.node.*) {
                         .CharClass => |cls| {
-                            try std.testing.expectEqual(false, cls.negated);
-                            try std.testing.expectEqual(@as(usize, 1), cls.ranges.len);
-                            try std.testing.expectEqual(@as(Rune, 'a'), cls.ranges[0].start);
-                            try std.testing.expectEqual(@as(Rune, 'z'), cls.ranges[0].end);
+                            try testing.expectEqual(false, cls.negated);
+                            try testing.expectEqual(@as(usize, 1), cls.ranges.len);
+                            try testing.expectEqual(@as(Rune, 'a'), cls.ranges[0].start);
+                            try testing.expectEqual(@as(Rune, 'z'), cls.ranges[0].end);
                         },
-                        else => try std.testing.expect(false),
+                        else => try testing.expect(false),
                     }
                 },
-                else => try std.testing.expect(false),
+                else => try testing.expect(false),
             }
-            try std.testing.expect(seq.nodes[2].* == .EndAnchor);
+            try testing.expect(seq.nodes[2].* == .EndAnchor);
         },
-        else => try std.testing.expect(false),
+        else => try testing.expect(false),
     }
 }
 
@@ -354,30 +355,30 @@ test "Should parse non-capturing group" {
 
     switch (ast.*) {
         .Repeat => |rep| {
-            try std.testing.expectEqual(@as(usize, 1), rep.min);
-            try std.testing.expectEqual(@as(?usize, null), rep.max);
+            try testing.expectEqual(@as(usize, 1), rep.min);
+            try testing.expectEqual(@as(?usize, null), rep.max);
 
             switch (rep.node.*) {
                 .NonCaptureGroup => |grp| {
                     switch (grp.node.*) {
                         .Sequence => |seq| {
-                            try std.testing.expectEqual(@as(usize, 2), seq.nodes.len);
+                            try testing.expectEqual(@as(usize, 2), seq.nodes.len);
 
                             switch (seq.nodes[0].*) {
-                                .Literal => |lit| try std.testing.expectEqual(@as(Rune, 'a'), lit.value),
-                                else => try std.testing.expect(false),
+                                .Literal => |lit| try testing.expectEqual(@as(Rune, 'a'), lit.value),
+                                else => try testing.expect(false),
                             }
                             switch (seq.nodes[1].*) {
-                                .Literal => |lit| try std.testing.expectEqual(@as(Rune, 'b'), lit.value),
-                                else => try std.testing.expect(false),
+                                .Literal => |lit| try testing.expectEqual(@as(Rune, 'b'), lit.value),
+                                else => try testing.expect(false),
                             }
                         },
-                        else => try std.testing.expect(false),
+                        else => try testing.expect(false),
                     }
                 },
-                else => try std.testing.expect(false),
+                else => try testing.expect(false),
             }
         },
-        else => try std.testing.expect(false),
+        else => try testing.expect(false),
     }
 }

@@ -1,4 +1,4 @@
-/// A representation of a Unicode (UTF-8) character
+/// Unicode scalar value.  
 pub const Rune = u21;
 
 pub const Span = struct {

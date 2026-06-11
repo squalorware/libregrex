@@ -1,5 +1,5 @@
-const AST = @import("ast.zig");
-const Rune = @import("types.zig").Rune;
+const AST = @import("./parser/ast.zig");
+const Rune = @import("../common/types.zig").Rune;
 
 pub const Instruction = union(enum) {
     Rune: Rune,

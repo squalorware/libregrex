@@ -1,14 +1,13 @@
-const Rune = @import("types.zig").Rune;
+const Rune = @import("../../common/types.zig").Rune;
 
 pub const Node = union(enum) {
     Literal: Literal,
     AnyChar: AnyChar,
     StartAnchor: StartAnchor,
     EndAnchor: EndAnchor,
-    CharRange: CharRange,
     CharClass: CharClass,
     Sequence: Sequence,
-    Alternation: Alternation,
+    Branch: Branch,
     Repeat: Repeat,
     CaptureGroup: CaptureGroup,
     NonCaptureGroup: NonCaptureGroup,
@@ -39,7 +38,7 @@ pub const Sequence = struct {
     nodes: []const *Node,
 };
 
-pub const Alternation = struct {
+pub const Branch = struct {
     left: *Node,
     right: *Node,
 };

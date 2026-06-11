@@ -1,6 +1,4 @@
-
-const testing = @import("std").testing;
-const Rune = @import("types.zig").Rune;
+const Rune = @import("../../common/types.zig").Rune;
 
 pub const TokenType = enum {
     CHAR,
@@ -44,6 +42,8 @@ pub fn mapRuneToTokenType(rune: Rune) ?TokenType {
     };
 }
 
+const expectEqual = @import("std").testing.expectEqual;
+
 test "Should map a character to corresponding token type" {
     const cases = [_]struct {
         input: Rune,
@@ -67,7 +67,6 @@ test "Should map a character to corresponding token type" {
 
     for (cases) |c| {
         const result = mapRuneToTokenType(c.input);
-        try testing.expectEqual(c.expected, result);
+        try expectEqual(c.expected, result);
     }
 }
-

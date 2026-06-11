@@ -1,7 +1,7 @@
 const std = @import("std");
-const Error = @import("errors.zig").Error;
-const Rune = @import("types.zig").Rune;
-const Token = @import("token.zig");
+const Error = @import("../../common/errors.zig").Error;
+const Rune = @import("../../common/types.zig").Rune;
+const Token = @import("./token.zig");
 const TokenType = Token.TokenType;
 const mapRuneToTokenType = Token.mapRuneToTokenType;
 
@@ -55,11 +55,18 @@ pub fn tokenize(self: *Lexer, alloc: std.mem.Allocator) ![]Token {
         .val = null,
         .pos = self.pos, 
     });
+
     return try list.toOwnedSlice(alloc);
 }
 
+const testing = std.testing;
+
+test {
+    _ = @import("token.zig");
+}
+
 test "Should break up a pattern into valid tokens" {
-    const allocator = std.testing.allocator;
+    const allocator = testing.allocator;
     var lexer = Lexer.init("a\\.b*c");
     const tokens = try lexer.tokenize(allocator);
     defer allocator.free(tokens);
@@ -74,8 +81,8 @@ test "Should break up a pattern into valid tokens" {
     };
 
     for (tokens, 0..) |token, i| {
-        try std.testing.expectEqual(expected[i].typ, token.typ);
-        try std.testing.expectEqual(expected[i].val, token.val);
-        try std.testing.expectEqual(expected[i].pos, token.pos);
+        try testing.expectEqual(expected[i].typ, token.typ);
+        try testing.expectEqual(expected[i].val, token.val);
+        try testing.expectEqual(expected[i].pos, token.pos);
     }
 }
