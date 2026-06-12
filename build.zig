@@ -1,45 +1,28 @@
 const std = @import("std");
 const Step = std.Build.Step;
 
+const LibLinkageMode = enum {
+    static,
+    dynamic,
+    both,
+};
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const linkage = b.option(
+        LibLinkageMode,
+        "linkage",
+        "Library linkage type: static, dynamic or both",
+    ) orelse .static;
+
+    // Zig package module
     _ = b.addModule("regrex", .{
         .root_source_file = b.path("src/root.zig"),
     });
 
-    const static_lib: ?*Step.Compile = lib: {
-        const static_lib = b.addLibrary(.{
-            .linkage = .static,
-            .name = "regrex",
-            .root_module = b.createModule(.{
-                .root_source_file = b.path("src/extern.zig"),
-                .target = target,
-                .optimize = optimize,
-                .link_libc = true,
-            }),
-        });
-
-        if (target.result.os.tag == .windows) {
-            static_lib.root_module.linkSystemLibrary("ws2_32", .{});
-        }
-        break :lib static_lib;
-    };
-
-    const dynamic_lib: ?*Step.Compile = lib: {
-        const dynamic_lib = b.addLibrary(.{
-            .linkage = .dynamic,
-            .name = "regrex",
-            .root_module = b.createModule(.{
-                .root_source_file = b.path("src/extern.zig"),
-                .target = target,
-                .optimize = optimize,
-            }),
-        });
-        break :lib dynamic_lib;
-    };
-
+    // C header file
     const header = b.addInstallFileWithDir(
         b.path("include/regrex.h"),
         .header,
@@ -66,10 +49,32 @@ pub fn build(b: *std.Build) void {
         );
     };
 
-    if (static_lib) |lib| b.installArtifact(lib);
-    if (dynamic_lib) |lib| b.installArtifact(lib);
     b.getInstallStep().dependOn(&header.step);
     b.getInstallStep().dependOn(&pkg.step);
+
+
+    // C ABI library 
+    //
+    // Linkage type is build option, e.g. `-Dlinkage=static`
+    if (linkage == .static or linkage == .both) {
+        const static_lib = buildLibrary(
+            b,
+            target,
+            optimize,
+            .static,
+        );
+        b.installArtifact(static_lib);
+    }
+
+    if (linkage == .dynamic or linkage == .both) {
+        const dynamic_lib = buildLibrary(
+            b,
+            target,
+            optimize,
+            .dynamic
+        );
+        b.installArtifact(dynamic_lib);
+    }
 
     const testing_step = b.step("test", "Run unit tests");
 
@@ -82,4 +87,43 @@ pub fn build(b: *std.Build) void {
         .root_module = test_mod,
     });
     testing_step.dependOn(&b.addRunArtifact(test_exe).step);
+
+    const docs_obj = b.addObject(.{
+        .name = "regrex-docs",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/root.zig"),
+            .target = target,
+        }),
+    });
+
+    const install_docs = b.addInstallDirectory(.{
+        .source_dir = docs_obj.getEmittedDocs(),
+        .install_dir = .prefix,
+        .install_subdir = "docs",
+    });
+
+    const docs_step = b.step("docs", "Generate documentation");
+    docs_step.dependOn(&install_docs.step);
+}
+
+fn buildLibrary(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    linkage: std.builtin.LinkMode,
+) *Step.Compile {
+    const mod = b.createModule(.{
+        .root_source_file = b.path("src/extern.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+
+    const lib = b.addLibrary(.{
+        .name = "regrex",
+        .linkage = linkage,
+        .root_module = mod,
+    });
+
+    return lib;
 }

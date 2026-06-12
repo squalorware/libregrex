@@ -1,3 +1,7 @@
+//! AST-to-bytecode compiler.
+//! 
+//! Consumes the AST produced by parser and emits 
+//! a bytecode `Instruction` stream for the backtracking VM.
 const std = @import("std");
 const AST = @import("./ast.zig");
 const Error = @import("../common/errors.zig").Error;
@@ -11,6 +15,8 @@ pub const Self = @This();
 alloc: std.mem.Allocator,
 bytecode: std.ArrayList(Instruction),
 
+/// Initializes a compiler state and 
+/// allocates bytecode dynamic buffer
 pub fn init(alloc: std.mem.Allocator) Self {
     return .{
         .alloc = alloc,
@@ -18,16 +24,22 @@ pub fn init(alloc: std.mem.Allocator) Self {
     };
 }
 
+/// Appends an `Instruction` and returns its bytecode index 
 fn emit(self: *Self, inst: Instruction) !usize {
     const idx = self.bytecode.items.len;
     try self.bytecode.append(self.alloc, inst);
     return idx;
 }
 
+/// Replaces a previously emitted placeholder `Instruction`.
+/// 
+/// Used for forward jumps where the target address is unknown
+/// until after compiling a branch or repeating body
 fn patch(self: *Self, idx: usize, inst: Instruction) void {
     self.bytecode.items[idx] = inst;
 }
 
+/// Emit bytecode for an AST Node
 fn compileNode(self: *Self, node: *const AST.Node) CompilerError!void {
     switch (node.*) {
         .Literal => |lit| {
@@ -68,6 +80,9 @@ fn compileNode(self: *Self, node: *const AST.Node) CompilerError!void {
     }
 }
 
+/// Deep-copies a character class into bytecode memory.
+/// 
+/// Prevents bytecode from pointing into the temporary `Parser` AST arena
 fn cloneCharClass(self: *Self, cls: AST.CharClass) CompilerError!AST.CharClass {
     const ranges = try self.alloc.dupe(AST.CharRange, cls.ranges);
     errdefer self.alloc.free(ranges);
@@ -82,6 +97,14 @@ fn cloneCharClass(self: *Self, cls: AST.CharClass) CompilerError!AST.CharClass {
     };
 }
 
+/// Emits bytecode for supported postfix quantifiers.
+/// 
+/// The supported forms are:
+/// - `*` (zero or more)
+/// - `+` (one to more)
+/// - `?` (zero to one)
+/// 
+/// Returns `Error.InvalidRepeat` for unsupported repeat patterns.
 fn compileRepeat(self: *Self, rep: AST.Repeat) CompilerError!void {
     if (rep.min == 0 and rep.max == null) {
         const split_idx = try self.emit(undefined);
@@ -135,6 +158,13 @@ fn compileRepeat(self: *Self, rep: AST.Repeat) CompilerError!void {
     return Error.InvalidRepeat;
 }
 
+/// Emits bytecode for branching (alternation).
+/// 
+/// The produced control flow is:
+/// - `Split(left, right)`
+/// - left branch
+/// - `Jump(after)`
+/// - right branch
 fn compileBranch(self: *Self, branch: AST.Branch) CompilerError!void {
     const split_idx = try self.emit(undefined);
 
@@ -160,6 +190,14 @@ fn compileBranch(self: *Self, branch: AST.Branch) CompilerError!void {
     });
 }
 
+/// Top-level callable. Compiles the AST into an owned bytecode slice.
+/// 
+/// The compiler wraps the whole pattern in capture slot 0/1 for the full match, 
+/// then emits `Match` as a terminal instruction.
+/// 
+/// The caller owns the returned slice and must free it. 
+/// If bytecode contains `Class` instructions, their internal slices 
+/// must be freed by the owner as well.  
 pub fn compile(self: *Self, node: *const AST.Node) CompilerError![]Instruction {
     _ = try self.emit(.{ .Save = 0 });
     _ = try self.compileNode(node);
@@ -171,7 +209,7 @@ pub fn compile(self: *Self, node: *const AST.Node) CompilerError![]Instruction {
 
 const testing = std.testing;
 
-test "Should compile a sequence of literals" {
+test "Should compile a sequence of literals `abc`" {
     const allocator = testing.allocator;
 
     var arena = std.heap.ArenaAllocator.init(allocator);
@@ -213,4 +251,230 @@ test "Should compile a sequence of literals" {
     try testing.expectEqual(@as(usize, 1), opcodes[4].Save);
 
     try testing.expect(opcodes[5] == Instruction.Match);
+}
+
+test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
+    const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const ast_alloc = arena.allocator();
+
+    const start = try ast_alloc.create(AST.Node);
+    start.* = .{ .StartAnchor = .{} };
+
+    const ranges = try ast_alloc.alloc(AST.CharRange, 1);
+    ranges[0] = .{
+        .start = 'a',
+        .end = 'z',
+    };
+
+    const chars = try ast_alloc.alloc(Rune, 0);
+    const class_node = try ast_alloc.create(AST.Node);
+    class_node.* = .{
+        .CharClass = .{
+            .ranges = ranges,
+            .chars = chars,
+            .negated = false,
+        },
+    };
+
+    const repeat = try ast_alloc.create(AST.Node);
+    repeat.* = .{
+        .Repeat = .{
+            .node = class_node,
+            .min = 0,
+            .max = null,
+        }
+    };
+
+    const end = try ast_alloc.create(AST.Node);
+    end.* = .{ .EndAnchor = .{} };
+
+    const tree = try ast_alloc.alloc(*AST.Node, 3);
+    tree[0] = start;
+    tree[1] = repeat;
+    tree[2] = end;
+
+    const root = try ast_alloc.create(AST.Node);
+    root.* = .{
+        .Sequence = .{
+            .nodes = tree,
+        },
+    };
+
+    var compiler = Self.init(allocator);
+    const bytecode = try compiler.compile(root);
+    defer {
+        for (bytecode) |inst| {
+            switch(inst) {
+                .Class => |cls| {
+                    allocator.free(cls.ranges);
+                    allocator.free(cls.chars);
+                },
+                else => {},
+            }
+        }
+        allocator.free(bytecode);
+    }
+
+    try testing.expectEqual(@as(usize, 8), bytecode.len);
+
+    try testing.expect(bytecode[0] == .Save);
+    try testing.expectEqual(@as(usize, 0), bytecode[0].Save);
+
+    try testing.expect(bytecode[1] == .AssertStart);
+
+    try testing.expect(bytecode[2] == .Split);
+    try testing.expectEqual(@as(usize, 3), bytecode[2].Split.first);
+    try testing.expectEqual(@as(usize, 5), bytecode[2].Split.second);
+
+    try testing.expect(bytecode[3] == .Class);
+    try testing.expectEqual(false, bytecode[3].Class.negated);
+    try testing.expectEqual(@as(usize, 1), bytecode[3].Class.ranges.len);
+    try testing.expectEqual(@as(Rune, 'a'), bytecode[3].Class.ranges[0].start);
+    try testing.expectEqual(@as(Rune, 'z'), bytecode[3].Class.ranges[0].end);
+
+    try testing.expect(bytecode[4] == .Jump);
+    try testing.expectEqual(@as(usize, 2), bytecode[4].Jump);
+
+    try testing.expect(bytecode[5] == .AssertEnd);
+
+    try testing.expect(bytecode[6] == .Save);
+    try testing.expectEqual(@as(usize, 1), bytecode[6].Save);
+
+    try testing.expect(bytecode[7] == .Match);
+}
+
+test "Should compile branching `a|b`" {
+    const allocator = testing.allocator;
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const ast_alloc = arena.allocator();
+
+    const left = try ast_alloc.create(AST.Node);
+    left.* = .{ .Literal = .{ .value = 'a' } };
+    const right = try ast_alloc.create(AST.Node);
+    right.* = .{ .Literal = .{ .value = 'b' } };
+
+    const root = try ast_alloc.create(AST.Node);
+    root.* = .{
+        .Branch = .{
+            .left = left,
+            .right = right,
+        },
+    };
+
+    var compiler = Self.init(allocator);
+    const bytecode = try compiler.compile(root);
+    defer allocator.free(bytecode);
+
+    try testing.expectEqual(@as(usize, 7), bytecode.len);
+    try testing.expect(bytecode[0] == .Save);
+    try testing.expectEqual(@as(usize, 0), bytecode[0].Save);
+
+    try testing.expect(bytecode[1] == .Split);
+    try testing.expectEqual(@as(usize, 2), bytecode[1].Split.first);
+    try testing.expectEqual(@as(usize, 4), bytecode[1].Split.second);
+
+    try testing.expect(bytecode[2] == .Rune);
+    try testing.expectEqual(@as(Rune, 'a'), bytecode[2].Rune);
+
+    try testing.expect(bytecode[3] == .Jump);
+    try testing.expectEqual(@as(usize, 5), bytecode[3].Jump);
+
+    try testing.expect(bytecode[4] == .Rune);
+    try testing.expectEqual(@as(Rune, 'b'), bytecode[4].Rune);
+
+    try testing.expect(bytecode[5] == .Save);
+    try testing.expectEqual(@as(usize, 1), bytecode[5].Save);
+
+    try testing.expect(bytecode[6] == .Match);
+}
+
+test "Should compile a capture group `(a)`" {
+    const allocator = testing.allocator;
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const ast_alloc = arena.allocator();
+
+    const lit = try ast_alloc.create(AST.Node);
+    lit.* = .{ .Literal = .{ .value = 'a' } };
+
+    const root = try ast_alloc.create(AST.Node);
+    root.* = .{
+        .CaptureGroup = .{
+            .pos = 1,
+            .node = lit,
+        },
+    };
+
+    var compiler = Self.init(allocator);
+    const bytecode = try compiler.compile(root);
+    defer allocator.free(bytecode);
+
+    try testing.expectEqual(@as(usize, 6), bytecode.len);
+
+    try testing.expect(bytecode[0] == .Save);
+    try testing.expectEqual(@as(usize, 0), bytecode[0].Save);
+
+    try testing.expect(bytecode[1] == .Save);
+    try testing.expectEqual(@as(usize, 2), bytecode[1].Save);
+
+    try testing.expect(bytecode[2] == .Rune);
+    try testing.expectEqual(@as(Rune, 'a'), bytecode[2].Rune);
+
+    try testing.expect(bytecode[3] == .Save);
+    try testing.expectEqual(@as(usize, 3), bytecode[3].Save);
+
+    try testing.expect(bytecode[4] == .Save);
+    try testing.expectEqual(@as(usize, 1), bytecode[4].Save);
+
+    try testing.expect(bytecode[5] == .Match);
+}
+
+test "Should compile an optional repeat `a?`" {
+    const allocator = testing.allocator;
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const ast_alloc = arena.allocator();
+
+    const lit = try ast_alloc.create(AST.Node);
+    lit.* = .{ .Literal = .{ .value = 'a' } };
+
+    const root = try ast_alloc.create(AST.Node);
+    root.* = .{
+        .Repeat = .{
+            .node = lit,
+            .min = 0,
+            .max = 1,
+        },
+    };
+
+    var compiler = Self.init(allocator);
+    const bytecode = try compiler.compile(root);
+    defer allocator.free(bytecode);
+
+    try testing.expectEqual(@as(usize, 5), bytecode.len);
+
+    try testing.expect(bytecode[0] == .Save);
+    try testing.expectEqual(@as(usize, 0), bytecode[0].Save);
+
+    try testing.expect(bytecode[1] == .Split);
+    try testing.expectEqual(@as(usize, 2), bytecode[1].Split.first);
+    try testing.expectEqual(@as(usize, 3), bytecode[1].Split.second);
+
+    try testing.expect(bytecode[2] == .Rune);
+    try testing.expectEqual(@as(Rune, 'a'), bytecode[2].Rune);
+
+    try testing.expect(bytecode[3] == .Save);
+    try testing.expectEqual(@as(usize, 1), bytecode[3].Save);
+
+    try testing.expect(bytecode[4] == .Match);
 }
