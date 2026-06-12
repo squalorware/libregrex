@@ -2,12 +2,12 @@ const std = @import("std");
 const Compiler = @import("./core/Compiler.zig");
 const Lexer = @import("./core/Lexer.zig");
 const Parser = @import("./core/Parser.zig");
-const Regex = @import("./Regex.zig");
+const Pattern = @import("./pattern.zig").Pattern;
 
 pub fn _compile(
     alloc: std.mem.Allocator,
     pattern: []const u8,
-) !Regex {
+) !*Pattern {
     var lexer = Lexer.init(pattern);
     const tokens = try lexer.tokenize(alloc);
     defer alloc.free(tokens);
@@ -20,19 +20,21 @@ pub fn _compile(
 
     var compiler = Compiler.init(alloc);
     const opcodes = try compiler.compile(ast);
+    errdefer Pattern.freeBytecode(alloc, opcodes);
 
-    return .{
-        .alloc = alloc,
-        .compiled = opcodes,
-        .group_count = parser.group_count,
-        .raw = pattern,
-    };
+    return try Pattern.init(
+        alloc, 
+        parser.group_count, 
+        opcodes, 
+        pattern
+    );
 }
 
 /// Dummy placeholder function (temporary)
 pub fn compile() void {}
 
 test {
+    _ = @import("./common/utils.zig");
     _ = @import("./core/Token.zig");
     _ = @import("./core/Lexer.zig");
     _ = @import("./core/Parser.zig");
