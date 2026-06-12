@@ -76,6 +76,7 @@ pub fn build(b: *std.Build) void {
         b.installArtifact(dynamic_lib);
     }
 
+    // Unit tests
     const testing_step = b.step("test", "Run unit tests");
 
     const test_mod = b.createModule(.{
@@ -88,6 +89,7 @@ pub fn build(b: *std.Build) void {
     });
     testing_step.dependOn(&b.addRunArtifact(test_exe).step);
 
+    // Documentation generation
     const docs_obj = b.addObject(.{
         .name = "regrex-docs",
         .root_module = b.createModule(.{

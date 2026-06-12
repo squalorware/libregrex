@@ -37,4 +37,5 @@ test {
     _ = @import("./core/Lexer.zig");
     _ = @import("./core/Parser.zig");
     _ = @import("./core/Compiler.zig");
+    _ = @import("./Match.zig");
 }

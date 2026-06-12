@@ -235,6 +235,7 @@ fn parseGroup(self: *Self) ParserError!*AST.Node {
     const first = self.peek(0);
     const next = self.peek(1);
 
+    // Parse a non-capturing group
     if (
         first != null and 
         next != null and
@@ -257,7 +258,7 @@ fn parseGroup(self: *Self) ParserError!*AST.Node {
             },
         });
     }
-
+    // Parse a capturing group
     self.group_count += 1;
     const pos = self.group_count;
 
@@ -275,7 +276,7 @@ fn parseGroup(self: *Self) ParserError!*AST.Node {
     });
 }
 
-/// Parses a character class after parsing the opening `LBRACKET`
+/// Parses a character class after the opening `LBRACKET`
 /// 
 /// Supports:
 /// - explicit characters

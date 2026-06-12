@@ -6,6 +6,8 @@ pub const Error = error {
     ExpressionExpected,
     /// Invalid use of repetition operator `*`
     InvalidRepeat,
+    /// An invalid or broken UTF-8 character
+    InvalidUnicode,
     /// Trailing backslash at the pattern end
     TrailingEscape,
     /// Token invalid in current context
