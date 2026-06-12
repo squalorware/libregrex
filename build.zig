@@ -1,45 +1,28 @@
 const std = @import("std");
 const Step = std.Build.Step;
 
+const LibLinkageMode = enum {
+    static,
+    dynamic,
+    both,
+};
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const linkage = b.option(
+        LibLinkageMode,
+        "linkage",
+        "Library linkage type: static, dynamic or both",
+    ) orelse .static;
+
+    // Zig package module
     _ = b.addModule("regrex", .{
         .root_source_file = b.path("src/root.zig"),
     });
 
-    const static_lib: ?*Step.Compile = lib: {
-        const static_lib = b.addLibrary(.{
-            .linkage = .static,
-            .name = "regrex",
-            .root_module = b.createModule(.{
-                .root_source_file = b.path("src/ext.zig"),
-                .target = target,
-                .optimize = optimize,
-                .link_libc = true,
-            }),
-        });
-
-        if (target.result.os.tag == .windows) {
-            static_lib.root_module.linkSystemLibrary("ws2_32", .{});
-        }
-        break :lib static_lib;
-    };
-
-    const dynamic_lib: ?*Step.Compile = lib: {
-        const dynamic_lib = b.addLibrary(.{
-            .linkage = .dynamic,
-            .name = "regrex",
-            .root_module = b.createModule(.{
-                .root_source_file = b.path("src/ext.zig"),
-                .target = target,
-                .optimize = optimize,
-            }),
-        });
-        break :lib dynamic_lib;
-    };
-
+    // C header file
     const header = b.addInstallFileWithDir(
         b.path("include/regrex.h"),
         .header,
@@ -47,12 +30,12 @@ pub fn build(b: *std.Build) void {
     );
 
     const pkg: *Step.InstallFile = pkg: {
-        const file = b.addWriteFile("libregrex.pc", b.fmt(
+        const file = b.addWriteFile("regrex.pc", b.fmt(
             \\prefix={s}
             \\includedir=${{prefix}}/include
             \\libdir=${{prefix}}/lib
             \\
-            \\Name: libregrex
+            \\Name: regrex
             \\URL: https://github.com/squalorware/libregrex
             \\Description: An amateurish implementation of regular expressions in Zig.
             \\Version: 0.1.0
@@ -60,17 +43,40 @@ pub fn build(b: *std.Build) void {
             \\Libs: -L${{libdir}} -lregrex
         , .{b.install_prefix}));
         break :pkg b.addInstallFileWithDir(
-            file.getDirectory().path(b,"libregrex.pc"),
+            file.getDirectory().path(b,"regrex.pc"),
             .prefix,
-            "share/pkgconfig/libregrex.pc",
+            "share/pkgconfig/regrex.pc",
         );
     };
 
-    if (static_lib) |lib| b.installArtifact(lib);
-    if (dynamic_lib) |lib| b.installArtifact(lib);
     b.getInstallStep().dependOn(&header.step);
     b.getInstallStep().dependOn(&pkg.step);
 
+
+    // C ABI library 
+    //
+    // Linkage type is build option, e.g. `-Dlinkage=static`
+    if (linkage == .static or linkage == .both) {
+        const static_lib = buildLibrary(
+            b,
+            target,
+            optimize,
+            .static,
+        );
+        b.installArtifact(static_lib);
+    }
+
+    if (linkage == .dynamic or linkage == .both) {
+        const dynamic_lib = buildLibrary(
+            b,
+            target,
+            optimize,
+            .dynamic
+        );
+        b.installArtifact(dynamic_lib);
+    }
+
+    // Unit tests
     const testing_step = b.step("test", "Run unit tests");
 
     const test_mod = b.createModule(.{
@@ -78,8 +84,48 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    const test_run = b.addTest(.{
+    const test_exe = b.addTest(.{
         .root_module = test_mod,
     });
-    testing_step.dependOn(&b.addRunArtifact(test_run).step);
+    testing_step.dependOn(&b.addRunArtifact(test_exe).step);
+
+    // Documentation generation
+    const docs_obj = b.addObject(.{
+        .name = "regrex-docs",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/root.zig"),
+            .target = target,
+        }),
+    });
+
+    const install_docs = b.addInstallDirectory(.{
+        .source_dir = docs_obj.getEmittedDocs(),
+        .install_dir = .prefix,
+        .install_subdir = "docs",
+    });
+
+    const docs_step = b.step("docs", "Generate documentation");
+    docs_step.dependOn(&install_docs.step);
+}
+
+fn buildLibrary(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    linkage: std.builtin.LinkMode,
+) *Step.Compile {
+    const mod = b.createModule(.{
+        .root_source_file = b.path("src/extern.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+
+    const lib = b.addLibrary(.{
+        .name = "regrex",
+        .linkage = linkage,
+        .root_module = mod,
+    });
+
+    return lib;
 }

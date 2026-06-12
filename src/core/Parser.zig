@@ -1,34 +1,59 @@
+//! Recursively descending parser of the regular expression grammar
+//! 
+//! Consumes a `Token` stream emitted by `Lexer` and produces 
+//! an arena-allocated Abstract Syntax Tree.
+//! Implements a simple basic PCRE/Python-inspired grammar:
+//! 
+//! ```text
+//! Branch      := Sequence ('|' Sequence)*
+//! Sequence    := Quantified+
+//! Quantified  := Atom ('*' | '+' | '?')?
+//! Atom        := Literal | '.' | '^' | '$' | Group | CharClass
+//! Group       := '(' Branch ')' | '(?:' Branch ')'
+//! CharClass  := '[' '^'? class_item* ']'
+//! ```
 const std = @import("std");
-const AST = @import("ast.zig");
-const Lexer = @import("lexer.zig");
-const Error = @import("errors.zig").Error;
+const AST = @import("./ast.zig");
+const Error = @import("../common/errors.zig").Error;
+const Lexer = @import("./Lexer.zig");
+const Rune = @import("../common/types.zig").Rune;
+const Token = @import("./Token.zig");
+
 const ParserError = Error || std.mem.Allocator.Error;
-const Rune = Lexer.Rune;
-const Token = Lexer.Token;
-const TokenType = Lexer.TokenType;
+const TokenType = Token.TokenType;
 
-pub const Parser = @This();
+/// Parser state instance for a single token stream
+pub const Self = @This();
 
+/// Controls AST lifetime.
 alloc: std.mem.Allocator,
 group_count: usize = 0,
 pos: usize = 0,
+/// Borrowed slice representing lexical token stream
 tokens: []const Token,
 
+/// `alloc`: controls AST nodes and owned child slices. 
+/// 
+/// Prefer an `ArenaAllocator`and release the whole 
+/// AST after compiling to bytecode
 pub fn init(
     alloc: std.mem.Allocator,
     tokens: []const Token
-) Parser {
+) Self {
     return .{
         .alloc = alloc,
         .tokens = tokens,
     };
 }
 
-fn current(self: *const Parser) Token {
+/// Returns a token at the current 'cursor' position
+fn current(self: *const Self) Token {
     return self.tokens[self.pos];
 }
 
-fn peek(self: *Parser, offset: usize) ?Token {
+/// Returns a token at `pos + offset` or `null` 
+/// if index out of range
+fn peek(self: *Self, offset: usize) ?Token {
     const idx = self.pos + offset;
 
     if (idx >= self.tokens.len) {
@@ -38,13 +63,16 @@ fn peek(self: *Parser, offset: usize) ?Token {
     return self.tokens[idx];
 }
 
-fn advance(self: *Parser) Token {
+/// Returns the current token and moves one position 'forward'
+fn advance(self: *Self) Token {
     const token = self.current();
     self.pos += 1;
     return token;
 }
 
-fn match(self: *Parser, typ: TokenType) bool {
+/// Takes `TokenType` and checks if current token 
+/// has matching type
+fn match(self: *Self, typ: TokenType) bool {
     if (self.current().typ == typ) {
         _ = self.advance();
         return true;
@@ -52,26 +80,35 @@ fn match(self: *Parser, typ: TokenType) bool {
     return false;
 }
 
-fn expect(self: *Parser, typ: TokenType) !Token {
+/// Takes `TokenType` and checks if current token 
+/// has matching type.
+/// 
+/// Returns `Error.UnexpectedToken` if type mismatch -
+/// current token doesn't match context
+fn expect(self: *Self, typ: TokenType) !Token {
     if (self.current().typ != typ) {
         return Error.UnexpectedToken;
     }
     return self.advance();
 }
 
-fn createNode(self: *Parser, node: AST.Node) ParserError!*AST.Node {
+/// Allocates and initializes an AST Node
+fn createNode(self: *Self, node: AST.Node) ParserError!*AST.Node {
     const ptr = try self.alloc.create(AST.Node);
     ptr.* = node;
     return ptr;
 }
 
-fn parseAlternation(self: *Parser) ParserError!*AST.Node {
+/// Parses branching.
+/// 
+/// Alteration has the lowest precedence in this grammar
+fn parseBranch(self: *Self) ParserError!*AST.Node {
     var left = try self.parseSequence();
 
     while (self.match(.PIPE)) {
         const right = try self.parseSequence();
         left = try self.createNode(.{
-            .Alternation = .{
+            .Branch = .{
                 .left = left,
                 .right = right,
             },
@@ -80,7 +117,8 @@ fn parseAlternation(self: *Parser) ParserError!*AST.Node {
     return left;
 }
 
-fn parseSequence(self: *Parser) ParserError!*AST.Node {
+/// Parses a sequence of quantified Atoms until `EOF`, `RPAREN` or `PIPE`
+fn parseSequence(self: *Self) ParserError!*AST.Node {
     var nodes = std.ArrayList(*AST.Node).empty;
     errdefer nodes.deinit(self.alloc);
 
@@ -94,7 +132,7 @@ fn parseSequence(self: *Parser) ParserError!*AST.Node {
     }
 
     if (nodes.items.len == 0) {
-        return Error.ExpectedExpression;
+        return Error.ExpressionExpected;
     }
 
     if (nodes.items.len == 1) {
@@ -112,9 +150,11 @@ fn parseSequence(self: *Parser) ParserError!*AST.Node {
     });
 }
 
-fn parseQuantified(self: *Parser) ParserError!*AST.Node {
+/// Parses an Atom and an optional postfix quantifier (`*`, `+` or `?`)
+fn parseQuantified(self: *Self) ParserError!*AST.Node {
     const node = try self.parseAtom();
 
+    // Parse 'zero or more'
     if (self.match(.STAR)) {
         return self.createNode(.{
             .Repeat = .{
@@ -125,6 +165,7 @@ fn parseQuantified(self: *Parser) ParserError!*AST.Node {
         });
     }
 
+    // Parse 'one or more'
     if (self.match(.PLUS)) {
         return self.createNode(.{
             .Repeat = .{
@@ -135,6 +176,7 @@ fn parseQuantified(self: *Parser) ParserError!*AST.Node {
         });
     }
 
+    // Parse 'zero or one'
     if (self.match(.QUESTION)) {
         return self.createNode(.{
             .Repeat = .{
@@ -147,7 +189,8 @@ fn parseQuantified(self: *Parser) ParserError!*AST.Node {
     return node;
 }
 
-fn parseAtom(self: *Parser) ParserError!*AST.Node {
+/// Parses the base indivisible expression
+fn parseAtom(self: *Self) ParserError!*AST.Node {
     const token = self.current();
 
     switch (token.typ) {
@@ -187,10 +230,12 @@ fn parseAtom(self: *Parser) ParserError!*AST.Node {
     }
 }
 
-fn parseGroup(self: *Parser) ParserError!*AST.Node {
+/// Parses a capturing `(...)` or non-capturing `(?:...)` group
+fn parseGroup(self: *Self) ParserError!*AST.Node {
     const first = self.peek(0);
     const next = self.peek(1);
 
+    // Parse a non-capturing group
     if (
         first != null and 
         next != null and
@@ -201,10 +246,10 @@ fn parseGroup(self: *Parser) ParserError!*AST.Node {
         _ = self.advance(); // QUESTION
         _ = self.advance(); // CHAR ':'
 
-        const node= try self.parseAlternation();
+        const node= try self.parseBranch();
 
         if (!self.match(.RPAREN)) {
-            return Error.ExpectedClosingParen;
+            return Error.UnmatchedParen;
         }
 
         return self.createNode(.{
@@ -213,14 +258,14 @@ fn parseGroup(self: *Parser) ParserError!*AST.Node {
             },
         });
     }
-
+    // Parse a capturing group
     self.group_count += 1;
     const pos = self.group_count;
 
-    const node = try self.parseAlternation();
+    const node = try self.parseBranch();
 
     if (!self.match(.RPAREN)) {
-        return Error.ExpectedClosingParen;
+        return Error.UnmatchedParen;
     }
 
     return self.createNode(.{
@@ -231,7 +276,14 @@ fn parseGroup(self: *Parser) ParserError!*AST.Node {
     });
 }
 
-fn parseCharClass(self: *Parser) ParserError!AST.CharClass {
+/// Parses a character class after the opening `LBRACKET`
+/// 
+/// Supports:
+/// - explicit characters
+/// - inclusive ranges (e.g. `a-z`, `0-9`)
+/// - escaped class members (e.g. `\*`)
+/// - leading negation (`^`)
+fn parseCharClass(self: *Self) ParserError!AST.CharClass {
     const negated = self.match(.CARET);
 
     var ranges = std.ArrayList(AST.CharRange).empty;
@@ -281,7 +333,7 @@ fn parseCharClass(self: *Parser) ParserError!AST.CharClass {
         }
     }
     if (!self.match(.RBRACKET)) {
-        return Error.ExpectedClosingBracket;
+        return Error.UnmatchedBracket;
     }
     return .{
         .ranges = try ranges.toOwnedSlice(self.alloc),
@@ -290,8 +342,15 @@ fn parseCharClass(self: *Parser) ParserError!AST.CharClass {
     };
 }
 
-pub fn parse(self: *Parser) !*AST.Node {
-    const ast = try self.parseAlternation();
+/// Top-level callable.
+/// 
+/// Parses the whole `Token` stream and returns the whole AST
+/// starting with root Node.
+/// 
+/// Returns `Error.UnexpectedToken` if the `Token` stream
+/// does not end with `EOF`
+pub fn parse(self: *Self) ParserError!*AST.Node {
+    const ast = try self.parseBranch();
 
     if (self.current().typ != .EOF) {
         return Error.UnexpectedToken;
@@ -299,6 +358,7 @@ pub fn parse(self: *Parser) !*AST.Node {
     return ast;
 }
 
+const testing = std.testing;
 
 test "Should parse anchored lowercase character class repeat" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -309,33 +369,33 @@ test "Should parse anchored lowercase character class repeat" {
     const tokens = try lexer.tokenize(alloc);
     defer alloc.free(tokens);
 
-    var parser = Parser.init(alloc, tokens);
+    var parser = Self.init(alloc, tokens);
     const ast = try parser.parse();
 
     switch (ast.*) {
         .Sequence => |seq| {
-            try std.testing.expectEqual(@as(usize, 3), seq.nodes.len);
-            try std.testing.expect(seq.nodes[0].* == .StartAnchor);
+            try testing.expectEqual(@as(usize, 3), seq.nodes.len);
+            try testing.expect(seq.nodes[0].* == .StartAnchor);
             switch (seq.nodes[1].*) {
                 .Repeat => |rep| {
-                    try std.testing.expectEqual(@as(usize, 0), rep.min);
-                    try std.testing.expectEqual(@as(?usize, null), rep.max);
+                    try testing.expectEqual(@as(usize, 0), rep.min);
+                    try testing.expectEqual(@as(?usize, null), rep.max);
 
                     switch (rep.node.*) {
                         .CharClass => |cls| {
-                            try std.testing.expectEqual(false, cls.negated);
-                            try std.testing.expectEqual(@as(usize, 1), cls.ranges.len);
-                            try std.testing.expectEqual(@as(Rune, 'a'), cls.ranges[0].start);
-                            try std.testing.expectEqual(@as(Rune, 'z'), cls.ranges[0].end);
+                            try testing.expectEqual(false, cls.negated);
+                            try testing.expectEqual(@as(usize, 1), cls.ranges.len);
+                            try testing.expectEqual(@as(Rune, 'a'), cls.ranges[0].start);
+                            try testing.expectEqual(@as(Rune, 'z'), cls.ranges[0].end);
                         },
-                        else => try std.testing.expect(false),
+                        else => try testing.expect(false),
                     }
                 },
-                else => try std.testing.expect(false),
+                else => try testing.expect(false),
             }
-            try std.testing.expect(seq.nodes[2].* == .EndAnchor);
+            try testing.expect(seq.nodes[2].* == .EndAnchor);
         },
-        else => try std.testing.expect(false),
+        else => try testing.expect(false),
     }
 }
 
@@ -348,35 +408,35 @@ test "Should parse non-capturing group" {
     const tokens = try lexer.tokenize(alloc);
     defer alloc.free(tokens);
 
-    var parser = Parser.init(alloc, tokens);
+    var parser = Self.init(alloc, tokens);
     const ast = try parser.parse();
 
     switch (ast.*) {
         .Repeat => |rep| {
-            try std.testing.expectEqual(@as(usize, 1), rep.min);
-            try std.testing.expectEqual(@as(?usize, null), rep.max);
+            try testing.expectEqual(@as(usize, 1), rep.min);
+            try testing.expectEqual(@as(?usize, null), rep.max);
 
             switch (rep.node.*) {
                 .NonCaptureGroup => |grp| {
                     switch (grp.node.*) {
                         .Sequence => |seq| {
-                            try std.testing.expectEqual(@as(usize, 2), seq.nodes.len);
+                            try testing.expectEqual(@as(usize, 2), seq.nodes.len);
 
                             switch (seq.nodes[0].*) {
-                                .Literal => |lit| try std.testing.expectEqual(@as(Rune, 'a'), lit.value),
-                                else => try std.testing.expect(false),
+                                .Literal => |lit| try testing.expectEqual(@as(Rune, 'a'), lit.value),
+                                else => try testing.expect(false),
                             }
                             switch (seq.nodes[1].*) {
-                                .Literal => |lit| try std.testing.expectEqual(@as(Rune, 'b'), lit.value),
-                                else => try std.testing.expect(false),
+                                .Literal => |lit| try testing.expectEqual(@as(Rune, 'b'), lit.value),
+                                else => try testing.expect(false),
                             }
                         },
-                        else => try std.testing.expect(false),
+                        else => try testing.expect(false),
                     }
                 },
-                else => try std.testing.expect(false),
+                else => try testing.expect(false),
             }
         },
-        else => try std.testing.expect(false),
+        else => try testing.expect(false),
     }
 }

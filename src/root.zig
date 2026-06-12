@@ -1,31 +1,41 @@
-pub const lexer = @import("lexer.zig");
-pub const ast = @import("ast.zig");
-pub const parser = @import("parser.zig");
+const std = @import("std");
+const Compiler = @import("./core/Compiler.zig");
+const Lexer = @import("./core/Lexer.zig");
+const Parser = @import("./core/Parser.zig");
+const Regex = @import("./Regex.zig");
 
+pub fn _compile(
+    alloc: std.mem.Allocator,
+    pattern: []const u8,
+) !Regex {
+    var lexer = Lexer.init(pattern);
+    const tokens = try lexer.tokenize(alloc);
+    defer alloc.free(tokens);
 
-pub fn compile() void {}
-pub fn search() void {}
-pub fn match() void {}
-pub fn getAllMatches() void {}
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
 
+    var parser = Parser.init(arena.allocator(), tokens);
+    const ast = try parser.parse();
 
-comptime {
-    const root = @This();
-    for (@typeInfo(root).@"struct".decls) |decl| {
-        const _Decl = @TypeOf(@field(root, decl.name));
-        if (_Decl == void) continue;
+    var compiler = Compiler.init(alloc);
+    const opcodes = try compiler.compile(ast);
 
-        if (!@hasDecl(root, decl.name)) {
-            @compileError("Missing declaration: " ++ decl.name);
-        }
-
-        if (_Decl != @TypeOf(@field(root, decl.name))) {
-            @compileError("Declaration has wrong type: " ++ decl.name);
-        }
-    }
+    return .{
+        .alloc = alloc,
+        .compiled = opcodes,
+        .group_count = parser.group_count,
+        .raw = pattern,
+    };
 }
 
+/// Dummy placeholder function (temporary)
+pub fn compile() void {}
+
 test {
-    _ = @import("lexer.zig");
-    _ = @import("parser.zig");
+    _ = @import("./core/Token.zig");
+    _ = @import("./core/Lexer.zig");
+    _ = @import("./core/Parser.zig");
+    _ = @import("./core/Compiler.zig");
+    _ = @import("./Match.zig");
 }
