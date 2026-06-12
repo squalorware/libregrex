@@ -1,6 +1,5 @@
 //! The Abstract Syntax Tree representation 
 //! of the regular expression pattern.
-
 const Rune = @import("../common/types.zig").Rune;
 
 /// Regular Expression AST Node.
@@ -23,9 +22,9 @@ pub const Node = union(enum) {
     Branch: Branch,
     /// Quantified node (`*`, `+` or `?`) 
     Repeat: Repeat,
-    /// Capture group `(...)`
+    /// Capturing group `(...)`
     CaptureGroup: CaptureGroup,
-    /// Non-capture group `(?:...)`
+    /// Non-capturing group `(?:...)`
     NonCaptureGroup: NonCaptureGroup,
 };
 
