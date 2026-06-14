@@ -2,7 +2,10 @@ const std = @import("std");
 const Compiler = @import("./core/Compiler.zig");
 const Lexer = @import("./core/Lexer.zig");
 const Parser = @import("./core/Parser.zig");
-const Pattern = @import("./pattern.zig").Pattern;
+const PatternModule = @import("./pattern.zig");
+const freeBytecode = PatternModule.freeBytecode;
+pub const Match = @import("./Match.zig");
+pub const Pattern = PatternModule.Pattern;
 
 pub fn _compile(
     alloc: std.mem.Allocator,
@@ -19,15 +22,48 @@ pub fn _compile(
     const ast = try parser.parse();
 
     var compiler = Compiler.init(alloc);
-    const opcodes = try compiler.compile(ast);
-    errdefer Pattern.freeBytecode(alloc, opcodes);
+    const bytecode = try compiler.compile(ast);
+    errdefer freeBytecode(alloc, bytecode);
 
     return try Pattern.init(
         alloc, 
         parser.group_count, 
-        opcodes, 
+        bytecode, 
         pattern
     );
+}
+
+pub fn search(
+    alloc: std.mem.Allocator,
+    pattern: []const u8,
+    input: []const u8
+) !?Match {
+    const compiled: *Pattern = try _compile(alloc, pattern);
+    defer compiled.deinit();
+
+    return compiled.search(input);
+}
+
+pub fn match(
+    alloc: std.mem.Allocator,
+    pattern: []const u8,
+    input: []const u8,
+) !?Match {
+    const compiled: *Pattern = try _compile(alloc, pattern);
+    defer compiled.deinit();
+
+    return compiled.match(input);
+}
+
+pub fn findAll(
+    alloc: std.mem.Allocator,
+    pattern: []const u8,
+    input: []const u8,
+) ![]Match {
+    const compiled: *Pattern = try _compile(alloc, pattern);
+    defer compiled.deinit();
+
+    return compiled.findAll(input);
 }
 
 /// Dummy placeholder function (temporary)

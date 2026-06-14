@@ -1,5 +1,24 @@
 const std = @import("std");
 const Instruction = @import("./core/icr.zig").Instruction;
+const Match = @import("./Match.zig");
+const VM = @import("vm.zig");
+
+pub fn freeBytecode(
+    alloc: std.mem.Allocator, 
+    bytecode: []Instruction
+) void {
+    for (bytecode) |inst| {
+        switch(inst) {
+            .Class => |cls| {
+                alloc.free(cls.ranges);
+                alloc.free(cls.chars);
+            },
+            else => {},
+        }
+    }
+
+    alloc.free(bytecode);
+}
 
 const CompiledPattern = struct {
     alloc: std.mem.Allocator,
@@ -35,24 +54,31 @@ pub const Pattern = opaque {
         alloc.destroy(self);
     }
 
-    pub fn freeBytecode(
-        alloc: std.mem.Allocator, 
-        bytecode: []Instruction
-    ) void {
-        for (bytecode) |inst| {
-            switch(inst) {
-                .Class => |cls| {
-                    alloc.free(cls.ranges);
-                    alloc.free(cls.chars);
-                },
-                else => {},
-            }
-        }
-
-        alloc.free(bytecode);
+    pub fn search(ptr: *const Pattern, input: []const u8) !?Match {
+        const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
+        return VM.search(
+            self.alloc,
+            self.bytecode,
+            self.group_count,
+            input,
+        );
     }
-
-    pub fn search() void {}
-    pub fn match() void {}
-    pub fn findAll() void {}
+    pub fn match(ptr: *const Pattern, input: []const u8) !?Match {
+        const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
+        return VM.match(
+            self.alloc,
+            self.bytecode,
+            self.group_count,
+            input,
+        );
+    }
+    pub fn findAll(ptr: *const Pattern, input: []const u8) ![]Match {
+        const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
+        return VM.findAll(
+            self.alloc,
+            self.bytecode,
+            self.group_count,
+            input,
+        );
+    }
 };
