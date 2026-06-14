@@ -1,6 +1,5 @@
 //! Defines the lexical tokens produced by lexer 
 //! and consumed by the parser.
-
 const Rune = @import("../common/types.zig").Rune;
 
 /// Known types of tokens produced by lexer.
