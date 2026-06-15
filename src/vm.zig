@@ -17,7 +17,7 @@ const utils = @import("./common/utils.zig");
 
 const DecodedRune = types.DecodedRune;
 const Rune = types.Rune;
-const Span = types.Span;
+const Group = types.Group;
 const VmError = Error || std.mem.Allocator.Error;
 
 /// A saved alternative execution state instance used by the backtracking VM.
@@ -213,8 +213,8 @@ pub const FindIterator = struct {
                 self.input, 
                 self.pos
             )) |m| {
-                const start = m.span.start;
-                const end = m.span.end;
+                const start = m.full.start;
+                const end = m.full.end;
 
                 if (end > start) {
                     // Non-empty match; mark as finished and resume scanning
@@ -534,8 +534,8 @@ pub fn sub(
             var match_result = m;
             defer match_result.deinit(alloc);
 
-            const start = match_result.span.start;
-            const end = match_result.span.end;
+            const start = match_result.full.start;
+            const end = match_result.full.end;
 
             // Copy everything from last emitted position to start 
             try out.appendSlice(alloc, input[copy_pos..start]);
@@ -605,8 +605,8 @@ test "Should match executing bytecode for literal from explicit start by VM.exec
     defer result.deinit(allocator);
 
     try testing.expectEqualStrings("420", result.str());
-    try testing.expectEqual(@as(usize, 4), result.span.start);
-    try testing.expectEqual(@as(usize, 7), result.span.end);
+    try testing.expectEqual(@as(usize, 4), result.full.start);
+    try testing.expectEqual(@as(usize, 7), result.full.end);
 }
 
 test "Should match only at input start by VM.match" {
@@ -665,8 +665,8 @@ test "Should find first matching literal after beginning with VM.search" {
     defer result.deinit(allocator);
 
     try testing.expectEqualStrings("420", result.str());
-    try testing.expectEqual(@as(usize, 4), result.span.start);
-    try testing.expectEqual(@as(usize, 7), result.span.end);
+    try testing.expectEqual(@as(usize, 4), result.full.start);
+    try testing.expectEqual(@as(usize, 7), result.full.end);
 }
 
 test "Should receive non-overlapping matches from lazy VM.findIter" {
@@ -693,16 +693,16 @@ test "Should receive non-overlapping matches from lazy VM.findIter" {
     };
     defer first.deinit(allocator);
     try testing.expectEqualStrings("420", first.str());
-    try testing.expectEqual(@as(usize, 0), first.span.start);
-    try testing.expectEqual(@as(usize, 3), first.span.end);
+    try testing.expectEqual(@as(usize, 0), first.full.start);
+    try testing.expectEqual(@as(usize, 3), first.full.end);
 
     var second = (try iter.next()) orelse {
         try testing.expect(false);
         return;
     };
     try testing.expectEqualStrings("420", second.str());
-    try testing.expectEqual(@as(usize, 8),second.span.start);
-    try testing.expectEqual(@as(usize, 11), second.span.end);
+    try testing.expectEqual(@as(usize, 8),second.full.start);
+    try testing.expectEqual(@as(usize, 11), second.full.end);
 
     const third = try iter.next();
     try testing.expect(third == null);
@@ -759,8 +759,8 @@ test "Should eagerly receive all non-overlapping matches from VM.findAll" {
 
     for (expected_matches, 0..) |expected, i| {
         try testing.expectEqualStrings("67", results[i].str());
-        try testing.expectEqual(expected.start, results[i].span.start);
-        try testing.expectEqual(expected.end,results[i].span.end);
+        try testing.expectEqual(expected.start, results[i].full.start);
+        try testing.expectEqual(expected.end,results[i].full.end);
     }
 }
 

@@ -9,7 +9,7 @@
 //! Group 1..n represent the captured subgroups.
 const std = @import("std");
 const Error = @import("./common/errors.zig").Error;
-const Span = @import("./common/types.zig").Span;
+const Group = @import("./common/types.zig").Group;
 
 const MatchError = Error || std.mem.Allocator.Error;
 
@@ -20,14 +20,15 @@ pub const Self = @This();
 /// All returned slices from `str` and `group` point into this buffer.
 input: []const u8,
 /// Byte span of the whole match within `input`
-span: Span,
-/// Optional byte spans for capturing groups (subgroups).
+full: Group,
+/// Capture groups (subgroups).
 /// 
 /// `groups[0]` corresponds to regex group (subgroup) 1,
-/// `groups[1]` corresponds to regex group (subgroup) 2,
-/// and so on. `null` means that group exists but took
+/// `groups[1]` corresponds to regex group (subgroup) 2 etc.
+/// 
+/// `null` means that group exists but took
 /// no part in match.
-groups: []?Span,
+groups: []?Group,
 
 /// Releases allocator-owned capture group metadata.
 /// 
@@ -51,8 +52,9 @@ pub fn free(alloc: std.mem.Allocator, matches: []Self) void {
 
 /// Returns the text matched by a group.
 /// 
-/// `idx = 0` returns the whole match. `idx > 0` is interpreted
-/// as a capturing group index. 
+/// `idx = 0` returns the whole match. 
+/// 
+/// `idx > 0` returns subgroup `groups[idx]`
 /// 
 /// Returns `null` if requested group is out of range or
 /// did not take part in match. 
@@ -73,9 +75,9 @@ pub fn group(self: Self, idx: usize) ?[]const u8 {
 /// 
 /// Returns `null` if requested group span is out of range or
 /// did not take part in match. 
-pub fn groupSpan(self: Self, idx: usize) ?Span {
+pub fn groupSpan(self: Self, idx: usize) ?Group {
     if (idx == 0) {
-        return self.span;
+        return self.full;
     }
 
     const group_idx = idx - 1;
@@ -89,7 +91,7 @@ pub fn groupSpan(self: Self, idx: usize) ?Span {
 
 /// Returns the whole matched text as a slice of `input`.
 pub fn str(self: Self) []const u8 {
-    return self.input[self.span.start..self.span.end];
+    return self.input[self.full.start..self.full.end];
 }
 
 /// Create a `Match` instance from capture slots.
@@ -107,7 +109,7 @@ pub fn toMatch(
     const start = captures[0] orelse 0;
     const end = captures[1] orelse start;
 
-    var groups = try allocator.alloc(?Span, group_count);
+    var groups = try allocator.alloc(?Group, group_count);
     errdefer allocator.free(groups);
 
     var group_idx: usize = 0;
@@ -131,7 +133,7 @@ pub fn toMatch(
     }
     return .{
         .input = input,
-        .span = .{
+        .full = .{
             .start = start,
             .end = end,
         },
@@ -151,14 +153,14 @@ const TestContext = struct {
         alloc: std.mem.Allocator,
         start: usize,
         end: usize,
-        groups: []const ?Span,
+        groups: []const ?Group,
     ) !TestContext {
-        const owned_groups = try alloc.dupe(?Span, groups);
+        const owned_groups = try alloc.dupe(?Group, groups);
 
         return .{
             .match = .{
                 .input = testInput,
-                .span = .{
+                .full = .{
                     .start = start,
                     .end = end,
                 },
@@ -200,7 +202,7 @@ test "Should receive the whole match Span from Match.groupSpan 0" {
     var ctx = try TestContext.init(allocator, 4, 7, &.{});
     defer ctx.deinit(allocator);
 
-    const maybe_span: ?Span = ctx.match.groupSpan(0);
+    const maybe_span: ?Group = ctx.match.groupSpan(0);
 
     if (maybe_span) |span| {
         try testing.expectEqual(@as(usize, 4), span.start);
@@ -212,7 +214,7 @@ test "Should receive the whole match Span from Match.groupSpan 0" {
 
 test "Should receive captured group slice from Match.group" {
     const allocator = testing.allocator;
-    const captured = [_]?Span {
+    const captured = [_]?Group {
         .{
             .start = 4,
             .end = 7,
@@ -237,7 +239,7 @@ test "Should receive captured group slice from Match.group" {
 
 test "Should receive captured group span from Match.groupSpan" {
     const allocator = testing.allocator;
-    const captured = [_]?Span {
+    const captured = [_]?Group {
         .{
             .start = 4,
             .end = 7,
@@ -252,7 +254,7 @@ test "Should receive captured group span from Match.groupSpan" {
     );
     defer ctx.deinit(allocator);
 
-    const maybe_span: ?Span = ctx.match.groupSpan(1);
+    const maybe_span: ?Group = ctx.match.groupSpan(1);
     if (maybe_span) |span| {
         try testing.expectEqual(@as(usize, 4), span.start);
         try testing.expectEqual(@as(usize, 7), span.end);
@@ -263,7 +265,7 @@ test "Should receive captured group span from Match.groupSpan" {
 
 test "Should receive null from Match.group for unmatched capture group" {
     const allocator = testing.allocator;
-    const unmatched = [_]?Span { null };
+    const unmatched = [_]?Group { null };
 
     var ctx = try TestContext.init(
         allocator,
@@ -278,7 +280,7 @@ test "Should receive null from Match.group for unmatched capture group" {
 
 test "Should receive null from Match.groupSpan for unmatched capture group" {
     const allocator = testing.allocator;
-    const unmatched = [_]?Span { null };
+    const unmatched = [_]?Group { null };
 
     var ctx = try TestContext.init(
         allocator,
@@ -288,12 +290,12 @@ test "Should receive null from Match.groupSpan for unmatched capture group" {
     );
     defer ctx.deinit(allocator);
 
-    try testing.expectEqual(@as(?Span, null), ctx.match.groupSpan(1)); 
+    try testing.expectEqual(@as(?Group, null), ctx.match.groupSpan(1)); 
 }
 
 test "Should receive null from Match.group for group out of range" {
     const allocator = testing.allocator;
-    const captured = [_]?Span {
+    const captured = [_]?Group {
         .{
             .start = 4,
             .end = 7,
@@ -313,7 +315,7 @@ test "Should receive null from Match.group for group out of range" {
 
 test "Should receive null from Match.groupSpan for group out of range" {
     const allocator = testing.allocator;
-    const captured = [_]?Span {
+    const captured = [_]?Group {
         .{
             .start = 4,
             .end = 7,
@@ -328,7 +330,7 @@ test "Should receive null from Match.groupSpan for group out of range" {
     );
     defer ctx.deinit(allocator);
 
-    try testing.expectEqual(@as(?Span, null), ctx.match.groupSpan(2));
+    try testing.expectEqual(@as(?Group, null), ctx.match.groupSpan(2));
 }
 
 test "Should receive the whole match Span from capture slots passed to Match.toMatch" {
@@ -340,8 +342,8 @@ test "Should receive the whole match Span from capture slots passed to Match.toM
     var m = try Self.toMatch(allocator, input, 0, captures[0..]);
     defer m.deinit(allocator);
 
-    try testing.expectEqual(@as(usize, 4), m.span.start);
-    try testing.expectEqual(@as(usize, 7), m.span.end);
+    try testing.expectEqual(@as(usize, 4), m.full.start);
+    try testing.expectEqual(@as(usize, 7), m.full.end);
     try testing.expectEqualStrings("420", m.str());
     try testing.expectEqual(@as(usize, 0), m.groups.len);
 }

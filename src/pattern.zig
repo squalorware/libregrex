@@ -223,8 +223,8 @@ test "Should return a `Match` from input start by Pattern.match" {
     defer result.deinit(allocator);
 
     try testing.expectEqualStrings("420", result.str());
-    try testing.expectEqual(@as(usize, 0), result.span.start);
-    try testing.expectEqual(@as(usize, 3), result.span.end);
+    try testing.expectEqual(@as(usize, 0), result.full.start);
+    try testing.expectEqual(@as(usize, 3), result.full.end);
 }
 
 test "Should return `null` when no match at input start by Pattern.match" {
@@ -262,8 +262,8 @@ test "Should return first Match from input by Pattern.search" {
     };
 
     try testing.expectEqualStrings("420", result.str());
-    try testing.expectEqual(@as(usize, 4), result.span.start);
-    try testing.expectEqual(@as(usize, 7), result.span.end);
+    try testing.expectEqual(@as(usize, 4), result.full.start);
+    try testing.expectEqual(@as(usize, 7), result.full.end);
 }
 
 test "Should return lazy non-overlapping match by Pattern.findIter" {
@@ -286,16 +286,16 @@ test "Should return lazy non-overlapping match by Pattern.findIter" {
         return;
     };
     try testing.expectEqualStrings("420", first.str());
-    try testing.expectEqual(@as(usize, 0), first.span.start);
-    try testing.expectEqual(@as(usize, 3), first.span.end);
+    try testing.expectEqual(@as(usize, 0), first.full.start);
+    try testing.expectEqual(@as(usize, 3), first.full.end);
 
     var second = (try iter.next()) orelse {
         try testing.expect(false);
         return;
     };
     try testing.expectEqualStrings("420", second.str());
-    try testing.expectEqual(@as(usize, 8), second.span.start);
-    try testing.expectEqual(@as(usize, 11), second.span.end);
+    try testing.expectEqual(@as(usize, 8), second.full.start);
+    try testing.expectEqual(@as(usize, 11), second.full.end);
 
     const third = try iter.next();
     try testing.expect(third == null);
@@ -344,8 +344,8 @@ test "Should return all non-overlapping matches by Pattern.findAll" {
 
     for (expected_matches, 0..) |expected, i| {
         try testing.expectEqualStrings("420", results[i].str());
-        try testing.expectEqual(expected.start, results[i].span.start);
-        try testing.expectEqual(expected.end, results[i].span.end);
+        try testing.expectEqual(expected.start, results[i].full.start);
+        try testing.expectEqual(expected.end, results[i].full.end);
     }
 }
 

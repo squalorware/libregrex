@@ -24,7 +24,7 @@ pub const DecodedRune = struct {
 ///
 /// Follows Zig slice semantics (`start` is inclusive; `end` is exclusive):
 /// `input[start..end]`
-pub const Span = struct {
+pub const Group = struct {
     start: usize,
     end: usize,
 };
