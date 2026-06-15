@@ -28,8 +28,3 @@ pub const Span = struct {
     start: usize,
     end: usize,
 };
-
-/// Optional capture span.
-///
-/// `null` if the capture group did not participate in the match.
-pub const Capture = ?Span;

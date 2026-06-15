@@ -1,8 +1,7 @@
 //! Backtracking virtual machine for compiled regular-expression bytecode.
 //! 
-//! The VM executes the instruction stream emitted by the compiler.
-//! It is a small PCRE-style backtracking interpreter: 
-//! `Split` instructions push alternative  execution states 
+//! The VM executes the instruction stream emitted by the compiler. 
+//! Backtracks by `Split` instructions pushing alternative execution states 
 //! onto an explicit stack, and failed paths restore the most recent saved state.
 //! 
 //! Input is stored and sliced as UTF-8 byte slices, but character-consuming
@@ -21,11 +20,10 @@ const Rune = types.Rune;
 const Span = types.Span;
 const VmError = Error || std.mem.Allocator.Error;
 
-
-/// A saved alternative execution state used by the backtracking VM.
+/// A saved alternative execution state instance used by the backtracking VM.
 ///
-/// Frames are pushed by `Split` instructions. If the current execution path
-/// fails, the VM restores the most recent frame and continues from that saved
+/// Frames are pushed by `Split` instructions. If the current frame fails, 
+/// the VM restores the most recent Frame and continues from that saved
 /// program counter, input byte position, and capture-slot snapshot.
 const Frame = struct {
     /// Bytecode instruction pointer to resume from
@@ -35,15 +33,14 @@ const Frame = struct {
     /// Snapshot of capture slots at the time the alternative path was saved.
     captures: []?usize,
 
-    /// Releases the capture-slot snapshot owned by this frame
+    /// Releases the capture-slot snapshot owned by this Frame
     fn deinit(self: *Frame, alloc: std.mem.Allocator) void {
         alloc.free(self.captures);
         self.* = undefined;
     }
 };
 
-/// Describes how a character-consuming Instruction 
-/// should test the next input Rune.
+/// Represents a rule by which a Rune-consuming Instruction should test it.
 /// 
 /// This lets `.Rune`, `.Any`, and `.Class` share the same consume/decode path
 /// while preserving their distinct matching semantics.
@@ -146,11 +143,10 @@ fn runeMatches(rune: Rune, matcher: RuneMatcher) bool {
 
 /// Consumes a UTF-8 code point from `input` at `pos`
 /// 
-/// Returns `true` and advances `pos` 
-/// if decoded Rune satisfies the matcher.
+/// Returns `true` and advances `pos` if decoded Rune satisfies the matcher.
 /// 
-/// Returns `false` without changing `pos`
-/// if the `input` is exhausted or Rune doesn't match
+/// Returns `false` without changing `pos` if the `input` is exhausted 
+/// or Rune doesn't match
 /// 
 /// Returns `Error.InvalidUnicode` if encounters broken UTF-8 
 fn consumeRune(
@@ -166,51 +162,6 @@ fn consumeRune(
     }
     pos.* += decoded.len;
     return true;
-}
-
-/// Convert VM capture slots to `Match`
-/// 
-/// The returned `Match` owns the allocated `groups` slice.
-/// The caller is responsible for calling `Match.deinit()` on success
-fn makeMatch(
-    allocator: std.mem.Allocator,
-    input: []const u8,
-    group_count: usize,
-    captures: []const ?usize,
-) VmError!Match {
-    const start = captures[0] orelse 0;
-    const end = captures[1] orelse start;
-
-    var groups = try allocator.alloc(?Span, group_count);
-    errdefer allocator.free(groups);
-
-    var group_idx: usize = 0;
-    while (group_idx < group_count) : (group_idx += 1) {
-        const start_slot = (group_idx + 1) * 2;
-        const end_slot = start_slot + 1;
-
-        const group_start = captures[start_slot] orelse {
-            groups[group_idx] = null;
-            continue;
-        };
-        const group_end = captures[end_slot] orelse {
-            groups[group_idx] = null;
-            continue;
-        };
-
-        groups[group_idx] = .{
-            .start = group_start,
-            .end = group_end,
-        };
-    }
-    return .{
-        .input = input,
-        .span = .{
-            .start = start,
-            .end = end,
-        },
-        .groups = groups,
-    };
 }
 
 /// Executes bytecode instructions.
@@ -239,6 +190,7 @@ pub fn execAt(
     }
 
     var stack = std.ArrayList(Frame).empty;
+    // Free the backtracking frame state buffer
     defer {
         for (stack.items) |*frame| {
             frame.deinit(allocator);
@@ -246,6 +198,7 @@ pub fn execAt(
         stack.deinit(allocator);
     }
 
+    // Initialize the program counter
     var pc: usize = 0;
     var pos: usize = start_pos;
     // Bytecode instruction execution loop
@@ -333,7 +286,7 @@ pub fn execAt(
             },
             // Terminal instruction
             .Match => {
-                const result = try makeMatch(
+                const result = try Match.toMatch(
                     allocator,
                     input,
                     group_count,
@@ -346,6 +299,15 @@ pub fn execAt(
     }
 }
 
+/// Executes the bytecode-compiled pattern to return the first match 
+/// found starting from byte offset `0` (i.e. start of `input` string)
+/// 
+/// Returns `Match` if the compiled pattern succeeds at the start of `input`
+/// 
+/// Returns `null` if no `Match` can be produced from start of `input`
+/// 
+/// Returns `VmError` if memory allocation for `Match` failed or 
+/// an invalid Unicode character was detected
 pub fn match(
     alloc: std.mem.Allocator,
     bytecode: []const Instruction,
@@ -355,6 +317,15 @@ pub fn match(
     return execAt(alloc, bytecode, group_count, input, 0);
 }
 
+/// Executes the bytecode-compiled pattern to search for the first position 
+/// in the `input` where a `Match` can be produced.
+/// 
+/// Returns the first `Match` produced at any position 
+/// 
+/// Returns `null` if no `Match` can be produced anywhere in `input`
+/// 
+/// Returns `VmError` if memory allocation for `Match` failed or 
+/// an invalid Unicode character was detected
 pub fn search(
     alloc: std.mem.Allocator,
     bytecode: []const Instruction,
@@ -376,6 +347,18 @@ pub fn search(
     return null;
 }
 
+/// Executes the bytecode-compiled pattern to search for 
+/// all non-overlapping matches in `input` string.
+/// 
+/// Runs bytecode from left to right at valid Unicode boundaries.
+/// After a successful non-empty match, scanning resumes at the end
+/// of that match. If a zero-length Match is produced, scanning advances by one
+/// UTF-8 code point to avoid an infinite loop.
+/// 
+/// Returns an allocator-owned slice of `Match` objects.
+/// 
+/// Returns `VmError` if memory allocation failed or 
+/// an invalid Unicode character was detected
 pub fn findAll(
     alloc: std.mem.Allocator,
     bytecode: []const Instruction,
@@ -383,11 +366,7 @@ pub fn findAll(
     input: []const u8
 ) VmError![]Match {
     var matches = std.ArrayList(Match).empty;
-    errdefer {
-        for (matches.items) |*m| {
-            m.deinit(alloc);
-        }
-    }
+    errdefer Match.free(alloc, matches.items);
     var pos: usize = 0;
 
     while (pos <= input.len) {
@@ -415,4 +394,207 @@ pub fn findAll(
         pos += decoded.?.len;
     }
     return try matches.toOwnedSlice(alloc);
+}
+
+const testing = std.testing;
+
+test "Should match executing bytecode for literal from explicit start by VM.execAt" {
+    const allocator = testing.allocator;
+    const bytecode = [_]Instruction {
+        .{ .Save = 0 },
+        .{ .Rune = '4' },
+        .{ .Rune = '2' },
+        .{ .Rune = '0' },
+        .{ .Save = 1 },
+        .Match,
+    };
+    var result = (try execAt(
+        allocator,
+        bytecode[0..],
+        0,
+        "lol 420 kek",
+        4,
+    )) orelse {
+        try testing.expect(false);
+        return;
+    };
+    defer result.deinit(allocator);
+
+    try testing.expectEqualStrings("420", result.str());
+    try testing.expectEqual(@as(usize, 4), result.span.start);
+    try testing.expectEqual(@as(usize, 7), result.span.end);
+}
+
+test "Should match only at input start by VM.match" {
+    const allocator = testing.allocator;
+    const bytecode = [_]Instruction {
+        .{ .Save = 0 },
+        .{ .Rune = '4' },
+        .{ .Rune = '2' },
+        .{ .Rune = '0' },
+        .{ .Save = 1 },
+        .Match,
+    };
+
+    var result = (try match(
+        allocator,
+        bytecode[0..],
+        0,
+        "420 kek",
+    )) orelse {
+        try testing.expect(false);
+        return;
+    };
+    defer result.deinit(allocator);
+
+    try testing.expectEqualStrings("420", result.str());
+
+    const no_match = try match(
+        allocator,
+        bytecode[0..],
+        0,
+        "lol 420 kek",
+    );
+    try testing.expect(no_match == null);
+}
+
+test "Should find first matching literal after beginning with VM.search" {
+    const allocator = testing.allocator;
+    const bytecode = [_]Instruction {
+        .{ .Save = 0 },
+        .{ .Rune = '4' },
+        .{ .Rune = '2' },
+        .{ .Rune = '0' },
+        .{ .Save = 1 },
+        .Match,
+    };
+
+    var result = (try search(
+        allocator,
+        bytecode[0..],
+        0,
+        "lol 420 kek",
+    )) orelse {
+        try testing.expect(false);
+        return;
+    };
+    defer result.deinit(allocator);
+
+    try testing.expectEqualStrings("420", result.str());
+    try testing.expectEqual(@as(usize, 4), result.span.start);
+    try testing.expectEqual(@as(usize, 7), result.span.end);
+}
+
+test "Should receive all non-overlapping matches from VM.findAll" {
+    const allocator = testing.allocator;
+    const bytecode = [_]Instruction {
+        .{ .Save = 0 },
+        .{ .Rune = '6' },
+        .{ .Rune = '7' },
+        .{ .Save = 1 },
+        .Match,
+    };
+    const expected_matches = [_]struct {
+        start: usize,
+        end: usize,
+    }{
+        .{ .start = 0, .end = 2 },
+        .{ .start = 17, .end = 19 },
+    };
+
+    const results = try findAll(
+        allocator, 
+        bytecode[0..], 
+        0, 
+        "67 lol six seven 67 kek 420"
+    );
+    defer Match.free(allocator, results);
+
+    try testing.expectEqual(@as(usize, 2), results.len);
+
+    for (expected_matches, 0..) |expected, i| {
+        try testing.expectEqualStrings("67", results[i].str());
+        try testing.expectEqual(expected.start, results[i].span.start);
+        try testing.expectEqual(expected.end,results[i].span.end);
+    }
+}
+
+test "Should handle capture group save slots by VM.execAt" {
+    const allocator = testing.allocator;
+    const bytecode = [_]Instruction {
+        .{ .Save = 0 },
+        .{ .Save = 2 },
+        .{ .Rune = '4' },
+        .{ .Rune = '2' },
+        .{ .Rune = '0' },
+        .{ .Save = 3 },
+        .{ .Save = 1 },
+        .Match,
+    };
+
+    var result = (try execAt(
+        allocator,
+        bytecode[0..],
+        1,
+        "420",
+        0,
+    )) orelse {
+        try testing.expect(false);
+        return;
+    };
+    defer result.deinit(allocator);
+
+    try testing.expectEqualStrings("420", result.str());
+
+    const expected_group = result.group(1) orelse {
+        try testing.expect(false);
+        return;
+    };
+    try testing.expectEqualStrings("420", expected_group);
+}
+
+test "Should handle anchored lowercase character class repeat by VM.execAt" {
+    const allocator = testing.allocator;
+    const ranges = [_]AST.CharRange {
+        .{ .start = 'a', .end = 'z' },
+    };
+    const chars = [_]Rune {};
+    const lowercase_class: AST.CharClass = .{
+        .ranges = ranges[0..],
+        .chars = chars[0..],
+        .negated = false,
+    };
+    const bytecode = [_]Instruction {
+        .{ .Save = 0 },
+        .AssertStart,
+        .{ .Split = .{ .first = 3, .second = 5 } },
+        .{ .Class = lowercase_class },
+        .{ .Jump = 2 },
+        .AssertEnd,
+        .{ .Save = 1 },
+        .Match,
+    };
+
+    var result = (try execAt(
+        allocator,
+        bytecode[0..],
+        0,
+        "abc",
+        0
+    )) orelse {
+        try testing.expect(false);
+        return;
+    };
+    defer result.deinit(allocator);
+
+    try testing.expectEqualStrings("abc", result.str());
+
+    const no_match = try execAt(
+        allocator,
+        bytecode[0..],
+        0,
+        "abc123",
+        0
+    );
+    try testing.expect(no_match == null);
 }
