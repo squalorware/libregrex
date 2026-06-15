@@ -861,7 +861,7 @@ test "Should replace all occurences of pattern with string provided to VM.sub" {
         0,
         "67",
         "lol 420 kek 420",
-        0
+        0,
     );
     defer allocator.free(result);
 
@@ -885,7 +885,7 @@ test "Should only replace number of occurences specified by count argument to VM
         0,
         "67",
         "lol 420 kek 420",
-        1
+        1,
     );
     defer allocator.free(result);
 
@@ -909,7 +909,7 @@ test "Should replace all occurences and safely ignore rest if count is greater t
         0,
         "67",
         "lol 420 kek 420",
-        67
+        67,
     );
     defer allocator.free(result);
 

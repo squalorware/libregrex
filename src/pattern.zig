@@ -125,7 +125,7 @@ pub const Pattern = opaque {
 
     /// Creates an instance of a lazy `FindIterator`.
     /// 
-    /// Does not perform an eager scan of the whole input - matches lazily
+    /// Does not per\form an eager scan of the whole input - matches lazily
     /// one input at a time instead. Does not advance until `FindIterator.next`
     /// is called explicitly.
     /// 
@@ -157,6 +157,35 @@ pub const Pattern = opaque {
             self.bytecode,
             self.group_count,
             input,
+        );
+    }
+
+    /// Creates a copy of the `input` string and replaces match occurences.
+    /// 
+    /// The number of replacements is controlled by `options.count`
+    /// - If `options.count == 0` replace all occurences (default value);
+    /// - If `options.count > 0` replace exactly `options.count` times;
+    /// - If `options.count` is greater than matches count, replace all and safely ignore rest
+    /// 
+    /// Returns an allocated string buffer containing a modified copy of `input` on success
+    /// 
+    /// Returns `Error` if allocation failed or invalid Unicode encountered
+    pub fn sub(
+        ptr: *const Pattern,
+        repl: []const u8, 
+        input: []const u8, 
+        options: struct {
+            count: usize = 0,
+        },
+    ) ![]u8 {
+        const self: *const CompiledPattern = @ptrCast(@alignCast(ptr));
+        return VM.sub(
+            self.alloc,
+            self.bytecode,
+            self.group_count,
+            repl,
+            input,
+            options.count,
         );
     }
 };
@@ -318,4 +347,58 @@ test "Should return all non-overlapping matches by Pattern.findAll" {
         try testing.expectEqual(expected.start, results[i].span.start);
         try testing.expectEqual(expected.end, results[i].span.end);
     }
+}
+
+test "Should return a string with all matches replaced from Pattern.sub" {
+    const allocator = testing.allocator;
+    const bytecode = try bytecodeFixture(allocator);
+
+    const pattern: *Pattern = try Pattern.init(
+        allocator,
+        0,
+        bytecode,
+        "420"
+    );
+    defer pattern.deinit();
+
+    const result = try pattern.sub("67", "420 lol 420 kek", .{});
+    defer allocator.free(result);
+
+    try testing.expectEqualStrings("67 lol 67 kek", result);
+}
+
+test "Should only replace specific number of times by Pattern.sub" {
+    const allocator = testing.allocator;
+    const bytecode = try bytecodeFixture(allocator);
+
+    const pattern: *Pattern = try Pattern.init(
+        allocator,
+        0,
+        bytecode,
+        "420"
+    );
+    defer pattern.deinit();
+
+    const result = try pattern.sub("67", "420 lol 420 kek", .{ .count = 1 });
+    defer allocator.free(result);
+
+    try testing.expectEqualStrings("67 lol 420 kek", result);    
+}
+
+test "Should replace all occurences and safely ignore rest if options.count is greater than actual occurences count" {
+    const allocator = testing.allocator;
+    const bytecode = try bytecodeFixture(allocator);
+
+    const pattern: *Pattern = try Pattern.init(
+        allocator,
+        0,
+        bytecode,
+        "420"
+    );
+    defer pattern.deinit();
+
+    const result = try pattern.sub("67", "420 lol 420 kek", .{ .count = 67 });
+    defer allocator.free(result);
+
+    try testing.expectEqualStrings("67 lol 67 kek", result);    
 }
