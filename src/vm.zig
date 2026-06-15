@@ -396,6 +396,81 @@ pub fn findAll(
     return try matches.toOwnedSlice(alloc);
 }
 
+/// Executes the bytecode-compiled pattern to retrieve all of the matches 
+/// in the `input` string and return a new string with those matches replaced by `repl`.
+/// 
+/// The replacement is literal. Current implementation does not support 
+/// expanding capture group references like `\1` or `$1` and flags like 'ignore case'.
+/// 
+/// `count` argument controls the number of occurences to replace. 
+/// - If `count = 0`, replaces all of the occurences;
+/// - If `count > 0` replaces number of the occurences specified
+/// - If `count` is bigger than the actual occurences count, replaces all and safely ignores rest
+/// 
+/// Returns an allocator-owned copy of the input string (must be freed manually with `alloc.free`).
+/// 
+/// Returns `VmError` if allocation failed or `execAt` returned a VM error.
+pub fn sub(
+    alloc: std.mem.Allocator,
+    bytecode: []const Instruction,
+    group_count: usize,
+    repl: []const u8,
+    input: []const u8,
+    count: usize,
+) VmError![]u8 {
+    // Initialize a slice to store the output string
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(alloc);
+
+    var scan_pos: usize = 0;
+    var copy_pos: usize = 0;
+    var replacements: usize = 0;
+
+    while (scan_pos <= input.len) {
+        // Safely ignore if count is greater than the actual occurences number
+        if (count != 0 and replacements >= count) {
+            break;
+        }
+
+        if (try execAt(alloc, bytecode, group_count, input, scan_pos)) |m| {
+            var match_result = m;
+            defer match_result.deinit(alloc);
+
+            const start = match_result.span.start;
+            const end = match_result.span.end;
+
+            try out.appendSlice(alloc, input[copy_pos..start]);
+            try out.appendSlice(alloc, repl);
+
+            replacements += 1;
+
+            if (end > start) {
+                scan_pos = end;
+                copy_pos = end;
+            } else {
+                const decoded = try utils.decodeRuneAt(input, scan_pos);
+                if (decoded == null) {
+                    copy_pos = scan_pos;
+                    break;
+                }
+
+                const next_pos = scan_pos + decoded.?.len;
+                try out.appendSlice(alloc, input[scan_pos..next_pos]);
+
+                scan_pos = next_pos;
+                copy_pos = next_pos;
+            }
+            continue;
+        }
+        const decoded = try utils.decodeRuneAt(input, scan_pos);
+        if (decoded == null) break;
+
+        scan_pos += decoded.?.len;
+    }
+    try out.appendSlice(alloc, input[copy_pos..]);
+    return try out.toOwnedSlice(alloc);
+}
+
 const testing = std.testing;
 
 test "Should match executing bytecode for literal from explicit start by VM.execAt" {
@@ -597,4 +672,76 @@ test "Should handle anchored lowercase character class repeat by VM.execAt" {
         0
     );
     try testing.expect(no_match == null);
+}
+
+test "Should replace all occurences of pattern with string provided to VM.sub" {
+    const allocator = testing.allocator;
+    const bytecode = [_]Instruction {
+        .{ .Save = 0 },
+        .{ .Rune = '4' },
+        .{ .Rune = '2' },
+        .{ .Rune = '0' },
+        .{ .Save = 1 },
+        .Match,
+    };
+
+    const result = try sub(
+        allocator,
+        bytecode[0..],
+        0,
+        "67",
+        "lol 420 kek 420",
+        0
+    );
+    defer allocator.free(result);
+
+    try testing.expectEqualStrings("lol 67 kek 67", result);
+}
+
+test "Should only replace number of occurences specified by count argument to VM.sub" {
+    const allocator = testing.allocator;
+    const bytecode = [_]Instruction {
+        .{ .Save = 0 },
+        .{ .Rune = '4' },
+        .{ .Rune = '2' },
+        .{ .Rune = '0' },
+        .{ .Save = 1 },
+        .Match,
+    };
+
+    const result = try sub(
+        allocator,
+        bytecode[0..],
+        0,
+        "67",
+        "lol 420 kek 420",
+        1
+    );
+    defer allocator.free(result);
+
+    try testing.expectEqualStrings("lol 67 kek 420", result);
+}
+
+test "Should replace all occurences and safely ignore rest if count is greater than actual occurences count" {
+    const allocator = testing.allocator;
+    const bytecode = [_]Instruction {
+        .{ .Save = 0 },
+        .{ .Rune = '4' },
+        .{ .Rune = '2' },
+        .{ .Rune = '0' },
+        .{ .Save = 1 },
+        .Match,
+    };
+
+    const result = try sub(
+        allocator,
+        bytecode[0..],
+        0,
+        "67",
+        "lol 420 kek 420",
+        67
+    );
+    defer allocator.free(result);
+
+    try testing.expectEqualStrings("lol 67 kek 67", result);
 }
