@@ -54,7 +54,7 @@ const CompiledPattern = struct {
 /// Opaque type to secure the internal CompiledPattern representation.
 /// 
 /// Ensures full encapsulation and exposes outside only a specific set of operations
-/// Withour giving access to the compiled bytecode buffer itself
+/// without giving access to the compiled bytecode buffer itself
 pub const Pattern = opaque {
     /// Consumes bytecode produced by compiler taking ownership over it
     /// and creates an opaque public handle for internal `CompiledPattern` representation.
@@ -123,7 +123,26 @@ pub const Pattern = opaque {
         );
     }
 
-    /// Retrieves all non-overlapping matches of this pattern found 
+    /// Creates an instance of a lazy `FindIterator`.
+    /// 
+    /// Does not perform an eager scan of the whole input - matches lazily
+    /// one input at a time instead. Does not advance until `FindIterator.next`
+    /// is called explicitly.
+    /// 
+    /// Should not be exposed at root level due to ownership complications
+    /// 
+    /// Returns `FindIterator` instance
+    pub fn findIter(ptr: *const Pattern, input: []const u8) VM.FindIterator {
+        const self: *const CompiledPattern = @ptrCast(@alignCast(ptr));
+        return VM.findIter(
+            self.alloc,
+            self.bytecode,
+            self.group_count,
+            input,
+        );
+    }
+
+    /// Retrieves eagerly all non-overlapping matches of this pattern found 
     /// in the `input` string.
     /// 
     /// Returns a slice of `Match` objects in case of success. 
@@ -216,6 +235,60 @@ test "Should return first Match from input by Pattern.search" {
     try testing.expectEqualStrings("420", result.str());
     try testing.expectEqual(@as(usize, 4), result.span.start);
     try testing.expectEqual(@as(usize, 7), result.span.end);
+}
+
+test "Should return lazy non-overlapping match by Pattern.findIter" {
+    const allocator = testing.allocator;
+    const bytecode = try bytecodeFixture(allocator);
+
+    const pattern: *Pattern = try Pattern.init(
+        allocator,
+        0,
+        bytecode,
+        "420",
+    );
+    defer pattern.deinit();
+
+    var iter = pattern.findIter("420 lol 420 kek");
+    defer iter.deinit();
+
+    var first = (try iter.next()) orelse {
+        try testing.expect(false);
+        return;
+    };
+    try testing.expectEqualStrings("420", first.str());
+    try testing.expectEqual(@as(usize, 0), first.span.start);
+    try testing.expectEqual(@as(usize, 3), first.span.end);
+
+    var second = (try iter.next()) orelse {
+        try testing.expect(false);
+        return;
+    };
+    try testing.expectEqualStrings("420", second.str());
+    try testing.expectEqual(@as(usize, 8), second.span.start);
+    try testing.expectEqual(@as(usize, 11), second.span.end);
+
+    const third = try iter.next();
+    try testing.expect(third == null);
+}
+
+test "Should return null by Pattern.findIter if no match" {
+    const allocator = testing.allocator;
+    const bytecode = try bytecodeFixture(allocator);
+
+    const pattern: *Pattern = try Pattern.init(
+        allocator,
+        0,
+        bytecode,
+        "420",
+    );
+    defer pattern.deinit();
+
+    var iter = pattern.findIter("lol kek");
+    defer iter.deinit();
+
+    const result = try iter.next();
+    try testing.expect(result == null);
 }
 
 test "Should return all non-overlapping matches by Pattern.findAll" {

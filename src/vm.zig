@@ -164,6 +164,93 @@ fn consumeRune(
     return true;
 }
 
+/// A lazy iterator executing bytecode instructions
+/// over non-overlapping matches in `input` string
+/// 
+/// Stores the VM execution context required to resume scanning
+/// `input` between calls to `next()`. Does not scan the entire input
+/// eagerly and does not allocate a collection of all matches.
+pub const FindIterator = struct {
+    alloc: std.mem.Allocator,
+    bytecode: []const Instruction,
+    group_count: usize,
+    input: []const u8,
+    pos: usize = 0,
+    done: bool = false,
+
+    /// Initializes an iterator starting at byte offset `0`
+    pub fn init(
+        alloc: std.mem.Allocator,
+        bytecode: []const Instruction,
+        group_count: usize,
+        input: []const u8
+    ) FindIterator {
+        return .{
+            .alloc = alloc,
+            .bytecode = bytecode,
+            .group_count = group_count,
+            .input = input,
+            .pos = 0,
+            .done = false,
+        };
+    }
+
+    /// Resume scanning from the iterator's current byte position.
+    /// 
+    /// Returns a non-overlappping `Match` if one is found; then the iterator
+    /// advances to the end of this match. If zero-length Match is encountered, 
+    /// the iterator advances by one UTF-8 code point to avoid infinite loop
+    /// 
+    /// Returns `VmError` if allocation failed or an invalid Unicode value found
+    pub fn next(self: *FindIterator) VmError!?Match {
+        if (self.done) return null;
+
+        while (self.pos <= self.input.len) {
+            if (try execAt(
+                self.alloc, 
+                self.bytecode, 
+                self.group_count, 
+                self.input, 
+                self.pos
+            )) |m| {
+                const start = m.span.start;
+                const end = m.span.end;
+
+                if (end > start) {
+                    // Non-empty match; mark as finished and resume scanning
+                    self.pos = end;
+                } else {
+                    // Zero-length match. Advance one UTF-8 code point to avoid infinite loop
+                    const decoded = try utils.decodeRuneAt(self.input, self.pos);
+
+                    if (decoded == null) {
+                        // Empty match. Nowhere to advance;
+                        self.done = true;
+                    } else {
+                        self.pos += decoded.?.len;
+                    }
+                }
+                // Next match found; return it
+                return m;
+            }
+            // No match at this offset. Move to the next UTF-8 code point and try again. 
+            const decoded = try utils.decodeRuneAt(self.input, self.pos);
+
+            if (decoded == null) {
+                self.done = true;
+                return null;
+            }
+            self.pos += decoded.?.len;
+        }
+        self.done = true;
+        return null;
+    }
+
+    pub fn deinit(self: *FindIterator) void {
+        self.* = undefined;
+    }
+};
+
 /// Executes bytecode instructions.
 /// 
 /// The core function used by high-level API.
@@ -271,6 +358,7 @@ pub fn execAt(
                 captures[slot] = pos;
                 pc += 1;
             },
+            // Branch execution; execute `left` branch and store `right` branch to backtracking stack
             .Split => |split| {
                 const alt_captures = try cloneCaptures(allocator, captures);
 
@@ -281,6 +369,7 @@ pub fn execAt(
                 });
                 pc = split.first;
             },
+            // Unconditional jump to instruction at specified index
             .Jump => |target| {
                 pc = target;
             },
@@ -298,93 +387,6 @@ pub fn execAt(
         }
     }
 }
-
-/// A lazy iterator executing bytecode instructions
-/// over non-overlapping matches in `input` string
-/// 
-/// Stores the VM execution context required to resume scanning
-/// `input` between calls to `next()`. Does not scan the entire input
-/// eagerly and does not allocate a collection of all matches.
-pub const FindIterator = struct {
-    alloc: std.mem.Allocator,
-    bytecode: []const Instruction,
-    group_count: usize,
-    input: []const u8,
-    pos: usize = 0,
-    done: bool = false,
-
-    /// Initializes an iterator starting at byte offset `0`
-    pub fn init(
-        alloc: std.mem.Allocator,
-        bytecode: []const Instruction,
-        group_count: usize,
-        input: []const u8
-    ) FindIterator {
-        return .{
-            .alloc = alloc,
-            .bytecode = bytecode,
-            .group_count = group_count,
-            .input = input,
-            .pos = 0,
-            .done = false,
-        };
-    }
-
-    /// Resume scanning from the iterator's current byte position.
-    /// 
-    /// Returns a non-overlappping `Match` if one is found; then the iterator
-    /// advances to the end of this match. If zero-length Match is encountered, 
-    /// the iterator advances by one UTF-8 code point to avoid infinite loop
-    /// 
-    /// Returns `VmError` if allocation failed or an invalid Unicode value found
-    pub fn next(self: *FindIterator) VmError!?Match {
-        if (self.done) return null;
-
-        while (self.pos <= self.input.len) {
-            if (try execAt(
-                self.alloc, 
-                self.bytecode, 
-                self.group_count, 
-                self.input, 
-                self.pos
-            )) |m| {
-                const start = m.span.start;
-                const end = m.span.end;
-
-                if (end > start) {
-                    // Non-empty match; mark as finished and resume scanning
-                    self.pos = end;
-                } else {
-                    // Zero-length match. Advance one UTF-8 code point to avoid infinite loop
-                    const decoded = try utils.decodeRuneAt(self.input, self.pos);
-
-                    if (decoded == null) {
-                        // Empty match. Nowhere to advance;
-                        self.done = true;
-                    } else {
-                        self.pos += decoded.?.len;
-                    }
-                }
-                // Next match found; return it
-                return m;
-            }
-            // No match at this offset. Move to the next UTF-8 code point and try again. 
-            const decoded = try utils.decodeRuneAt(self.input, self.pos);
-
-            if (decoded == null) {
-                self.done = true;
-                return null;
-            }
-            self.pos += decoded.?.len;
-        }
-        self.done = true;
-        return null;
-    }
-
-    pub fn deinit(self: *FindIterator) void {
-        self.* = undefined;
-    }
-};
 
 /// Executes the bytecode-compiled pattern to return the first match 
 /// found starting from byte offset `0` (i.e. start of `input` string)
