@@ -299,6 +299,93 @@ pub fn execAt(
     }
 }
 
+/// A lazy iterator executing bytecode instructions
+/// over non-overlapping matches in `input` string
+/// 
+/// Stores the VM execution context required to resume scanning
+/// `input` between calls to `next()`. Does not scan the entire input
+/// eagerly and does not allocate a collection of all matches.
+pub const FindIterator = struct {
+    alloc: std.mem.Allocator,
+    bytecode: []const Instruction,
+    group_count: usize,
+    input: []const u8,
+    pos: usize = 0,
+    done: bool = false,
+
+    /// Initializes an iterator starting at byte offset `0`
+    pub fn init(
+        alloc: std.mem.Allocator,
+        bytecode: []const Instruction,
+        group_count: usize,
+        input: []const u8
+    ) FindIterator {
+        return .{
+            .alloc = alloc,
+            .bytecode = bytecode,
+            .group_count = group_count,
+            .input = input,
+            .pos = 0,
+            .done = false,
+        };
+    }
+
+    /// Resume scanning from the iterator's current byte position.
+    /// 
+    /// Returns a non-overlappping `Match` if one is found; then the iterator
+    /// advances to the end of this match. If zero-length Match is encountered, 
+    /// the iterator advances by one UTF-8 code point to avoid infinite loop
+    /// 
+    /// Returns `VmError` if allocation failed or an invalid Unicode value found
+    pub fn next(self: *FindIterator) VmError!?Match {
+        if (self.done) return null;
+
+        while (self.pos <= self.input.len) {
+            if (try execAt(
+                self.alloc, 
+                self.bytecode, 
+                self.group_count, 
+                self.input, 
+                self.pos
+            )) |m| {
+                const start = m.span.start;
+                const end = m.span.end;
+
+                if (end > start) {
+                    // Non-empty match; mark as finished and resume scanning
+                    self.pos = end;
+                } else {
+                    // Zero-length match. Advance one UTF-8 code point to avoid infinite loop
+                    const decoded = try utils.decodeRuneAt(self.input, self.pos);
+
+                    if (decoded == null) {
+                        // Empty match. Nowhere to advance;
+                        self.done = true;
+                    } else {
+                        self.pos += decoded.?.len;
+                    }
+                }
+                // Next match found; return it
+                return m;
+            }
+            // No match at this offset. Move to the next UTF-8 code point and try again. 
+            const decoded = try utils.decodeRuneAt(self.input, self.pos);
+
+            if (decoded == null) {
+                self.done = true;
+                return null;
+            }
+            self.pos += decoded.?.len;
+        }
+        self.done = true;
+        return null;
+    }
+
+    pub fn deinit(self: *FindIterator) void {
+        self.* = undefined;
+    }
+};
+
 /// Executes the bytecode-compiled pattern to return the first match 
 /// found starting from byte offset `0` (i.e. start of `input` string)
 /// 
@@ -347,13 +434,30 @@ pub fn search(
     return null;
 }
 
+/// Creates a lazy iterator over all non-overlapping matches in `input` string.
+/// 
+/// Does not scan the input immediately - initializes a `FindIterator` instead.
+/// Matching is performed one item at a time when `FindIterator.next` is called.
+pub fn findIter(
+    alloc: std.mem.Allocator,
+    bytecode: []const Instruction,
+    group_count: usize,
+    input: []const u8,
+) FindIterator {
+    return FindIterator.init(
+        alloc, 
+        bytecode, 
+        group_count, 
+        input
+    );
+}
+
 /// Executes the bytecode-compiled pattern to search for 
 /// all non-overlapping matches in `input` string.
 /// 
-/// Runs bytecode from left to right at valid Unicode boundaries.
-/// After a successful non-empty match, scanning resumes at the end
-/// of that match. If a zero-length Match is produced, scanning advances by one
-/// UTF-8 code point to avoid an infinite loop.
+/// An 'eager' counterpart to `findIter`. Consumes a `FindIterator`
+/// until it is exhausted and stores every returned match in an owned slice
+/// (must be released, e.g. with `Match.free`)
 /// 
 /// Returns an allocator-owned slice of `Match` objects.
 /// 
@@ -365,33 +469,24 @@ pub fn findAll(
     group_count: usize,
     input: []const u8
 ) VmError![]Match {
+    var iter = findIter(
+        alloc,
+        bytecode,
+        group_count,
+        input,
+    );
+    defer iter.deinit();
+
     var matches = std.ArrayList(Match).empty;
     errdefer Match.free(alloc, matches.items);
-    var pos: usize = 0;
 
-    while (pos <= input.len) {
-        if (try execAt(alloc, bytecode, group_count, input, pos)) |m| {
-            const start = m.span.start;
-            const end = m.span.end;
+    while (try iter.next()) |m| {
+        var owned = m;
 
-            try matches.append(alloc, m);
-
-            if (end > start) {
-                pos = end;
-            } else {
-                const decoded = try utils.decodeRuneAt(input, pos);
-
-                if (decoded == null) break;
-
-                pos += decoded.?.len;
-            }
-            continue;
-        }
-        const decoded = try utils.decodeRuneAt(input, pos);
-
-        if (decoded == null) break;
-
-        pos += decoded.?.len;
+        matches.append(alloc, owned) catch |err| {
+            owned.deinit(alloc);
+            return err;
+        };
     }
     return try matches.toOwnedSlice(alloc);
 }
@@ -422,9 +517,9 @@ pub fn sub(
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(alloc);
 
-    var scan_pos: usize = 0;
-    var copy_pos: usize = 0;
-    var replacements: usize = 0;
+    var scan_pos: usize = 0; // byte offset to scan for next match
+    var copy_pos: usize = 0; // start of next unmatched input segment to copy
+    var replacements: usize = 0; // performed replacements count
 
     while (scan_pos <= input.len) {
         // Safely ignore if count is greater than the actual occurences number
@@ -432,6 +527,7 @@ pub fn sub(
             break;
         }
 
+        // Try matching at current offset
         if (try execAt(alloc, bytecode, group_count, input, scan_pos)) |m| {
             var match_result = m;
             defer match_result.deinit(alloc);
@@ -439,22 +535,29 @@ pub fn sub(
             const start = match_result.span.start;
             const end = match_result.span.end;
 
+            // Copy everything from last emitted position to start 
             try out.appendSlice(alloc, input[copy_pos..start]);
+            // Copy replacement instead of match
             try out.appendSlice(alloc, repl);
 
             replacements += 1;
 
             if (end > start) {
+                // Non-empty match; mark finished and resume scanning
                 scan_pos = end;
                 copy_pos = end;
             } else {
+                // Zero-length match. Advance one UTF-8 code point to avoid infinite loop
                 const decoded = try utils.decodeRuneAt(input, scan_pos);
                 if (decoded == null) {
+                    // Empty match. Replace and finish
                     copy_pos = scan_pos;
                     break;
                 }
 
                 const next_pos = scan_pos + decoded.?.len;
+                // Preserve original code point after zero-length replacement 
+                // to avoid overwriting/deleting input while advancing
                 try out.appendSlice(alloc, input[scan_pos..next_pos]);
 
                 scan_pos = next_pos;
@@ -462,11 +565,15 @@ pub fn sub(
             }
             continue;
         }
+        // No match at this offset. Move to the next UTF-8 code point and try again.
+        // `copy_pos` not changed because this input was not emitted yet; copy it 
+        // if a later match is found or at the end of the function
         const decoded = try utils.decodeRuneAt(input, scan_pos);
         if (decoded == null) break;
 
         scan_pos += decoded.?.len;
     }
+    // Copy unmatched tail of the input into buffer and transfer ownership over it to caller
     try out.appendSlice(alloc, input[copy_pos..]);
     return try out.toOwnedSlice(alloc);
 }
@@ -560,7 +667,68 @@ test "Should find first matching literal after beginning with VM.search" {
     try testing.expectEqual(@as(usize, 7), result.span.end);
 }
 
-test "Should receive all non-overlapping matches from VM.findAll" {
+test "Should receive non-overlapping matches from lazy VM.findIter" {
+    const allocator = testing.allocator;
+    const bytecode = [_]Instruction {
+        .{ .Save = 0 },
+        .{ .Rune = '4' },
+        .{ .Rune = '2' },
+        .{ .Rune = '0' },
+        .{ .Save = 1 },
+        .Match,
+    };
+    var iter = findIter(
+        allocator,
+        bytecode[0..],
+        0,
+        "420 lol 420 kek",
+    );
+    defer iter.deinit();
+
+    var first = (try iter.next()) orelse {
+        try testing.expect(false);
+        return;
+    };
+    defer first.deinit(allocator);
+    try testing.expectEqualStrings("420", first.str());
+    try testing.expectEqual(@as(usize, 0), first.span.start);
+    try testing.expectEqual(@as(usize, 3), first.span.end);
+
+    var second = (try iter.next()) orelse {
+        try testing.expect(false);
+        return;
+    };
+    try testing.expectEqualStrings("420", second.str());
+    try testing.expectEqual(@as(usize, 8),second.span.start);
+    try testing.expectEqual(@as(usize, 11), second.span.end);
+
+    const third = try iter.next();
+    try testing.expect(third == null);
+}
+
+test "Should receive null from lazy VM.findIter if no match" {
+    const allocator = testing.allocator;
+    const bytecode = [_]Instruction {
+        .{ .Save = 0 },
+        .{ .Rune = '4' },
+        .{ .Rune = '2' },
+        .{ .Rune = '0' },
+        .{ .Save = 1 },
+        .Match,
+    };
+    var iter = findIter(
+        allocator,
+        bytecode[0..],
+        0,
+        "lol kek",
+    );
+    defer iter.deinit();
+
+    const result = try iter.next();
+    try testing.expect(result == null);    
+}
+
+test "Should eagerly receive all non-overlapping matches from VM.findAll" {
     const allocator = testing.allocator;
     const bytecode = [_]Instruction {
         .{ .Save = 0 },
