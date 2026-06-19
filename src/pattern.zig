@@ -14,6 +14,8 @@ const Instruction = @import("./core/icr.zig").Instruction;
 const Match = @import("./Match.zig");
 const VM = @import("vm.zig");
 
+
+pub const SubOptions = @import("./common/types.zig").SubOptions;
 /// Frees compiled bytecode buffer and any owned data
 /// stored inside instructions.
 /// 
@@ -64,8 +66,10 @@ pub const Pattern = opaque {
         group_count: usize,
         opcodes: []Instruction,
         pattern: []const u8,
-    ) !*Pattern {
-        const self = try alloc.create(CompiledPattern);
+    ) RegrexError!*Pattern {
+        const self = alloc.create(CompiledPattern) catch {
+            return RegrexError.MemoryError;
+        };
         self.* = .{
             .alloc = alloc,
             .bytecode = opcodes,
@@ -183,9 +187,7 @@ pub const Pattern = opaque {
         ptr: *const Pattern,
         repl: []const u8, 
         input: []const u8, 
-        options: struct {
-            count: usize = 0,
-        },
+        options: SubOptions,
     ) ![]u8 {
         const self: *const CompiledPattern = @ptrCast(@alignCast(ptr));
         return VM.sub(

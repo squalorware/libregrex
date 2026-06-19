@@ -364,7 +364,7 @@ fn parseCharClass(self: *Self) RegrexError!AST.CharClass {
 /// Parses the whole `Token` stream and returns the whole AST
 /// starting with root Node.
 /// 
-/// Returns `Error.UnexpectedToken` if the `Token` stream
+/// Returns `RegrexError.UnexpectedToken` if the `Token` stream
 /// does not end with `EOF`
 pub fn parse(self: *Self) RegrexError!*AST.Node {
     const ast = try self.parseBranch();

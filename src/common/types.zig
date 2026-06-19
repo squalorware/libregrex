@@ -53,6 +53,14 @@ pub const Group = struct {
     }
 };
 
+/// Available options accepted both by `regrex.sub` and `regrex.Pattern.sub`
+pub const SubOptions = struct {
+    /// Maximum number of occurences to replace
+    /// 
+    /// `0` means replacing all occurences (default) 
+    count: usize = 0,
+};
+
 const testing = std.testing;
 
 test "Group.none() should return a none (sentinel) group" {
@@ -66,4 +74,3 @@ test "Group.isNone() should return false for matching Group" {
 
     try testing.expect(!g.isNone());
 }
-

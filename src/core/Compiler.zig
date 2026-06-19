@@ -83,6 +83,8 @@ fn compileNode(self: *Self, node: *const AST.Node) RegrexError!void {
 /// Deep-copies a character class into bytecode memory.
 /// 
 /// Prevents bytecode from pointing into the temporary `Parser` AST arena
+/// 
+/// Returns `RegrexError.MemoryError` if failed to allocate memory on heap for copy
 fn cloneCharClass(self: *Self, cls: AST.CharClass) RegrexError!AST.CharClass {
     const ranges = self.alloc.dupe(AST.CharRange, cls.ranges) catch {
         return RegrexError.MemoryError;
@@ -108,7 +110,7 @@ fn cloneCharClass(self: *Self, cls: AST.CharClass) RegrexError!AST.CharClass {
 /// - `+` (one to more)
 /// - `?` (zero to one)
 /// 
-/// Returns `Error.InvalidRepeat` for unsupported repeat patterns.
+/// Returns `RegrexError.InvalidRepeat` for unsupported repeat patterns.
 fn compileRepeat(self: *Self, rep: AST.Repeat) RegrexError!void {
     if (rep.min == 0 and rep.max == null) {
         const split_idx = try self.emit(undefined);
