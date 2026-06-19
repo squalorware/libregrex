@@ -9,6 +9,8 @@ pub const RegrexError = error {
     ExpressionExpected,
     /// Invalid use of repetition operator `*`
     InvalidRepeat,
+    /// Out of memory
+    MemoryError,
     /// An invalid or broken UTF-8 character
     InvalidUnicode,
     /// Trailing backslash at the pattern end

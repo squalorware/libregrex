@@ -1,6 +1,6 @@
 //! Match result representation for the regex engine.
 //! 
-//! Stores byte spans into the original input buffer.
+//! Stores capture groups as substrings/byte spans of the input string.
 //! 
 //! Follows the conventional regex indexing model: 
 //! group 0 represents the whole match;
@@ -110,16 +110,16 @@ pub fn groups(self: Self) []const Group {
 /// Creates a `Match` instance from capture slots.
 /// 
 /// Allocates `subgroups` list on the heap to store the capture groups
-/// and fills it with sentinel (`Group.none()`, no match) values, which are later replaced with actual
-/// capture groups from slots.
+/// and fills it with sentinel (`Group.none()`, no match) values, 
+/// which are later replaced with actual capture groups from slots.
 /// 
 /// `captures_count` is a number of capture groups acquired during parsing.
 /// 
-/// `subgroups[0]` contains the byte offset of a full match
+/// Returns a `Match` instance with heap-allocated `subgroups` array on success:
+/// - `subgroups[0]` contains the byte offset of a full match;
+/// - `subgroups[1..]` contains the captured groups.
 /// 
-/// `subgroups[1..]` contains the captured groups
-/// 
-/// Returns `MatchError` if allocation error happened
+/// Returns `Error.MemoryError` if failed to allocate `subgroups` buffer
 pub fn toMatch(
     allocator: std.mem.Allocator,
     input: []const u8,
@@ -131,7 +131,9 @@ pub fn toMatch(
 
     const group_count = captures_count + 1;
 
-    var groups_buf = try allocator.alloc(Group, group_count);
+    var groups_buf = allocator.alloc(Group, group_count) catch {
+        return Error.MemoryError;
+    };
     errdefer allocator.free(groups_buf);
 
     groups_buf[0] = .{

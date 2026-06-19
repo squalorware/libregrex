@@ -5,7 +5,7 @@
 //! so that literals like Cyrillic or Chinese characters are emitted 
 //! as single `CHAR` tokens rather than raw UTF-8 bytes
 const std = @import("std");
-const Error = @import("../common/errors.zig").Error;
+const Error = @import("../common/errors.zig").RegrexError;
 const Rune = @import("../common/types.zig").Rune;
 const Token = @import("./Token.zig");
 const TokenType = Token.TokenType;
