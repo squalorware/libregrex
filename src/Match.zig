@@ -9,8 +9,6 @@ const std = @import("std");
 const RegrexError = @import("./common/errors.zig").RegrexError;
 const Group = @import("./common/types.zig").Group;
 
-const Error = RegrexError || std.mem.Allocator.Error;
-
 pub const Self = @This();
 
 /// Borrowed input buffer against which the regex was executed.
@@ -53,7 +51,7 @@ pub fn free(alloc: std.mem.Allocator, matches: []Self) void {
 /// Returns:
 /// - `Error.InvalidGroupIndex` if `i` is outside the available group range;
 /// - `Error.NoMatch` if the group exists but did not participate in the match.
-pub fn group(self: Self, i: usize) Error![]const u8 {
+pub fn group(self: Self, i: usize) RegrexError![]const u8 {
     const g = try self.span(i);
     return self.input[g.start .. g.end];
 }
@@ -65,11 +63,11 @@ pub fn group(self: Self, i: usize) Error![]const u8 {
 /// Returns:
 /// - `Error.InvalidGroupIndex` if `i` is outside the available group range;
 /// - `Error.NoMatch` if the group exists but did not participate in the match.
-pub fn span(self: Self, i: usize) Error!Group {
-    if (i >= self.subgroups.len) return Error.InvalidGroupIndex;
+pub fn span(self: Self, i: usize) RegrexError!Group {
+    if (i >= self.subgroups.len) return RegrexError.InvalidGroupIndex;
 
     const g = self.subgroups[i];
-    if (g.isNone()) return Error.NoMatch;
+    if (g.isNone()) return RegrexError.NoMatch;
 
     return g;
 }
@@ -85,7 +83,7 @@ pub fn full(self: Self) []const u8 {
 /// Returns:
 /// - `Error.InvalidGroupIndex` if `i` is outside the available group range;
 /// - `Error.NoMatch` if the group exists but did not participate in the match.
-pub fn start(self: Self, i: usize) Error!usize {
+pub fn start(self: Self, i: usize) RegrexError!usize {
     const g = try self.span(i);
 
     return g.start;
@@ -96,7 +94,7 @@ pub fn start(self: Self, i: usize) Error!usize {
 /// Returns:
 /// - `Error.InvalidGroupIndex` if `i` is outside the available group range;
 /// - `Error.NoMatch` if the group exists but did not participate in the match.
-pub fn end(self: Self, i: usize) Error!usize {
+pub fn end(self: Self, i: usize) RegrexError!usize {
     const g = try self.span(i);
 
     return g.end;
@@ -125,14 +123,14 @@ pub fn toMatch(
     input: []const u8,
     captures_count: usize,
     slots: []const ?usize,
-) Error!Self {
+) RegrexError!Self {
     const full_start = slots[0] orelse 0;
     const full_end = slots[1] orelse full_start;
 
     const group_count = captures_count + 1;
 
     var groups_buf = allocator.alloc(Group, group_count) catch {
-        return Error.MemoryError;
+        return RegrexError.MemoryError;
     };
     errdefer allocator.free(groups_buf);
 
@@ -287,8 +285,8 @@ test "Match.group(i), Match.span(i) should return `Error.NoMatch` for an unmatch
     );
     defer ctx.deinit(allocator);
 
-    try testing.expectError(Error.NoMatch, ctx.match.group(1));
-    try testing.expectError(Error.NoMatch, ctx.match.span(1)); 
+    try testing.expectError(RegrexError.NoMatch, ctx.match.group(1));
+    try testing.expectError(RegrexError.NoMatch, ctx.match.span(1)); 
 }
 
 test "Match.group(i), Match.span(i) should return `Error.InvalidGroupIndex` for a group out of range" {
@@ -308,8 +306,8 @@ test "Match.group(i), Match.span(i) should return `Error.InvalidGroupIndex` for 
     );
     defer ctx.deinit(allocator);
 
-    try testing.expectError(Error.InvalidGroupIndex, ctx.match.group(2));
-    try testing.expectError(Error.InvalidGroupIndex, ctx.match.span(2));
+    try testing.expectError(RegrexError.InvalidGroupIndex, ctx.match.group(2));
+    try testing.expectError(RegrexError.InvalidGroupIndex, ctx.match.span(2));
 }
 
 test "Match,groups() should return captures excluding full match" {

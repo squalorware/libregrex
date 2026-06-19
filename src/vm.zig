@@ -15,7 +15,6 @@ const Match = @import("./Match.zig");
 const types = @import("./common/types.zig");
 const utils = @import("./common/utils.zig");
 
-const Error = RegrexError || std.mem.Allocator.Error;
 const Group = types.Group;
 const DecodedRune = types.DecodedRune;
 const Rune = types.Rune;
@@ -57,9 +56,9 @@ const RuneMatcher = union(enum) {
 fn cloneCaptures(
     alloc: std.mem.Allocator,
     captures: []const ?usize,
-) Error![]?usize {
+) RegrexError![]?usize {
     const cloned = alloc.dupe(?usize, captures) catch {
-        return Error.MemoryError;
+        return RegrexError.MemoryError;
     };
     return cloned;
 }
@@ -156,7 +155,7 @@ fn consumeRune(
     input: []const u8,
     pos: *usize,
     matcher: RuneMatcher,
-) Error!bool {
+) RegrexError!bool {
     const decoded = try utils.decodeRuneAt(input, pos.*) orelse {
         return false;
     };
@@ -207,7 +206,7 @@ pub const FindIterator = struct {
     /// - `Error.MemoryError` if allocation failed
     /// - `Error.InvalidUnicode` 
     ///     (propagated by `VM.execAt` or encountered during lookup)
-    pub fn next(self: *FindIterator) Error!?Match {
+    pub fn next(self: *FindIterator) RegrexError!?Match {
         if (self.done) return null;
 
         while (self.pos <= self.input.len) {
@@ -275,11 +274,11 @@ pub fn execAt(
     group_count: usize,
     input: []const u8,
     start_pos: usize,
-) Error!?Match {
+) RegrexError!?Match {
     const capture_slots = (group_count + 1) * 2;
 
     var captures = allocator.alloc(?usize, capture_slots) catch {
-        return Error.MemoryError;
+        return RegrexError.MemoryError;
     };
     errdefer allocator.free(captures);
 
@@ -379,7 +378,7 @@ pub fn execAt(
                     .pos = pos,
                     .captures = alt_captures,
                 }) catch {
-                    return Error.MemoryError;
+                    return RegrexError.MemoryError;
                 };
                 pc = split.first;
             },
@@ -417,7 +416,7 @@ pub fn match(
     bytecode: []const Instruction,
     group_count: usize,
     input: []const u8
-) Error!?Match {
+) RegrexError!?Match {
     return execAt(alloc, bytecode, group_count, input, 0);
 }
 
@@ -436,7 +435,7 @@ pub fn search(
     bytecode: []const Instruction,
     group_count: usize,
     input: []const u8
-) Error!?Match {
+) RegrexError!?Match {
     var pos: usize = 0;
 
     while (pos <= input.len) {
@@ -487,7 +486,7 @@ pub fn findAll(
     bytecode: []const Instruction,
     group_count: usize,
     input: []const u8
-) Error![]Match {
+) RegrexError![]Match {
     var iter = findIter(
         alloc,
         bytecode,
@@ -509,10 +508,13 @@ pub fn findAll(
 
         matches.append(alloc, owned) catch {
             owned.deinit(alloc);
-            return Error.MemoryError;
+            return RegrexError.MemoryError;
         };
     }
-    return try matches.toOwnedSlice(alloc);
+    const result = matches.toOwnedSlice(alloc) catch {
+        return RegrexError.MemoryError;
+    };
+    return result;
 }
 
 /// Executes the bytecode-compiled pattern to retrieve all of the matches 
@@ -538,10 +540,10 @@ pub fn sub(
     repl: []const u8,
     input: []const u8,
     count: usize,
-) Error![]u8 {
+) RegrexError![]u8 {
     // Initialize a slice to store the output string
-    var out = std.ArrayList(u8).empty;
-    errdefer out.deinit(alloc);
+    var out_buf = std.ArrayList(u8).empty;
+    errdefer out_buf.deinit(alloc);
 
     var scan_pos: usize = 0; // byte offset to scan for next match
     var copy_pos: usize = 0; // start of next unmatched input segment to copy
@@ -562,12 +564,12 @@ pub fn sub(
             const end = try match_result.end(0);
 
             // Copy everything from last emitted position to start 
-            out.appendSlice(alloc, input[copy_pos..start]) catch {
-                return Error.MemoryError;
+            out_buf.appendSlice(alloc, input[copy_pos..start]) catch {
+                return RegrexError.MemoryError;
             };
             // Copy replacement instead of match
-            out.appendSlice(alloc, repl) catch {
-                return Error.MemoryError;
+            out_buf.appendSlice(alloc, repl) catch {
+                return RegrexError.MemoryError;
             };
 
             replacements += 1;
@@ -588,8 +590,8 @@ pub fn sub(
                 const next_pos = scan_pos + decoded.?.len;
                 // Preserve original code point after zero-length replacement 
                 // to avoid overwriting/deleting input while advancing
-                out.appendSlice(alloc, input[scan_pos..next_pos]) catch {
-                    return Error.MemoryError;
+                out_buf.appendSlice(alloc, input[scan_pos..next_pos]) catch {
+                    return RegrexError.MemoryError;
                 };
 
                 scan_pos = next_pos;
@@ -606,10 +608,13 @@ pub fn sub(
         scan_pos += decoded.?.len;
     }
     // Copy unmatched tail of the input into buffer and transfer ownership over it to caller
-    out.appendSlice(alloc, input[copy_pos..]) catch {
-        return Error.MemoryError;
+    out_buf.appendSlice(alloc, input[copy_pos..]) catch {
+        return RegrexError.MemoryError;
     };
-    return try out.toOwnedSlice(alloc);
+    const out = out_buf.toOwnedSlice(alloc) catch {
+        return RegrexError.MemoryError;
+    };
+    return out;
 }
 
 const testing = std.testing;

@@ -9,6 +9,7 @@
 //! with the compiled bytecode. `Pattern` exposes a set of methods that wrap over respective
 //! VM functions, allowing end user interaction without exposing the bytecode directly.
 const std = @import("std");
+const RegrexError = @import("./common/errors.zig").RegrexError;
 const Instruction = @import("./core/icr.zig").Instruction;
 const Match = @import("./Match.zig");
 const VM = @import("vm.zig");
@@ -98,7 +99,7 @@ pub const Pattern = opaque {
     /// Returns 
     /// - `Error.MemoryError` if failed allocating or manipulating the copy buffer
     /// - `Error.InvalidUnicode` if a broken UTF-8 code point was encountered
-    pub fn search(ptr: *const Pattern, input: []const u8) !?Match {
+    pub fn search(ptr: *const Pattern, input: []const u8) RegrexError!?Match {
         const self: *const CompiledPattern = @ptrCast(@alignCast(ptr));
         return VM.search(
             self.alloc,
@@ -117,7 +118,7 @@ pub const Pattern = opaque {
     /// Returns 
     /// - `Error.MemoryError` if failed allocating or manipulating the copy buffer
     /// - `Error.InvalidUnicode` if a broken UTF-8 code point was encountered
-    pub fn match(ptr: *const Pattern, input: []const u8) !?Match {
+    pub fn match(ptr: *const Pattern, input: []const u8) RegrexError!?Match {
         const self: *const CompiledPattern = @ptrCast(@alignCast(ptr));
         return VM.match(
             self.alloc,
@@ -156,7 +157,7 @@ pub const Pattern = opaque {
     /// Returns 
     /// - `Error.MemoryError` if failed allocating or manipulating the copy buffer
     /// - `Error.InvalidUnicode` if a broken UTF-8 code point was encountered
-    pub fn findAll(ptr: *const Pattern, input: []const u8) ![]Match {
+    pub fn findAll(ptr: *const Pattern, input: []const u8) RegrexError![]Match {
         const self: *const CompiledPattern = @ptrCast(@alignCast(ptr));
         return VM.findAll(
             self.alloc,
