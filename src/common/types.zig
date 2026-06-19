@@ -49,7 +49,7 @@ pub const Group = struct {
 
     /// Returns true if this group is a no-match sentinel
     pub fn isNone(self: Group) bool {
-        return self.start == Sentinel;
+        return self.start == Sentinel and self.end == Sentinel;
     }
 };
 
