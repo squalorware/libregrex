@@ -9,6 +9,8 @@ pub const RegrexError = error {
     ExpressionExpected,
     /// Invalid use of repetition operator `*`
     InvalidRepeat,
+    /// Out of memory
+    MemoryError,
     /// An invalid or broken UTF-8 character
     InvalidUnicode,
     /// Trailing backslash at the pattern end
@@ -23,32 +25,31 @@ pub const RegrexError = error {
     UnmatchedBracket,
 };
 
-/// C ABI status codes
-pub const RegrexStatus = enum(c_uint) {
-    ok = 0,
-    enomatch = 1,
-    /// Invalid group index
-    egrp = 3,
-    /// Invalid argument
-    earg = 4,
-    /// Out of Memory
-    espace = 5,
-    /// Invalid Unicode
-    eutf = 6,
-    /// Unexpected Token
-    etok = 7,
-    /// Expression expected
-    eexpr = 8,
-    /// Invalid Repetition
-    erep = 9,
-    /// Trailing escape character
-    eesc = 10,
-    /// Unexpected EOF
-    eend = 11,
-    /// Closing parenthesis missing
-    erparen = 12,
-    /// Closing bracket missing
-    erbrack = 13,
-    /// Generic error
-    unknown = 255,
-};
+// /// C ABI status codes
+// pub const RegrexStatus = enum(c_uint) {
+    // ok = 0,
+    // enomatch = 1,
+    // / Invalid group index
+    // egrp = 3,
+
+    // / Out of Memory
+    // espace = 5,
+    // / Invalid Unicode
+    // eutf = 6,
+    // / Unexpected Token
+    // etok = 7,
+    // / Expression expected
+    // eexpr = 8,
+    // / Invalid Repetition
+    // erep = 9,
+    // / Trailing escape character
+    // eesc = 10,
+    // / Unexpected EOF
+    // eend = 11,
+    // / Closing parenthesis missing
+    // erparen = 12,
+    // / Closing bracket missing
+    // erbrack = 13,
+    // / Generic error
+    // unknown = 255,
+// };

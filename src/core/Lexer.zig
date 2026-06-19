@@ -5,7 +5,7 @@
 //! so that literals like Cyrillic or Chinese characters are emitted 
 //! as single `CHAR` tokens rather than raw UTF-8 bytes
 const std = @import("std");
-const Error = @import("../common/errors.zig").Error;
+const RegrexError = @import("../common/errors.zig").RegrexError;
 const Rune = @import("../common/types.zig").Rune;
 const Token = @import("./Token.zig");
 const TokenType = Token.TokenType;
@@ -35,11 +35,16 @@ pub fn init(pattern: []const u8) Self {
 /// The returned slice is allocated by `alloc` and must be freed by the caller,
 /// e.g. `alloc.free(tokens)`.
 /// 
-/// Returns `Error.TrailingEscape` if pattern ends after backslash.
+/// Returns 
+/// - `RegrexError.InvalidUnicode` if Rune contains an invalid UTF-8 code point
+/// - `RegrexError.MemoryError` if failed allocating or manipulating dynamic Token buffer
+/// - `RegrexError.TrailingEscape` if pattern ends after backslash.
 pub fn tokenize(self: *Self, alloc: std.mem.Allocator) ![]Token {
     var list: std.ArrayList(Token) = .empty;
     defer list.deinit(alloc);
-    const view = try std.unicode.Utf8View.init(self.pattern);
+    const view = std.unicode.Utf8View.init(self.pattern) catch {
+        return RegrexError.InvalidUnicode;
+    };
     var iter = view.iterator();
 
     while (iter.nextCodepoint()) |rune| {
@@ -48,35 +53,44 @@ pub fn tokenize(self: *Self, alloc: std.mem.Allocator) ![]Token {
     
         if (rune == '\\') {
             const escaped = iter.nextCodepoint() orelse {
-                return Error.TrailingEscape;
+                return RegrexError.TrailingEscape;
             };
 
             self.pos += 1;
             // Next Rune after backslash is emitted as literal
             // even if is one of metacharacters
-            try list.append(alloc, .{ 
+            list.append(alloc, .{ 
                 .typ = .ESCAPED_CHAR, 
                 .val = escaped, 
                 .pos = current_pos, 
-            });
+            }) catch {
+                return RegrexError.MemoryError;
+            };
             continue;
         }
         // if `null` - it's a regular literal
         const typ = mapRuneToTokenType(rune) orelse .CHAR;
 
-        try list.append(alloc, .{ 
+        list.append(alloc, .{ 
             .typ = typ, 
             .val = rune, 
             .pos = current_pos,
-        });
+        }) catch {
+            return RegrexError.MemoryError;
+        };
     }
-    try list.append(alloc, .{ 
+    list.append(alloc, .{ 
         .typ = .EOF,
         .val = null,
         .pos = self.pos, 
-    });
+    }) catch {
+        return RegrexError.MemoryError;
+    };
 
-    return try list.toOwnedSlice(alloc);
+    const tokens = list.toOwnedSlice(alloc) catch {
+        return RegrexError.MemoryError;
+    };
+    return tokens;
 }
 
 const testing = std.testing;

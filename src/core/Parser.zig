@@ -4,22 +4,21 @@
 //! an arena-allocated Abstract Syntax Tree.
 //! Implements a simple basic PCRE/Python-inspired grammar:
 //! 
-//! ```text
+//! ```
 //! Branch      := Sequence ('|' Sequence)*
 //! Sequence    := Quantified+
 //! Quantified  := Atom ('*' | '+' | '?')?
 //! Atom        := Literal | '.' | '^' | '$' | Group | CharClass
 //! Group       := '(' Branch ')' | '(?:' Branch ')'
-//! CharClass  := '[' '^'? class_item* ']'
+//! CharClass   := '[' '^'? class_item* ']'
 //! ```
 const std = @import("std");
 const AST = @import("./ast.zig");
-const Error = @import("../common/errors.zig").Error;
+const RegrexError = @import("../common/errors.zig").RegrexError;
 const Lexer = @import("./Lexer.zig");
 const Rune = @import("../common/types.zig").Rune;
 const Token = @import("./Token.zig");
 
-const ParserError = Error || std.mem.Allocator.Error;
 const TokenType = Token.TokenType;
 
 /// Parser state instance for a single token stream
@@ -87,14 +86,16 @@ fn match(self: *Self, typ: TokenType) bool {
 /// current token doesn't match context
 fn expect(self: *Self, typ: TokenType) !Token {
     if (self.current().typ != typ) {
-        return Error.UnexpectedToken;
+        return RegrexError.UnexpectedToken;
     }
     return self.advance();
 }
 
 /// Allocates and initializes an AST Node
-fn createNode(self: *Self, node: AST.Node) ParserError!*AST.Node {
-    const ptr = try self.alloc.create(AST.Node);
+fn createNode(self: *Self, node: AST.Node) RegrexError!*AST.Node {
+    const ptr = self.alloc.create(AST.Node) catch {
+        return RegrexError.MemoryError;
+    };
     ptr.* = node;
     return ptr;
 }
@@ -102,7 +103,7 @@ fn createNode(self: *Self, node: AST.Node) ParserError!*AST.Node {
 /// Parses branching.
 /// 
 /// Alteration has the lowest precedence in this grammar
-fn parseBranch(self: *Self) ParserError!*AST.Node {
+fn parseBranch(self: *Self) RegrexError!*AST.Node {
     var left = try self.parseSequence();
 
     while (self.match(.PIPE)) {
@@ -118,7 +119,7 @@ fn parseBranch(self: *Self) ParserError!*AST.Node {
 }
 
 /// Parses a sequence of quantified Atoms until `EOF`, `RPAREN` or `PIPE`
-fn parseSequence(self: *Self) ParserError!*AST.Node {
+fn parseSequence(self: *Self) RegrexError!*AST.Node {
     var nodes = std.ArrayList(*AST.Node).empty;
     errdefer nodes.deinit(self.alloc);
 
@@ -128,11 +129,13 @@ fn parseSequence(self: *Self) ParserError!*AST.Node {
         self.current().typ != .PIPE
     ) {
         const node = try self.parseQuantified();
-        try nodes.append(self.alloc, node);
+        nodes.append(self.alloc, node) catch {
+            return RegrexError.MemoryError;
+        };
     }
 
     if (nodes.items.len == 0) {
-        return Error.ExpressionExpected;
+        return RegrexError.ExpressionExpected;
     }
 
     if (nodes.items.len == 1) {
@@ -141,7 +144,9 @@ fn parseSequence(self: *Self) ParserError!*AST.Node {
         return only;
     }
 
-    const owned = try nodes.toOwnedSlice(self.alloc);
+    const owned = nodes.toOwnedSlice(self.alloc) catch {
+        return RegrexError.MemoryError;
+    };
 
     return self.createNode(.{
         .Sequence = .{
@@ -151,7 +156,7 @@ fn parseSequence(self: *Self) ParserError!*AST.Node {
 }
 
 /// Parses an Atom and an optional postfix quantifier (`*`, `+` or `?`)
-fn parseQuantified(self: *Self) ParserError!*AST.Node {
+fn parseQuantified(self: *Self) RegrexError!*AST.Node {
     const node = try self.parseAtom();
 
     // Parse 'zero or more'
@@ -190,7 +195,7 @@ fn parseQuantified(self: *Self) ParserError!*AST.Node {
 }
 
 /// Parses the base indivisible expression
-fn parseAtom(self: *Self) ParserError!*AST.Node {
+fn parseAtom(self: *Self) RegrexError!*AST.Node {
     const token = self.current();
 
     switch (token.typ) {
@@ -226,12 +231,12 @@ fn parseAtom(self: *Self) ParserError!*AST.Node {
                 .CharClass = class,
             });
         },
-        else => return Error.UnexpectedToken,
+        else => return RegrexError.UnexpectedToken,
     }
 }
 
 /// Parses a capturing `(...)` or non-capturing `(?:...)` group
-fn parseGroup(self: *Self) ParserError!*AST.Node {
+fn parseGroup(self: *Self) RegrexError!*AST.Node {
     const first = self.peek(0);
     const next = self.peek(1);
 
@@ -249,7 +254,7 @@ fn parseGroup(self: *Self) ParserError!*AST.Node {
         const node= try self.parseBranch();
 
         if (!self.match(.RPAREN)) {
-            return Error.UnmatchedParen;
+            return RegrexError.UnmatchedParen;
         }
 
         return self.createNode(.{
@@ -265,7 +270,7 @@ fn parseGroup(self: *Self) ParserError!*AST.Node {
     const node = try self.parseBranch();
 
     if (!self.match(.RPAREN)) {
-        return Error.UnmatchedParen;
+        return RegrexError.UnmatchedParen;
     }
 
     return self.createNode(.{
@@ -283,7 +288,7 @@ fn parseGroup(self: *Self) ParserError!*AST.Node {
 /// - inclusive ranges (e.g. `a-z`, `0-9`)
 /// - escaped class members (e.g. `\*`)
 /// - leading negation (`^`)
-fn parseCharClass(self: *Self) ParserError!AST.CharClass {
+fn parseCharClass(self: *Self) RegrexError!AST.CharClass {
     const negated = self.match(.CARET);
 
     var ranges = std.ArrayList(AST.CharRange).empty;
@@ -302,7 +307,7 @@ fn parseCharClass(self: *Self) ParserError!AST.CharClass {
             start_token.typ != .CHAR and 
             start_token.typ != .ESCAPED_CHAR
         ) {
-            return Error.UnexpectedToken;
+            return RegrexError.UnexpectedToken;
         }
 
         _ = self.advance();
@@ -312,8 +317,12 @@ fn parseCharClass(self: *Self) ParserError!AST.CharClass {
             const end_token = self.current();
 
             if (end_token.typ == .RBRACKET) {
-                try chars.append(self.alloc, start);
-                try chars.append(self.alloc, '-');
+                chars.append(self.alloc, start) catch {
+                    return RegrexError.MemoryError;
+                };
+                chars.append(self.alloc, '-') catch {
+                    return RegrexError.MemoryError;
+                };
                 break;
             }
 
@@ -321,23 +330,31 @@ fn parseCharClass(self: *Self) ParserError!AST.CharClass {
                 end_token.typ != .CHAR and
                 end_token.typ != .ESCAPED_CHAR
             ) {
-                return Error.UnexpectedToken;
+                return RegrexError.UnexpectedToken;
             }
             _ = self.advance();
-            try ranges.append(self.alloc, .{
+            ranges.append(self.alloc, .{
                 .start = start,
                 .end = end_token.val.?,
-            });
+            }) catch {
+                return RegrexError.MemoryError;
+            };
         } else {
-            try chars.append(self.alloc, start);
+            chars.append(self.alloc, start) catch {
+                return RegrexError.MemoryError;
+            };
         }
     }
     if (!self.match(.RBRACKET)) {
-        return Error.UnmatchedBracket;
+        return RegrexError.UnmatchedBracket;
     }
     return .{
-        .ranges = try ranges.toOwnedSlice(self.alloc),
-        .chars = try chars.toOwnedSlice(self.alloc),
+        .ranges = ranges.toOwnedSlice(self.alloc) catch {
+            return RegrexError.MemoryError;
+        },
+        .chars = chars.toOwnedSlice(self.alloc) catch {
+            return RegrexError.MemoryError;
+        },
         .negated = negated,
     };
 }
@@ -347,13 +364,13 @@ fn parseCharClass(self: *Self) ParserError!AST.CharClass {
 /// Parses the whole `Token` stream and returns the whole AST
 /// starting with root Node.
 /// 
-/// Returns `Error.UnexpectedToken` if the `Token` stream
+/// Returns `RegrexError.UnexpectedToken` if the `Token` stream
 /// does not end with `EOF`
-pub fn parse(self: *Self) ParserError!*AST.Node {
+pub fn parse(self: *Self) RegrexError!*AST.Node {
     const ast = try self.parseBranch();
 
     if (self.current().typ != .EOF) {
-        return Error.UnexpectedToken;
+        return RegrexError.UnexpectedToken;
     }
     return ast;
 }

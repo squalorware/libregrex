@@ -4,11 +4,9 @@
 //! a bytecode `Instruction` stream for the backtracking VM.
 const std = @import("std");
 const AST = @import("./ast.zig");
-const Error = @import("../common/errors.zig").Error;
+const RegrexError = @import("../common/errors.zig").RegrexError;
 const Rune = @import("../common/types.zig").Rune;
 const Instruction = @import("./icr.zig").Instruction;
-
-const CompilerError = Error || std.mem.Allocator.Error;
 
 pub const Self = @This();
 
@@ -25,9 +23,11 @@ pub fn init(alloc: std.mem.Allocator) Self {
 }
 
 /// Appends an `Instruction` and returns its bytecode index 
-fn emit(self: *Self, inst: Instruction) !usize {
+fn emit(self: *Self, inst: Instruction) RegrexError!usize {
     const idx = self.bytecode.items.len;
-    try self.bytecode.append(self.alloc, inst);
+    self.bytecode.append(self.alloc, inst) catch {
+        return RegrexError.MemoryError;
+    };
     return idx;
 }
 
@@ -40,7 +40,7 @@ fn patch(self: *Self, idx: usize, inst: Instruction) void {
 }
 
 /// Emit bytecode for an AST Node
-fn compileNode(self: *Self, node: *const AST.Node) CompilerError!void {
+fn compileNode(self: *Self, node: *const AST.Node) RegrexError!void {
     switch (node.*) {
         .Literal => |lit| {
             _ = try self.emit(.{ .Rune = lit.value });
@@ -83,11 +83,17 @@ fn compileNode(self: *Self, node: *const AST.Node) CompilerError!void {
 /// Deep-copies a character class into bytecode memory.
 /// 
 /// Prevents bytecode from pointing into the temporary `Parser` AST arena
-fn cloneCharClass(self: *Self, cls: AST.CharClass) CompilerError!AST.CharClass {
-    const ranges = try self.alloc.dupe(AST.CharRange, cls.ranges);
+/// 
+/// Returns `RegrexError.MemoryError` if failed to allocate memory on heap for copy
+fn cloneCharClass(self: *Self, cls: AST.CharClass) RegrexError!AST.CharClass {
+    const ranges = self.alloc.dupe(AST.CharRange, cls.ranges) catch {
+        return RegrexError.MemoryError;
+    };
     errdefer self.alloc.free(ranges);
 
-    const chars = try self.alloc.dupe(Rune, cls.chars);
+    const chars = self.alloc.dupe(Rune, cls.chars) catch {
+        return RegrexError.MemoryError;
+    };
     errdefer self.alloc.free(chars);
 
     return .{
@@ -104,8 +110,8 @@ fn cloneCharClass(self: *Self, cls: AST.CharClass) CompilerError!AST.CharClass {
 /// - `+` (one to more)
 /// - `?` (zero to one)
 /// 
-/// Returns `Error.InvalidRepeat` for unsupported repeat patterns.
-fn compileRepeat(self: *Self, rep: AST.Repeat) CompilerError!void {
+/// Returns `RegrexError.InvalidRepeat` for unsupported repeat patterns.
+fn compileRepeat(self: *Self, rep: AST.Repeat) RegrexError!void {
     if (rep.min == 0 and rep.max == null) {
         const split_idx = try self.emit(undefined);
 
@@ -155,7 +161,7 @@ fn compileRepeat(self: *Self, rep: AST.Repeat) CompilerError!void {
         });
         return;
     }
-    return Error.InvalidRepeat;
+    return RegrexError.InvalidRepeat;
 }
 
 /// Emits bytecode for branching (alternation).
@@ -165,7 +171,7 @@ fn compileRepeat(self: *Self, rep: AST.Repeat) CompilerError!void {
 /// - left branch
 /// - `Jump(after)`
 /// - right branch
-fn compileBranch(self: *Self, branch: AST.Branch) CompilerError!void {
+fn compileBranch(self: *Self, branch: AST.Branch) RegrexError!void {
     const split_idx = try self.emit(undefined);
 
     const left_start = self.bytecode.items.len;
@@ -198,13 +204,16 @@ fn compileBranch(self: *Self, branch: AST.Branch) CompilerError!void {
 /// The caller owns the returned slice and must free it. 
 /// If bytecode contains `Class` instructions, their internal slices 
 /// must be freed by the owner as well.  
-pub fn compile(self: *Self, node: *const AST.Node) CompilerError![]Instruction {
+pub fn compile(self: *Self, node: *const AST.Node) RegrexError![]Instruction {
     _ = try self.emit(.{ .Save = 0 });
     _ = try self.compileNode(node);
     _ = try self.emit(.{ .Save = 1 });
     _ = try self.emit(.Match);
 
-    return try self.bytecode.toOwnedSlice(self.alloc);
+    const bc = self.bytecode.toOwnedSlice(self.alloc) catch {
+        return RegrexError.MemoryError;
+    };
+    return bc;
 }
 
 const testing = std.testing;

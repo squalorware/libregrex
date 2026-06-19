@@ -1,4 +1,4 @@
-//! Compiled regular expression pattern representation.
+//! A representation of a regular expression pattern compiled to bytecode instructions
 //! 
 //! Defines a public `Pattern` exported by Regrex API. `Pattern` is 
 //! an opaque type which encapsulates a heap-allocated `CompilePattern` object
@@ -9,10 +9,13 @@
 //! with the compiled bytecode. `Pattern` exposes a set of methods that wrap over respective
 //! VM functions, allowing end user interaction without exposing the bytecode directly.
 const std = @import("std");
+const RegrexError = @import("./common/errors.zig").RegrexError;
 const Instruction = @import("./core/icr.zig").Instruction;
 const Match = @import("./Match.zig");
 const VM = @import("vm.zig");
 
+
+pub const SubOptions = @import("./common/types.zig").SubOptions;
 /// Frees compiled bytecode buffer and any owned data
 /// stored inside instructions.
 /// 
@@ -63,8 +66,10 @@ pub const Pattern = opaque {
         group_count: usize,
         opcodes: []Instruction,
         pattern: []const u8,
-    ) !*Pattern {
-        const self = try alloc.create(CompiledPattern);
+    ) RegrexError!*Pattern {
+        const self = alloc.create(CompiledPattern) catch {
+            return RegrexError.MemoryError;
+        };
         self.* = .{
             .alloc = alloc,
             .bytecode = opcodes,
@@ -95,8 +100,10 @@ pub const Pattern = opaque {
     /// 
     /// Returns `null` if no match found
     /// 
-    /// Returns `Error` if allocation failed or encountered invalid Unicode 
-    pub fn search(ptr: *const Pattern, input: []const u8) !?Match {
+    /// Returns 
+    /// - `Error.MemoryError` if failed allocating or manipulating the copy buffer
+    /// - `Error.InvalidUnicode` if a broken UTF-8 code point was encountered
+    pub fn search(ptr: *const Pattern, input: []const u8) RegrexError!?Match {
         const self: *const CompiledPattern = @ptrCast(@alignCast(ptr));
         return VM.search(
             self.alloc,
@@ -112,8 +119,10 @@ pub const Pattern = opaque {
     /// 
     /// Returns `null` if no match found or match was not at the beginning.
     /// 
-    /// Returns `Error` if allocation failed or encountered invalid Unicode 
-    pub fn match(ptr: *const Pattern, input: []const u8) !?Match {
+    /// Returns 
+    /// - `Error.MemoryError` if failed allocating or manipulating the copy buffer
+    /// - `Error.InvalidUnicode` if a broken UTF-8 code point was encountered
+    pub fn match(ptr: *const Pattern, input: []const u8) RegrexError!?Match {
         const self: *const CompiledPattern = @ptrCast(@alignCast(ptr));
         return VM.match(
             self.alloc,
@@ -149,8 +158,10 @@ pub const Pattern = opaque {
     /// This slice is allocator-owned and must be released; `Match` items
     /// it contains may also own captured data and must be released individually.
     /// 
-    /// Returns `Error` if allocation failed or if VM encountered an unrecoverable error.
-    pub fn findAll(ptr: *const Pattern, input: []const u8) ![]Match {
+    /// Returns 
+    /// - `Error.MemoryError` if failed allocating or manipulating the copy buffer
+    /// - `Error.InvalidUnicode` if a broken UTF-8 code point was encountered
+    pub fn findAll(ptr: *const Pattern, input: []const u8) RegrexError![]Match {
         const self: *const CompiledPattern = @ptrCast(@alignCast(ptr));
         return VM.findAll(
             self.alloc,
@@ -169,14 +180,14 @@ pub const Pattern = opaque {
     /// 
     /// Returns an allocated string buffer containing a modified copy of `input` on success
     /// 
-    /// Returns `Error` if allocation failed or invalid Unicode encountered
+    /// Returns 
+    /// - `Error.MemoryError` if failed allocating or manipulating the copy buffer
+    /// - `Error.InvalidUnicode` if a broken UTF-8 code point was encountered
     pub fn sub(
         ptr: *const Pattern,
         repl: []const u8, 
         input: []const u8, 
-        options: struct {
-            count: usize = 0,
-        },
+        options: SubOptions,
     ) ![]u8 {
         const self: *const CompiledPattern = @ptrCast(@alignCast(ptr));
         return VM.sub(
@@ -204,7 +215,7 @@ fn bytecodeFixture(alloc: std.mem.Allocator) ![]Instruction {
     });
 }
 
-test "Should return a `Match` from input start by Pattern.match" {
+test "Pattern.match() should return the first `Match` at the input start" {
     const allocator = testing.allocator;
     const bytecode = try bytecodeFixture(allocator);
 
@@ -222,12 +233,12 @@ test "Should return a `Match` from input start by Pattern.match" {
     };
     defer result.deinit(allocator);
 
-    try testing.expectEqualStrings("420", result.str());
-    try testing.expectEqual(@as(usize, 0), result.full.start);
-    try testing.expectEqual(@as(usize, 3), result.full.end);
+    try testing.expectEqualStrings("420", result.full());
+    try testing.expectEqual(@as(usize, 0), try result.start(0));
+    try testing.expectEqual(@as(usize, 3), try result.end(0));
 }
 
-test "Should return `null` when no match at input start by Pattern.match" {
+test "Pattern.match() should return `null` when no match at the input start" {
     const allocator = testing.allocator;
     const bytecode = try bytecodeFixture(allocator);
 
@@ -244,7 +255,7 @@ test "Should return `null` when no match at input start by Pattern.match" {
     try testing.expect(result == null);
 }
 
-test "Should return first Match from input by Pattern.search" {
+test "Pattern.search() should return the first encountered Match in input" {
     const allocator = testing.allocator;
     const bytecode = try bytecodeFixture(allocator);
 
@@ -260,13 +271,14 @@ test "Should return first Match from input by Pattern.search" {
         try testing.expect(false);
         return;
     };
+    defer result.deinit(allocator);
 
-    try testing.expectEqualStrings("420", result.str());
-    try testing.expectEqual(@as(usize, 4), result.full.start);
-    try testing.expectEqual(@as(usize, 7), result.full.end);
+    try testing.expectEqualStrings("420", result.full());
+    try testing.expectEqual(@as(usize, 4), try result.start(0));
+    try testing.expectEqual(@as(usize, 7), try result.end(0));
 }
 
-test "Should return lazy non-overlapping match by Pattern.findIter" {
+test "Pattern.findIter() should return lazy retrieve non-overlapping matches one at a time" {
     const allocator = testing.allocator;
     const bytecode = try bytecodeFixture(allocator);
 
@@ -285,23 +297,27 @@ test "Should return lazy non-overlapping match by Pattern.findIter" {
         try testing.expect(false);
         return;
     };
-    try testing.expectEqualStrings("420", first.str());
-    try testing.expectEqual(@as(usize, 0), first.full.start);
-    try testing.expectEqual(@as(usize, 3), first.full.end);
+    defer first.deinit(allocator);
+
+    try testing.expectEqualStrings("420", first.full());
+    try testing.expectEqual(@as(usize, 0), try first.start(0));
+    try testing.expectEqual(@as(usize, 3), try first.end(0));
 
     var second = (try iter.next()) orelse {
         try testing.expect(false);
         return;
     };
-    try testing.expectEqualStrings("420", second.str());
-    try testing.expectEqual(@as(usize, 8), second.full.start);
-    try testing.expectEqual(@as(usize, 11), second.full.end);
+    defer second.deinit(allocator);
+
+    try testing.expectEqualStrings("420", second.full());
+    try testing.expectEqual(@as(usize, 8), try second.start(0));
+    try testing.expectEqual(@as(usize, 11), try second.end(0));
 
     const third = try iter.next();
     try testing.expect(third == null);
 }
 
-test "Should return null by Pattern.findIter if no match" {
+test "Pattern.findIter() should return null if no match on next iteration" {
     const allocator = testing.allocator;
     const bytecode = try bytecodeFixture(allocator);
 
@@ -320,7 +336,7 @@ test "Should return null by Pattern.findIter if no match" {
     try testing.expect(result == null);
 }
 
-test "Should return all non-overlapping matches by Pattern.findAll" {
+test "Pattern.findAll() should return all non-overlapping matches" {
     const allocator = testing.allocator;
     const bytecode = try bytecodeFixture(allocator);
     const expected_matches = [_]struct {
@@ -343,13 +359,13 @@ test "Should return all non-overlapping matches by Pattern.findAll" {
     defer Match.free(allocator, results);
 
     for (expected_matches, 0..) |expected, i| {
-        try testing.expectEqualStrings("420", results[i].str());
-        try testing.expectEqual(expected.start, results[i].full.start);
-        try testing.expectEqual(expected.end, results[i].full.end);
+        try testing.expectEqualStrings("420", results[i].full());
+        try testing.expectEqual(expected.start, try results[i].start(0));
+        try testing.expectEqual(expected.end, try results[i].end(0));
     }
 }
 
-test "Should return a string with all matches replaced from Pattern.sub" {
+test "Pattern.sub() should return a string with all matched occurences replaced" {
     const allocator = testing.allocator;
     const bytecode = try bytecodeFixture(allocator);
 
@@ -367,7 +383,7 @@ test "Should return a string with all matches replaced from Pattern.sub" {
     try testing.expectEqualStrings("67 lol 67 kek", result);
 }
 
-test "Should only replace specific number of times by Pattern.sub" {
+test "Pattern.sub() should only replace an exact number of matches" {
     const allocator = testing.allocator;
     const bytecode = try bytecodeFixture(allocator);
 
@@ -385,7 +401,7 @@ test "Should only replace specific number of times by Pattern.sub" {
     try testing.expectEqualStrings("67 lol 420 kek", result);    
 }
 
-test "Should replace all occurences and safely ignore rest if options.count is greater than actual occurences count" {
+test "Pattern.sub() should replace all occurences and safely ignore rest if options.count is greater than actual occurences count" {
     const allocator = testing.allocator;
     const bytecode = try bytecodeFixture(allocator);
 
