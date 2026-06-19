@@ -479,8 +479,9 @@ pub fn findIter(
 /// 
 /// Returns an allocator-owned slice of `Match` objects.
 /// 
-/// Returns `VmError` if memory allocation failed or 
-/// an invalid Unicode character was detected
+/// Returns 
+/// - `Error.MemoryError` if failed allocating or manipulating the copy buffer
+/// - `Error.InvalidUnicode` (propagated by `VM.execAt` or encountered during lookup)
 pub fn findAll(
     alloc: std.mem.Allocator,
     bytecode: []const Instruction,
