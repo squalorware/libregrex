@@ -50,14 +50,14 @@ pub fn advanceOneRune(input: []const u8, pos: *usize) Error!bool {
     return true;
 }
 
-test "Should receive null from `decodeRuneAt` when position is at or past end" {
+test "utils.decodeRuneAt() should receive null when position is at or past end" {
     const input = "abc";
 
     try std.testing.expectEqual(@as(?types.DecodedRune, null), try decodeRuneAt(input, input.len));
     try std.testing.expectEqual(@as(?types.DecodedRune, null), try decodeRuneAt(input, input.len + 1));
 }
 
-test "Should successfully decode when ASCII rune passed to decodeRuneAt" {
+test "utils.decodeRuneAt() should successfully decode an ASCII rune" {
     const input = "abc";
     const decoded = (try decodeRuneAt(input, 0)).?;
 
@@ -65,7 +65,7 @@ test "Should successfully decode when ASCII rune passed to decodeRuneAt" {
     try std.testing.expectEqual(@as(usize, 1), decoded.len);
 }
 
-test "Should successfully decode when Cyrillic rune passed to decodeRuneAt" {
+test "utils.decodeRuneAt() should successfully decode a Cyrillic rune" {
     const input = "ґєї";
     const decoded = (try decodeRuneAt(input, 0)).?;
 
@@ -73,7 +73,7 @@ test "Should successfully decode when Cyrillic rune passed to decodeRuneAt" {
     try std.testing.expectEqual(@as(usize, 2), decoded.len);
 }
 
-test "Should successfully decode when mixed at byte offsets UTF-8 input passed to decodeRuneAt" {
+test "utils.decodeRuneAt() should successfully decode mixed at byte offsets UTF-8 input" {
     const input = "hうй";
 
     const first = (try decodeRuneAt(input, 0)).?;
@@ -89,7 +89,7 @@ test "Should successfully decode when mixed at byte offsets UTF-8 input passed t
     try std.testing.expectEqual(@as(usize, 2), third.len);
 }
 
-test "Should return Error.InvalidUnicode from decodeRuneAt for invalid leading byte" {
+test "utils.decodeRuneAt() should return Error.InvalidUnicode if received invalid leading byte" {
     const input = [_]u8{0x80};
 
     try std.testing.expectError(
@@ -98,7 +98,7 @@ test "Should return Error.InvalidUnicode from decodeRuneAt for invalid leading b
     );
 }
 
-test "Should return Error.InvalidUnicode from decodeRuneAt for truncated UTF-8 sequence" {
+test "utils.decodeRuneAt() should return Error.InvalidUnicode if received a truncated UTF-8 sequence" {
     const input = [_]u8{0xD0};
 
     try std.testing.expectError(
@@ -107,7 +107,7 @@ test "Should return Error.InvalidUnicode from decodeRuneAt for truncated UTF-8 s
     );
 }
 
-test "Should advance `pos` by one ASCII byte when passed to advanceOneRune" {
+test "utils.advanceOneRune() should advance `pos` by one ASCII byte" {
     const input = "abc";
     var pos: usize = 0;
 
@@ -115,7 +115,7 @@ test "Should advance `pos` by one ASCII byte when passed to advanceOneRune" {
     try std.testing.expectEqual(@as(usize, 1), pos);
 }
 
-test "Should advance `pos` by UTF-8 byte length when passed to advanceOneRune" {
+test "utils.advanceOneRune() should advance `pos` by UTF-8 byte length" {
     const input = "hうй";
     var pos: usize = 0;
 
@@ -126,7 +126,7 @@ test "Should advance `pos` by UTF-8 byte length when passed to advanceOneRune" {
     try std.testing.expectEqual(@as(usize, 4), pos);
 }
 
-test "Should return false at end without changing position from advanceOneRune" {
+test "utils.advanceOneRune() should return false without changing position if reached input end" {
     const input = "abc";
     var pos: usize = input.len;
 
@@ -134,7 +134,7 @@ test "Should return false at end without changing position from advanceOneRune" 
     try std.testing.expectEqual(@as(usize, input.len), pos);
 }
 
-test "Should propagate Error.InvalidUnicode by advanceOneRune" {
+test "utils.advanceOneRune() should return Error.InvalidUnicode if invalid UTF-8 consumed" {
     const input = [_]u8{0x80};
     var pos: usize = 0;
 

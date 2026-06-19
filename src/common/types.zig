@@ -55,13 +55,13 @@ pub const Group = struct {
 
 const testing = std.testing;
 
-test "Group.none returns a none (sentinel) group" {
+test "Group.none() should return a none (sentinel) group" {
     const g = Group.none();
 
     try testing.expect(g.isNone());
 }
 
-test "Group.isNone returns false for valid Group" {
+test "Group.isNone() should return false for matching Group" {
     const g = Group{ .start = 1, .end = 3 };
 
     try testing.expect(!g.isNone());
