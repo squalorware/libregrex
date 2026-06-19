@@ -1,7 +1,7 @@
 /* 
-    regrex.h — definitions to ensure compatibility with the POSIX 
-    standards and the GNU C Library implementation of regular expressions
-    for the regrex library written in the Zig programming language.
+    regrex.h - Public C ABI declarations for the regrex library.
+    regrex is a simple regular expression engine 
+    implemented in the Zig programming language.
     Copyright (C) 2026 oniko94
 
     This file is part of regrex
@@ -24,19 +24,40 @@
 extern "C" {
 #endif
 
-#include <stdint.h>
-#include <stddef.h>
+typedef enum {
+    REGREX_OK = 0, 
+    REGREX_ENOMATCH,        /* No matching group */
+    REGREX_ENOSPACE,        /* Memory allocation error */
+    REGREX_EBADGRP,         /* Group index is out of range */
+    REGREX_EBADUTF8,        /* Invalid or malformed UTF-8  */
+    REGREX_ETOKEN,          /* "Unexpected Token */
+    REGREX_EEND,            /* Unexpected end of pattern */
+    REGREX_EEXPR,           /* Expected expression */
+    REGREX_EBADESC,         /* Trailing backslash */
+    REGREX_EBADREP,         /* Invalid repetition operator */
+    REGREX_ERPAREN,         /* Closing parenthesis missing */
+    REGREX_ERBRACK,         /* Closing bracket missing */
+    REGREX_EINTERNAL = 255, /* Generic error (unknown) */
+} regrex_errcode_t;
 
-#if __STDC_VERSION__ >= 201112L || __cplusplus >= 201103L
-typedef max_align_t REGREX_ALIGN_T;
-#else
-typedef long double REGREX_ALIGN_T;
-#endif
+#define REGX_OK REGREX_OK
+#define REGX_ENOMATCH REGREX_ENOMATCH
+#define REGX_ENOSPACE REGREX_ENOSPACE
+#define REGX_EBADGRP REGREX_EBADGRP
+#define REGX_EBADUTF8 REGREX_EBADUTF8
+#define REGX_ETOKEN REGREX_ETOKEN
+#define REGX_EEND REGREX_EEND
+#define REGX_EEXPR REGREX_EEXPR
+#define REGX_EBADESC REGREX_EBADESC
+#define REGX_EBADREP REGREX_EBADREP
+#define REGX_ERPAREN REGREX_ERPAREN
+#define REGX_ERBRACK REGREX_ERBRACK
+#define REGX_EINTERNAL REGREX_EINTERNAL
 
-void regrex_compile(void);
-void regrex_search(void);
-void regrex_match(void);
-void regrex_getAllMatches(void);
+/*
+    Maps status code to a string message
+*/
+const char *regrex_error(regrex_errcode_t code);
 
 #ifdef __cplusplus
 }

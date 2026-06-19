@@ -161,6 +161,7 @@ test {
     _ = @import("./Match.zig");
     _ = @import("./vm.zig");
     _ = @import("./pattern.zig");
+    _ = @import("./extern.zig");
 }
 
 test "root.compile() should return a reusable *Pattern" {
