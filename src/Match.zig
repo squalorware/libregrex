@@ -1,39 +1,36 @@
-
 //! Match result representation for the regex engine.
 //! 
 //! Stores byte spans into the original input buffer.
 //! 
 //! Follows the conventional regex indexing model: 
-//! Group 0 represents the whole match;
-//! it is not stored in `groups` but is derived from `span`.
-//! Group 1..n represent the captured subgroups.
+//! group 0 represents the whole match;
+//! groups 1..n represent the captured subgroups.
 const std = @import("std");
-const Error = @import("./common/errors.zig").Error;
-const Span = @import("./common/types.zig").Span;
+const RegrexError = @import("./common/errors.zig").RegrexError;
+const Group = @import("./common/types.zig").Group;
 
-const MatchError = Error || std.mem.Allocator.Error;
+const Error = RegrexError || std.mem.Allocator.Error;
 
 pub const Self = @This();
 
 /// Borrowed input buffer against which the regex was executed.
 ///
-/// All returned slices from `str` and `group` point into this buffer.
+/// All returned slices from `Match.full()` 
+/// and `Match.group(i)` point into this buffer.
 input: []const u8,
-/// Byte span of the whole match within `input`
-span: Span,
-/// Optional byte spans for capturing groups (subgroups).
+/// Capture groups
 /// 
-/// `groups[0]` corresponds to regex group (subgroup) 1,
-/// `groups[1]` corresponds to regex group (subgroup) 2,
-/// and so on. `null` means that group exists but took
-/// no part in match.
-groups: []?Span,
+/// `groups[0]` corresponds to full match
+/// 
+/// If member Group is a sentinel (`Group.isNone(group) == true`) 
+/// it means that group exists but took no part in matching
+subgroups: []Group,
 
 /// Releases allocator-owned capture group metadata.
 /// 
 /// Must be used with the same allocator that initialized `groups`
 pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
-    alloc.free(self.groups);
+    alloc.free(self.subgroups);
     self.* = undefined;
 }
 
@@ -51,96 +48,120 @@ pub fn free(alloc: std.mem.Allocator, matches: []Self) void {
 
 /// Returns the text matched by a group.
 /// 
-/// `idx = 0` returns the whole match. `idx > 0` is interpreted
-/// as a capturing group index. 
+/// `i = 0` returns the whole match.
 /// 
-/// Returns `null` if requested group is out of range or
-/// did not take part in match. 
-pub fn group(self: Self, idx: usize) ?[]const u8 {
-    if (idx == 0) {
-        return self.str();
-    }
-
-    const span = self.groupSpan(idx) orelse return null;
-
-    return self.input[span.start..span.end];
+/// Returns:
+/// - `Error.InvalidGroupIndex` if `i` is outside the available group range;
+/// - `Error.NoMatch` if the group exists but did not participate in the match.
+pub fn group(self: Self, i: usize) Error![]const u8 {
+    const g = try self.span(i);
+    return self.input[g.start .. g.end];
 }
 
 /// Returns the byte span for a group.
 /// 
-/// `idx = 0` returns the whole match span. 
-/// `idx > 0` is interpreted as a capturing group span index. 
+/// `i = 0` returns the whole match span. 
 /// 
-/// Returns `null` if requested group span is out of range or
-/// did not take part in match. 
-pub fn groupSpan(self: Self, idx: usize) ?Span {
-    if (idx == 0) {
-        return self.span;
-    }
+/// Returns:
+/// - `Error.InvalidGroupIndex` if `i` is outside the available group range;
+/// - `Error.NoMatch` if the group exists but did not participate in the match.
+pub fn span(self: Self, i: usize) Error!Group {
+    if (i >= self.subgroups.len) return Error.InvalidGroupIndex;
 
-    const group_idx = idx - 1;
+    const g = self.subgroups[i];
+    if (g.isNone()) return Error.NoMatch;
 
-    if (group_idx >= self.groups.len) {
-        return null;
-    }
-
-    return self.groups[group_idx];
+    return g;
 }
 
 /// Returns the whole matched text as a slice of `input`.
-pub fn str(self: Self) []const u8 {
-    return self.input[self.span.start..self.span.end];
+pub fn full(self: Self) []const u8 {
+    const m = self.subgroups[0];
+    return self.input[m.start .. m.end];
 }
 
-/// Create a `Match` instance from capture slots.
+/// Returns the starting byte offset for capture group `i`
 /// 
-/// Returns a `Match` which owns the allocated `groups` slice.
-/// The caller is responsible for calling `Match.deinit()` on success
+/// Returns:
+/// - `Error.InvalidGroupIndex` if `i` is outside the available group range;
+/// - `Error.NoMatch` if the group exists but did not participate in the match.
+pub fn start(self: Self, i: usize) Error!usize {
+    const g = try self.span(i);
+
+    return g.start;
+}
+
+/// Returns the ending byte offset for capture group `i`
+/// 
+/// Returns:
+/// - `Error.InvalidGroupIndex` if `i` is outside the available group range;
+/// - `Error.NoMatch` if the group exists but did not participate in the match.
+pub fn end(self: Self, i: usize) Error!usize {
+    const g = try self.span(i);
+
+    return g.end;
+}
+
+/// Returns subgroups (capture groups excluding whole match at `group[0]`)
+pub fn groups(self: Self) []const Group {
+    return self.subgroups[1..];
+}
+
+/// Creates a `Match` instance from capture slots.
+/// 
+/// Allocates `subgroups` list on the heap to store the capture groups
+/// and fills it with sentinel (`Group.none()`, no match) values, which are later replaced with actual
+/// capture groups from slots.
+/// 
+/// `captures_count` is a number of capture groups acquired during parsing.
+/// 
+/// `subgroups[0]` contains the byte offset of a full match
+/// 
+/// `subgroups[1..]` contains the captured groups
 /// 
 /// Returns `MatchError` if allocation error happened
 pub fn toMatch(
     allocator: std.mem.Allocator,
     input: []const u8,
-    group_count: usize,
-    captures: []const ?usize,
-) MatchError!Self {
-    const start = captures[0] orelse 0;
-    const end = captures[1] orelse start;
+    captures_count: usize,
+    slots: []const ?usize,
+) Error!Self {
+    const full_start = slots[0] orelse 0;
+    const full_end = slots[1] orelse full_start;
 
-    var groups = try allocator.alloc(?Span, group_count);
-    errdefer allocator.free(groups);
+    const group_count = captures_count + 1;
 
-    var group_idx: usize = 0;
-    while (group_idx < group_count) : (group_idx += 1) {
-        const start_slot = (group_idx + 1) * 2;
+    var groups_buf = try allocator.alloc(Group, group_count);
+    errdefer allocator.free(groups_buf);
+
+    groups_buf[0] = .{
+        .start = full_start,
+        .end = full_end,
+    };
+    // Fill buffer with sentinel (no-match) groups
+    @memset(groups_buf[1..], Group.none());
+
+    var subgroup_idx: usize = 1;
+    while (subgroup_idx < group_count) : (subgroup_idx += 1) {
+        const start_slot = subgroup_idx * 2;
         const end_slot = start_slot + 1;
 
-        const group_start = captures[start_slot] orelse {
-            groups[group_idx] = null;
-            continue;
-        };
-        const group_end = captures[end_slot] orelse {
-            groups[group_idx] = null;
-            continue;
-        };
+        const group_start = slots[start_slot] orelse continue;
+        const group_end = slots[end_slot] orelse continue;
 
-        groups[group_idx] = .{
+        groups_buf[subgroup_idx] = .{
             .start = group_start,
             .end = group_end,
         };
     }
     return .{
         .input = input,
-        .span = .{
-            .start = start,
-            .end = end,
-        },
-        .groups = groups,
+        .subgroups = groups_buf,
     };
 }
 
 const testing = std.testing;
-const testInput = "lol 420 kek";
+const test_input = "lol 420 kek";
 /// Small test fixture that owns 
 /// the allocated group metadata used by `Match`.
 const TestContext = struct {
@@ -148,21 +169,24 @@ const TestContext = struct {
     /// Creates a test match and copies group spans
     /// into allocator-owned memory.
     pub fn init(
-        alloc: std.mem.Allocator,
-        start: usize,
-        end: usize,
-        groups: []const ?Span,
+        allocator: std.mem.Allocator,
+        full_start: usize,
+        full_end: usize,
+        captures: []const Group,
     ) !TestContext {
-        const owned_groups = try alloc.dupe(?Span, groups);
+        const owned_groups = try allocator.alloc(Group, captures.len + 1);
+        owned_groups[0] = .{
+            .start = full_start,
+            .end = full_end,
+        };
+        for (captures, 0..) |g, i| {
+            owned_groups[i + 1] = g;
+        }
 
         return .{
             .match = .{
-                .input = testInput,
-                .span = .{
-                    .start = start,
-                    .end = end,
-                },
-                .groups = owned_groups,
+                .input = test_input,
+                .subgroups = owned_groups,
             },
         };
     }
@@ -173,46 +197,38 @@ const TestContext = struct {
     }
 };
 
-test "Should receive the whole match slice from Match.str" {
+test "Match.full() should return the full match string representation" {
     const allocator = testing.allocator;
     var ctx = try TestContext.init(allocator, 4, 7, &.{});
     defer ctx.deinit(allocator);
 
-    try testing.expectEqualStrings("420", ctx.match.str());
+    try testing.expectEqualStrings("420", ctx.match.full());
 }
 
-test "Should receive the whole match slice from Match.group 0" {
+test "Match.group(0) should return the full match string representation" {
     const allocator = testing.allocator;
     var ctx = try TestContext.init(allocator, 4, 7, &.{});
     defer ctx.deinit(allocator);
 
-    const maybe_grp: ?[]const u8 = ctx.match.group(0);
+    const result = try ctx.match.group(0);
 
-    if (maybe_grp) |grp| {
-        try testing.expectEqualStrings("420", grp);
-    } else {
-        try testing.expect(false);
-    }
+    try testing.expectEqualStrings("420", result);
 }
 
-test "Should receive the whole match Span from Match.groupSpan 0" {
+test "Match.span(0) should return the byte span of the full match" {
     const allocator = testing.allocator;
     var ctx = try TestContext.init(allocator, 4, 7, &.{});
     defer ctx.deinit(allocator);
 
-    const maybe_span: ?Span = ctx.match.groupSpan(0);
+    const result = try ctx.match.span(0);
 
-    if (maybe_span) |span| {
-        try testing.expectEqual(@as(usize, 4), span.start);
-        try testing.expectEqual(@as(usize, 7), span.end);
-    } else {
-        try testing.expect(false);
-    }
+    try testing.expectEqual(@as(usize, 4), result.start);
+    try testing.expectEqual(@as(usize, 7), result.end);
 }
 
-test "Should receive captured group slice from Match.group" {
+test "Match.group(i) should return a subgroup string" {
     const allocator = testing.allocator;
-    const captured = [_]?Span {
+    const captured = [_]Group {
         .{
             .start = 4,
             .end = 7,
@@ -222,22 +238,19 @@ test "Should receive captured group slice from Match.group" {
     var ctx = try TestContext.init(
         allocator,
         0,
-        testInput.len,
+        test_input.len,
         captured[0..],
     );
     defer ctx.deinit(allocator);
 
-    const maybe_grp: ?[]const u8 = ctx.match.group(1);
-    if (maybe_grp) |grp| {
-        try testing.expectEqualStrings("420", grp);
-    } else {
-        try testing.expect(false);
-    }
+    const result = try ctx.match.group(1);
+
+    try testing.expectEqualStrings("420", result);
 }
 
-test "Should receive captured group span from Match.groupSpan" {
+test "Match.span(i) should return subgroup byte span" {
     const allocator = testing.allocator;
-    const captured = [_]?Span {
+    const captured = [_]Group {
         .{
             .start = 4,
             .end = 7,
@@ -247,53 +260,38 @@ test "Should receive captured group span from Match.groupSpan" {
     var ctx = try TestContext.init(
         allocator,
         0,
-        testInput.len,
+        test_input.len,
         captured[0..],
     );
     defer ctx.deinit(allocator);
 
-    const maybe_span: ?Span = ctx.match.groupSpan(1);
-    if (maybe_span) |span| {
-        try testing.expectEqual(@as(usize, 4), span.start);
-        try testing.expectEqual(@as(usize, 7), span.end);
-    } else {
-        try testing.expect(false);
-    }
+    const result = try ctx.match.span(1);
+
+    try testing.expectEqual(@as(usize, 4), result.start);
+    try testing.expectEqual(@as(usize, 7), result.end);
 }
 
-test "Should receive null from Match.group for unmatched capture group" {
+test "Match.group(i), Match.span(i) should return `Error.NoMatch` for an unmatched capture group" {
     const allocator = testing.allocator;
-    const unmatched = [_]?Span { null };
+    const unmatched = [_]Group { 
+        Group.none() 
+    };
 
     var ctx = try TestContext.init(
         allocator,
         0,
-        testInput.len,
+        test_input.len,
         unmatched[0..],
     );
     defer ctx.deinit(allocator);
 
-    try testing.expectEqual(@as(?[]const u8, null), ctx.match.group(1)); 
+    try testing.expectError(Error.NoMatch, ctx.match.group(1));
+    try testing.expectError(Error.NoMatch, ctx.match.span(1)); 
 }
 
-test "Should receive null from Match.groupSpan for unmatched capture group" {
+test "Match.group(i), Match.span(i) should return `Error.InvalidGroupIndex` for a group out of range" {
     const allocator = testing.allocator;
-    const unmatched = [_]?Span { null };
-
-    var ctx = try TestContext.init(
-        allocator,
-        0,
-        testInput.len,
-        unmatched[0..],
-    );
-    defer ctx.deinit(allocator);
-
-    try testing.expectEqual(@as(?Span, null), ctx.match.groupSpan(1)); 
-}
-
-test "Should receive null from Match.group for group out of range" {
-    const allocator = testing.allocator;
-    const captured = [_]?Span {
+    const captured = [_]Group {
         .{
             .start = 4,
             .end = 7,
@@ -303,127 +301,129 @@ test "Should receive null from Match.group for group out of range" {
     var ctx = try TestContext.init(
         allocator,
         0,
-        testInput.len,
+        test_input.len,
         captured[0..],
     );
     defer ctx.deinit(allocator);
 
-    try testing.expectEqual(@as(?[]const u8, null), ctx.match.group(2));
+    try testing.expectError(Error.InvalidGroupIndex, ctx.match.group(2));
+    try testing.expectError(Error.InvalidGroupIndex, ctx.match.span(2));
 }
 
-test "Should receive null from Match.groupSpan for group out of range" {
+test "Match,groups() should return captures excluding full match" {
     const allocator = testing.allocator;
-    const captured = [_]?Span {
-        .{
-            .start = 4,
-            .end = 7,
-        },
+    const captures = [_]Group {
+        .{ .start = 0, .end = 3 },
+        .{ .start = 4, .end = 7 },
+        Group.none(),
     };
 
     var ctx = try TestContext.init(
         allocator,
         0,
-        testInput.len,
-        captured[0..],
+        test_input.len,
+        captures[0..],
     );
     defer ctx.deinit(allocator);
 
-    try testing.expectEqual(@as(?Span, null), ctx.match.groupSpan(2));
+    const result = ctx.match.groups();
+
+    try testing.expectEqual(@as(usize, 3), result.len);
+    try testing.expectEqual(@as(usize, 0), result[0].start);
+    try testing.expectEqual(@as(usize, 3), result[0].end);
+    try testing.expectEqual(@as(usize, 4), result[1].start);
+    try testing.expectEqual(@as(usize, 7), result[1].end);
+    try testing.expect(result[2].isNone());
 }
 
-test "Should receive the whole match Span from capture slots passed to Match.toMatch" {
+test "Match.toMatch(m) should return a Match with valid full match and no capture groups" {
     const allocator = testing.allocator;
     const input = "lol 420 kek";
     // Capture slot with whole match start and end indices
-    const captures = [_]?usize { 4, 7 };
+    const slots = [_]?usize { 4, 7 };
 
-    var m = try Self.toMatch(allocator, input, 0, captures[0..]);
+    var m = try toMatch(allocator, input, 0, slots[0..]);
     defer m.deinit(allocator);
 
-    try testing.expectEqual(@as(usize, 4), m.span.start);
-    try testing.expectEqual(@as(usize, 7), m.span.end);
-    try testing.expectEqualStrings("420", m.str());
-    try testing.expectEqual(@as(usize, 0), m.groups.len);
+    try testing.expectEqualStrings("420", m.full());
+    try testing.expectEqual(@as(usize, 1), m.subgroups.len);
+    try testing.expectEqual(@as(usize, 4), try m.start(0));
+    try testing.expectEqual(@as(usize, 7), try m.end(0));
+
+    try testing.expectEqual(@as(usize, 0), m.groups().len);
 }
 
-test "Should create group spans from capture slots passed to Match.toMatch" {
+test "Match.toMatch(m) should return a Match with a valid subgroup" {
     const allocator = testing.allocator;
     const input = "lol 420 kek";
     // Capture slot with whole match start and end indices
-    const captures = [_]?usize { 4, 7, 4, 7 };
+    const slots = [_]?usize { 4, 7, 4, 7, };
 
-    var m = try Self.toMatch(allocator, input, 1, captures[0..]);
+    var m = try toMatch(allocator, input, 1, slots[0..]);
     defer m.deinit(allocator);
 
-    try testing.expectEqualStrings("420", m.str());
-
-    const group_str = m.group(1) orelse {
-        try testing.expect(false);
-        return;
-    };
-
-    try testing.expectEqualStrings("420", group_str);
-
-    const group_span = m.groupSpan(1) orelse {
-        try testing.expect(false);
-        return;
-    };
-
-    try testing.expectEqual(@as(usize, 4), group_span.start);
-    try testing.expectEqual(@as(usize, 7), group_span.end);
+    try testing.expectEqualStrings("420", m.full());
+    try testing.expectEqual(@as(usize, 2), m.subgroups.len);
+    try testing.expectEqual(@as(usize, 1), m.groups().len);
+    try testing.expectEqualStrings("420", try m.group(1));
+    try testing.expectEqual(@as(usize, 4), try m.start(1));
+    try testing.expectEqual(@as(usize, 7), try m.end(1));
 }
 
-test "Should set unmatched capture groups to null by Match.toMatch" {
+test "Match.toMatch(m) should create a Match with unmatched subgroups as sentinel groups" {
     const allocator = testing.allocator;
     const input = "lol 420 kek";
     // Capture slot with whole match start and end indices
-    const captures = [_]?usize { 4, 7, null, null };
+    const slots = [_]?usize { 4, 7, null, null };
 
-    var m = try Self.toMatch(allocator, input, 1, captures[0..]);
+    var m = try Self.toMatch(allocator, input, 1, slots[0..]);
     defer m.deinit(allocator);
 
-    try testing.expectEqualStrings("420", m.str());
-    try testing.expect(m.group(1) == null);
-    try testing.expect(m.groupSpan(1) == null);
+    try testing.expectEqualStrings("420", m.full());
+
+    const no_match_sent = m.groups()[0];
+    try testing.expect(no_match_sent.isNone());
 }
 
-test "Should set partially captured group to null by Match.toMatch" {
+test "Match.toMatch(m) should create a Match with partially captured groups as sentinel groups" {
     const allocator = testing.allocator;
     const input = "lol 420 kek";
     // Capture slot with whole match start and end indices
-    const captures = [_]?usize { 4, 7, 4, null };
+    const slots = [_]?usize { 4, 7, 4, null };
 
-    var m = try Self.toMatch(allocator, input, 1, captures[0..]);
+    var m = try Self.toMatch(allocator, input, 1, slots[0..]);
     defer m.deinit(allocator);
 
-    try testing.expectEqualStrings("420", m.str());
-    try testing.expect(m.group(1) == null);
-    try testing.expect(m.groupSpan(1) == null);
+    try testing.expectEqualStrings("420", m.full());
+
+    const no_match_sent = m.groups()[0];
+    try testing.expect(no_match_sent.isNone());
 }
 
-test "Should create multiple capture groups by Match.toMatch" {
+test "Match.toMatch(m) should create a Match with multiple capture groups" {
     const allocator = testing.allocator;
     const input = "lol 420 kek";
     // Capture slot with whole match start and end indices
-    const captures = [_]?usize {
-        0, 11, // group 0
+    const slots = [_]?usize {
+        0, 11, // group 0 (full match)
         0, 3, // group 1
         4, 7, // group 2
         8, 11 // group 3
     };
-    const expected_groups = [_][]const u8 {"lol", "420", "kek"};
+    const expected = [_][]const u8 {"lol", "420", "kek"};
 
-    var m = try Self.toMatch(allocator, input, 3, captures[0..]);
+    var m = try Self.toMatch(allocator, input, 3, slots[0..]);
     defer m.deinit(allocator);
 
-    try testing.expectEqualStrings("lol 420 kek", m.str());
+    try testing.expectEqualStrings("lol 420 kek", m.full());
+    try testing.expectEqual(@as(usize, 4), m.subgroups.len);
 
-    for (expected_groups, 0..) |expected, i| {
+    const captures = m.groups();
+
+    try testing.expectEqual(@as(usize, 3), captures.len);
+
+    for (captures, 0..) |_, i| {
         const group_idx = i + 1;
-        const group_str = m.group(group_idx) orelse {
-            try testing.expect(false);
-            return;
-        };
-        try testing.expectEqualStrings(expected, group_str);
+        try testing.expectEqualStrings(expected[i], try m.group(group_idx));
     }
 }

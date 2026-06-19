@@ -4,7 +4,7 @@
 //! against Unicode scalar values. Helpers below allow decoding one code point
 //! at a given byte position and advancing byte offsets safely
 const std = @import("std");
-const Error = @import("errors.zig").Error;
+const Error = @import("errors.zig").RegrexError;
 const types = @import("types.zig");
 
 /// Decodes a UTF-8 code point from `input` string at byte offset `pos`
