@@ -1,6 +1,6 @@
 /* 
     regrex.h - Public C ABI declarations for the regrex library.
-    regrex is a simple regular expression engine 
+    regrex is a simple PCRE/Python inspired regular expression engine 
     implemented in the Zig programming language.
     Copyright (C) 2026 oniko94
 
@@ -24,13 +24,17 @@
 extern "C" {
 #endif
 
-typedef enum {
+#include <stddef.h>
+
+typedef enum : unsigned int 
+{
     REGREX_OK = 0, 
+    REGREX_EARG,            /* Invalid argument */
     REGREX_ENOMATCH,        /* No matching group */
     REGREX_ENOSPACE,        /* Memory allocation error */
     REGREX_EBADGRP,         /* Group index is out of range */
     REGREX_EBADUTF8,        /* Invalid or malformed UTF-8  */
-    REGREX_ETOKEN,          /* "Unexpected Token */
+    REGREX_ETOKEN,          /* Unexpected Token */
     REGREX_EEND,            /* Unexpected end of pattern */
     REGREX_EEXPR,           /* Expected expression */
     REGREX_EBADESC,         /* Trailing backslash */
@@ -38,26 +42,24 @@ typedef enum {
     REGREX_ERPAREN,         /* Closing parenthesis missing */
     REGREX_ERBRACK,         /* Closing bracket missing */
     REGREX_EINTERNAL = 255, /* Generic error (unknown) */
-} regrex_errcode_t;
+} regx_errcode_t;
 
-#define REGX_OK REGREX_OK
-#define REGX_ENOMATCH REGREX_ENOMATCH
-#define REGX_ENOSPACE REGREX_ENOSPACE
-#define REGX_EBADGRP REGREX_EBADGRP
-#define REGX_EBADUTF8 REGREX_EBADUTF8
-#define REGX_ETOKEN REGREX_ETOKEN
-#define REGX_EEND REGREX_EEND
-#define REGX_EEXPR REGREX_EEXPR
-#define REGX_EBADESC REGREX_EBADESC
-#define REGX_EBADREP REGREX_EBADREP
-#define REGX_ERPAREN REGREX_ERPAREN
-#define REGX_ERBRACK REGREX_ERBRACK
-#define REGX_EINTERNAL REGREX_EINTERNAL
+/* Maps status code to a string message */
+const char *regrex_error(regx_errcode_t code);
 
-/*
-    Maps status code to a string message
-*/
-const char *regrex_error(regrex_errcode_t code);
+typedef struct {
+    size_t start;
+    size_t end;
+} regx_group_t;
+
+typedef struct regx_match_t regx_match_t;
+
+typedef struct regx_match_list_t regx_match_list_t;
+
+typedef struct regx_pattern_t regx_pattern_t;
+void regx_pattern_destroy(regx_pattern_t *pattern);
+
+regx_errcode_t regrex_compile(char *pattern_str, size_t pattern_len, regx_pattern_t *out_obj );
 
 #ifdef __cplusplus
 }
