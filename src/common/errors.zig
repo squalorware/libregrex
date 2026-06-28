@@ -6,6 +6,8 @@ pub const RegrexError = error {
     NoMatch,
     /// Group index is outside of range
     InvalidGroupIndex,
+    /// Exceeded maximum group count limit
+    GroupBufferOverflow,
     /// Expected an expression; found an empty branch/sequence.
     ExpressionExpected,
     /// Invalid use of repetition operator `*`
