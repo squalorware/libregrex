@@ -64,27 +64,29 @@ fn freeMatchListCallback(
     Match.free(alloc, value.*);
 }
 
+fn freeIteratorCallback(
+    alloc: std.mem.Allocator,
+    value: *FindIterator,
+) void {
+    _ = alloc;
+    value.deinit();
+}
+
 const WrappedMatch = WrappedOpaque(regx_match_t, Match, freeMatchCallback);
 const WrappedMatchList = WrappedOpaque(regx_match_list_t, []Match, freeMatchListCallback);
-const WrappedIterator = struct {
-    value: FindIterator,
-
-    pub fn unwrap(ptr: *regx_iter_t) *FindIterator {
-        return @ptrCast(@alignCast(ptr));
-    }
-};
+const WrappedIterator = WrappedOpaque(regx_iter_t, FindIterator, freeIteratorCallback);
 
 fn storeMatch(match: ?Match, out_obj: *?*regx_match_t) RegrexError!void {
     out_obj.* = null;
 
     var m = match orelse return RegrexError.NoMatch;
 
-    const handle = WrappedMatch.create(c_alloc, m) catch |err| {
+    const owned = WrappedMatch.create(c_alloc, m) catch |err| {
         m.deinit(c_alloc);
         return err;
     };
 
-    out_obj.* = handle;
+    out_obj.* = owned;
 }
 
 //==================================
@@ -162,9 +164,9 @@ export fn regx_match_list_span(
     const out = out_obj orelse return .REGREX_EARG;
     const owned = WrappedMatchList.unwrapConst(l);
 
-    if (match_idx >= owned.matches.len) return .REGREX_EBADGRP;
+    if (match_idx >= owned.value.len) return .REGREX_EBADGRP;
 
-    const result = owned.matches[match_idx].span(group_idx) catch |err| {
+    const result = owned.value[match_idx].span(group_idx) catch |err| {
         return toErrorCode(err);
     };
 
@@ -234,13 +236,12 @@ export fn regx_pattern_match(
     };
 
     const match = p.match(input) catch |err| {
-        out.* = null;
         return toErrorCode(err);
     };
     storeMatch(match, out) catch |err| {
-        out.* = null;
         return toErrorCode(err);
     };
+    return .REGREX_OK;
 }
 
 export fn regx_pattern_find_iter(
@@ -254,15 +255,13 @@ export fn regx_pattern_find_iter(
     const input = toOwnedSlice(input_ptr, input_len) orelse {
         return .REGREX_EARG;
     };
-
     out.* = null;
 
-    const owned = c_alloc.create(WrappedIterator) catch {
-        return .REGREX_ENOSPACE;
+    const owned = WrappedIterator.create(c_alloc, p.findIter(input)) catch |err| {
+        return toErrorCode(err);
     };
-    errdefer c_alloc.destroy(owned);
 
-    owned.* = .{ .value = p.findIter(input) };
+    out.* = owned;
     return .REGREX_OK;
 }
 
@@ -297,7 +296,7 @@ export fn regx_pattern_sub(
     repl_len: usize,
     input_ptr: ?[*]const u8,
     input_len: usize,
-    count: ?c_uint,
+    count: usize,
     out_ptr: ?*?[*] u8,
     out_len: ?*usize,
 ) regx_errcode_t {
@@ -310,9 +309,8 @@ export fn regx_pattern_sub(
     const input = toOwnedSlice(input_ptr, input_len) orelse {
         return .REGREX_EARG;
     };
-    const c = count orelse 0;
 
-    const buf = p.sub(repl, input, .{ .count = @as(usize, c) }) catch |err| {
+    const buf = p.sub(repl, input, .{ .count = count }) catch |err| {
         return toErrorCode(err);
     };
     storeBuffer(c_alloc, buf, outp, outl);
@@ -339,11 +337,20 @@ export fn regx_iter_next(
     return .REGREX_OK;
 }
 
+export fn regx_iter_destroy(iter: ?*regx_iter_t) void {
+    WrappedIterator.destroy(c_alloc, iter);
+}
+
 export fn regrex_str_destroy(ptr: ?[*:0]const u8) void {
     const p = ptr orelse return;
 
     const mut: [*:0]u8 = @constCast(p);
     c_alloc.free(mut[0 .. std.mem.len(p) + 1]);
+}
+
+export fn regrex_buf_destroy(ptr: ?[*]u8, len: usize) void {
+    const p = ptr orelse return;
+    c_alloc.free(p[0..len]);
 }
 
 /// Maps C return status codes to a string message
@@ -407,7 +414,10 @@ export fn regrex_search(
         return toErrorCode(err);
     };
 
-    return storeMatch(result, out);
+    storeMatch(result, out) catch |err| {
+        return toErrorCode(err);
+    };
+    return .REGREX_OK;
 }
 
 export fn regrex_match(
@@ -431,7 +441,10 @@ export fn regrex_match(
         return toErrorCode(err);
     };
 
-    return storeMatch(result, out);
+    storeMatch(result, out) catch |err| {
+        return toErrorCode(err);
+    };
+    return .REGREX_OK;
 }
 
 export fn regrex_find_all(
@@ -470,12 +483,10 @@ export fn regrex_sub(
     repl_len: usize,
     input_ptr: ?[*]const u8,
     input_len: usize,
-    count: ?usize,
+    count: usize,
     out_ptr: ?*?[*]u8,
     out_len: ?*usize,
 ) regx_errcode_t {
-    const c = count orelse 0;
-
     const outp = out_ptr orelse return .REGREX_EARG;
     const outl = out_len orelse return .REGREX_EARG;
 
@@ -497,8 +508,8 @@ export fn regrex_sub(
         pattern, 
         repl,
         input,
-        .{ .count = c }
-        ) catch |err| {
+        .{ .count = count }
+    ) catch |err| {
         return toErrorCode(err);
     };
 
