@@ -2,6 +2,7 @@
 
 /// Common parsing and compilation errors
 pub const RegrexError = error {
+    InvalidArgument,
     NoMatch,
     /// Group index is outside of range
     InvalidGroupIndex,
