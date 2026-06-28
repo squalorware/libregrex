@@ -154,6 +154,7 @@ const testing = std.testing;
 test {
     _ = @import("./common/types.zig");
     _ = @import("./common/utils.zig");
+    _ = @import("./common/chelpers.zig");
     _ = @import("./core/Token.zig");
     _ = @import("./core/Lexer.zig");
     _ = @import("./core/Parser.zig");
@@ -161,7 +162,6 @@ test {
     _ = @import("./Match.zig");
     _ = @import("./vm.zig");
     _ = @import("./pattern.zig");
-    _ = @import("./extern.zig");
 }
 
 test "root.compile() should return a reusable *Pattern" {
