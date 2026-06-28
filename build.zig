@@ -116,7 +116,7 @@ fn buildLibrary(
     linkage: std.builtin.LinkMode,
 ) *Step.Compile {
     const mod = b.createModule(.{
-        .root_source_file = b.path("src/extern.zig"),
+        .root_source_file = b.path("src/clib.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
