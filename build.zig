@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) void {
         LibLinkageMode,
         "linkage",
         "Library linkage type: static, dynamic or both",
-    ) orelse .static;
+    ) orelse .dynamic;
 
     // Zig package module
     _ = b.addModule("regrex", .{
@@ -38,7 +38,7 @@ pub fn build(b: *std.Build) void {
             \\
             \\Name: regrex
             \\URL: https://github.com/squalorware/libregrex
-            \\Description: An amateurish implementation of regular expressions in Zig.
+            \\Description: A simple Zig implementation of PCRE/Python-inspired regular expression engine.
             \\Version: 0.1.0
             \\Cflags: -I${includedir}
             \\Libs: -L${libdir} -lregrex
@@ -72,7 +72,7 @@ pub fn build(b: *std.Build) void {
             b,
             target,
             optimize,
-            .dynamic
+            .dynamic,
         );
         b.installArtifact(dynamic_lib);
     }
@@ -84,19 +84,31 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
     });
     const test_exe = b.addTest(.{
         .root_module = test_mod,
     });
     testing_step.dependOn(&b.addRunArtifact(test_exe).step);
 
+    const clib_mod = b.addModule("clib",.{
+        .root_source_file = b.path("src/clib.zig"),
+    });
+    clib_mod.addIncludePath(b.path("include"));
+
+    const docs_mod = b.createModule(.{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .link_libc = true,
+        .imports = &.{
+            .{ .name = "clib", .module = clib_mod },
+        },
+    });
+
     // Documentation generation
     const docs_obj = b.addObject(.{
-        .name = "regrex-docs",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/root.zig"),
-            .target = target,
-        }),
+        .name = "root",
+        .root_module = docs_mod, 
     });
 
     const install_docs = b.addInstallDirectory(.{
@@ -113,7 +125,7 @@ fn buildLibrary(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    linkage: std.builtin.LinkMode,
+    linkage: std.builtin.LinkMode
 ) *Step.Compile {
     const mod = b.createModule(.{
         .root_source_file = b.path("src/clib.zig"),
