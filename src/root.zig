@@ -16,13 +16,10 @@ const SubOptions = regexPattern.SubOptions;
 
 /// Library-specific error definitions
 pub const RegrexError = @import("./common/errors.zig").RegrexError;
-/// Representation of a result object returned by matching operations. 
-/// Contains byte offsets of matches substringing the input string
 pub const Match = @import("./Match.zig");
-/// Opaque type encapsulating compiled regex pattern and exposing a public interface 
 pub const Pattern = regexPattern.Pattern;
 
-/// Compiles a regex pattern string for later use.
+/// Compiles a regex `pattern` string for later use.
 /// 
 /// Returns a reusable `Pattern` handle which encapsulates compiled pattern
 /// and exposes a basic public interface for the consumer.
@@ -62,10 +59,10 @@ pub fn compile(
     );
 }
 
-/// Searches the `input` string for the first location where the `pattern` matches.
+/// Compiles the string `pattern` and searches the `input` string 
+/// for the first location where the `pattern` matches.
 /// 
-/// One-shot function - compiles the string pattern internally 
-/// and destroys the `*Pattern` object at execution end.
+/// Compiled `*Pattern` object is automatically destroyed at execution end.
 /// 
 /// Returns:
 /// - `Match` on success (owns heap-allocated `subgroups` list, 
@@ -83,10 +80,10 @@ pub fn search(
     return compiled.search(input);
 }
 
-/// Attempts to match a `pattern` at the beginning of the `input` string.
+/// Compiles the string `pattern` and looks for a match 
+/// at the beginning of the `input` string.
 /// 
-/// One-shot function - compiles the string pattern internally 
-/// and destroys the `*Pattern` object at execution end.
+/// Compiled `*Pattern` object is automatically destroyed at execution end.
 /// 
 /// Returns:
 /// - `Match` on success (owns heap-allocated `subgroups` list, 
@@ -104,10 +101,10 @@ pub fn match(
     return compiled.match(input);
 }
 
-/// Collects all non-overlapping matches in the `input string`.
+/// Compiles the string `pattern` and collects 
+/// all non-overlapping matches in the `input string`.
 /// 
-/// One-shot function - compiles the string pattern internally 
-/// and destroys the `*Pattern` object at execution end.
+/// Compiled `*Pattern` object is automatically destroyed at execution end.
 /// 
 /// Returns:
 /// - `[]Match` on success (heap allocated, should be explicitly 
@@ -124,11 +121,10 @@ pub fn findAll(
     return compiled.findAll(input);
 }
 
-/// Searches for matches in the `input` string, then copies non-matching parts
-/// and replaces the matches with the `repl` string.
+/// Compiles the string `pattern` and searches for matches in the `input` string, 
+/// then copies non-matching parts and replaces the matches with the `repl` string.
 /// 
-/// One-shot function - compiles the string pattern internally 
-/// and destroys the `*Pattern` object at execution end.
+/// Compiled `*Pattern` object is automatically destroyed at execution end.
 /// 
 /// `options.count` controls the number of matches to replace (default = 0)
 /// 
@@ -154,7 +150,6 @@ const testing = std.testing;
 test {
     _ = @import("./common/types.zig");
     _ = @import("./common/utils.zig");
-    _ = @import("./common/chelpers.zig");
     _ = @import("./core/Token.zig");
     _ = @import("./core/Lexer.zig");
     _ = @import("./core/Parser.zig");
@@ -162,6 +157,8 @@ test {
     _ = @import("./Match.zig");
     _ = @import("./vm.zig");
     _ = @import("./pattern.zig");
+    _ = @import("./opaque.zig");
+    _ = @import("./clib.zig");
 }
 
 test "root.compile() should return a reusable *Pattern" {
