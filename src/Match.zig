@@ -9,6 +9,9 @@ const std = @import("std");
 const RegrexError = @import("./common/errors.zig").RegrexError;
 const Group = @import("./common/types.zig").Group;
 
+/// Maximum size of `subgroups` buffer for Match instance
+const max_groups_count: usize = 1024;
+
 pub const Self = @This();
 
 /// Borrowed input buffer against which the regex was executed.
@@ -128,6 +131,10 @@ pub fn toMatch(
     const full_end = slots[1] orelse full_start;
 
     const group_count = captures_count + 1;
+
+    if (group_count > max_groups_count) {
+        return RegrexError.GroupBufferOverflow;
+    }
 
     var groups_buf = allocator.alloc(Group, group_count) catch {
         return RegrexError.MemoryError;
