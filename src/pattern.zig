@@ -11,11 +11,19 @@
 const std = @import("std");
 const RegrexError = @import("./common/errors.zig").RegrexError;
 const Instruction = @import("./core/icr.zig").Instruction;
-const Match = @import("./Match.zig");
+const matchMod = @import("./match.zig");
 const VM = @import("vm.zig");
 
+const Match = matchMod.Match;
+const MatchArray = matchMod.MatchArray;
 
-pub const SubOptions = @import("./common/types.zig").SubOptions;
+/// Available options accepted both by `regrex.sub` and `regrex.Pattern.sub`
+pub const SubOptions = struct {
+    /// Maximum number of occurences to replace
+    /// 
+    /// `0` means replacing all occurences (default) 
+    count: usize = 0,
+};
 /// Frees compiled bytecode buffer and any owned data
 /// stored inside instructions.
 /// 
@@ -105,7 +113,7 @@ pub const Pattern = opaque {
     /// - `Error.InvalidUnicode` if a broken UTF-8 code point was encountered
     pub fn search(ptr: *const Pattern, input: []const u8) RegrexError!?Match {
         const self: *const CompiledPattern = @ptrCast(@alignCast(ptr));
-        return VM.search(
+        return try VM.search(
             self.alloc,
             self.bytecode,
             self.group_count,
@@ -124,7 +132,7 @@ pub const Pattern = opaque {
     /// - `Error.InvalidUnicode` if a broken UTF-8 code point was encountered
     pub fn match(ptr: *const Pattern, input: []const u8) RegrexError!?Match {
         const self: *const CompiledPattern = @ptrCast(@alignCast(ptr));
-        return VM.match(
+        return try VM.match(
             self.alloc,
             self.bytecode,
             self.group_count,
@@ -141,7 +149,7 @@ pub const Pattern = opaque {
     /// Should not be exposed at root level due to ownership complications
     /// 
     /// Returns `FindIterator` instance
-    pub fn findIter(ptr: *const Pattern, input: []const u8) VM.FindIterator {
+    pub fn findIter(ptr: *const Pattern, input: []const u8) RegrexError!VM.FindIterator {
         const self: *const CompiledPattern = @ptrCast(@alignCast(ptr));
         return VM.findIter(
             self.alloc,
@@ -161,9 +169,9 @@ pub const Pattern = opaque {
     /// Returns 
     /// - `Error.MemoryError` if failed allocating or manipulating the copy buffer
     /// - `Error.InvalidUnicode` if a broken UTF-8 code point was encountered
-    pub fn findAll(ptr: *const Pattern, input: []const u8) RegrexError![]Match {
+    pub fn findAll(ptr: *const Pattern, input: []const u8) RegrexError!MatchArray {
         const self: *const CompiledPattern = @ptrCast(@alignCast(ptr));
-        return VM.findAll(
+        return try VM.findAll(
             self.alloc,
             self.bytecode,
             self.group_count,
@@ -190,7 +198,7 @@ pub const Pattern = opaque {
         options: SubOptions,
     ) ![]u8 {
         const self: *const CompiledPattern = @ptrCast(@alignCast(ptr));
-        return VM.sub(
+        return try VM.sub(
             self.alloc,
             self.bytecode,
             self.group_count,
@@ -290,7 +298,7 @@ test "Pattern.findIter() should return lazy retrieve non-overlapping matches one
     );
     defer pattern.deinit();
 
-    var iter = pattern.findIter("420 lol 420 kek");
+    var iter = try pattern.findIter("420 lol 420 kek");
     defer iter.deinit();
 
     var first = (try iter.next()) orelse {
@@ -329,7 +337,7 @@ test "Pattern.findIter() should return null if no match on next iteration" {
     );
     defer pattern.deinit();
 
-    var iter = pattern.findIter("lol kek");
+    var iter = try pattern.findIter("lol kek");
     defer iter.deinit();
 
     const result = try iter.next();
@@ -355,13 +363,14 @@ test "Pattern.findAll() should return all non-overlapping matches" {
     );
     defer pattern.deinit();
 
-    const results = try pattern.findAll("420 lol 420 kek");
-    defer Match.free(allocator, results);
+    var results = try pattern.findAll("420 lol 420 kek");
+    defer results.deinit();
 
+    const matches = results.items();
     for (expected_matches, 0..) |expected, i| {
-        try testing.expectEqualStrings("420", results[i].full());
-        try testing.expectEqual(expected.start, try results[i].start(0));
-        try testing.expectEqual(expected.end, try results[i].end(0));
+        try testing.expectEqualStrings("420", matches[i].full());
+        try testing.expectEqual(expected.start, try matches[i].start(0));
+        try testing.expectEqual(expected.end, try matches[i].end(0));
     }
 }
 

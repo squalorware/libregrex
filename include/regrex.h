@@ -26,11 +26,17 @@
 extern "C" {
 #endif
 
+#define REGX_BUF(s) regx_buffer_from_cstr((s))
+
+#ifndef REGX_MAX_GROUPS
+#define REGX_MAX_GROUPS 1024
+#endif
+
 /*
     Stable return code type used by the C ABI.
 */
-typedef unsigned int regx_errcode_t;
-enum {
+typedef enum 
+{
     REGREX_OK = 0u,              /* Success */
     REGREX_EARG = 1u,            /* Invalid argument */
     REGREX_ENOMATCH = 2u,        /* No matching group */
@@ -46,7 +52,7 @@ enum {
     REGREX_ERPAREN = 12u,        /* Closing parenthesis missing */
     REGREX_ERBRACK = 13u,        /* Closing bracket missing */
     REGREX_EINTERNAL = 255u,     /* Generic error (unknown) */
-};
+} regx_errcode_t;
 
 /*
     Byte span of a match inside the original input.
@@ -87,7 +93,7 @@ typedef struct regx_match_t regx_match_t;
 
     It is allocated on the heap and must be released.
 */
-typedef struct regx_match_list_t regx_match_list_t;
+typedef struct regx_match_arr_t regx_match_arr_t;
 
 /*
     Opaque handler for compiled reusable regex pattern.
@@ -157,15 +163,15 @@ regx_errcode_t regx_match_full(
 );
 
 /*
-    `regx_match_list_t` destructor.
+    `regx_match_arr_t` destructor.
 
     Passing `NULL` is valid and has no effect.
 */
-void regx_match_list_destroy(regx_match_list_t *list);
+void regx_match_arr_destroy(regx_match_arr_t *list);
 
 /* Writes the number of matches in list to `out_i`. */
-regx_errcode_t regx_match_list_len(
-    const regx_match_list_t *list,
+regx_errcode_t regx_match_arr_len(
+    const regx_match_arr_t *list,
     size_t *out_i
 );
 
@@ -175,8 +181,8 @@ regx_errcode_t regx_match_list_len(
 
     Group 0 is the full match.
 */
-regx_errcode_t regx_match_list_span(
-    const regx_match_list_t *list,
+regx_errcode_t regx_match_arr_span(
+    const regx_match_arr_t *list,
     size_t match_idx,
     size_t group_idx,
     regx_group_t *out_obj
@@ -189,8 +195,8 @@ regx_errcode_t regx_match_list_span(
 
     The buffer should be released with `regx_buffer_destroy()`.
 */
-regx_errcode_t regx_match_list_group(
-    const regx_match_list_t *list,
+regx_errcode_t regx_match_arr_group(
+    const regx_match_arr_t *list,
     size_t match_idx,
     size_t group_idx,
     regx_buffer_t *out_obj
@@ -203,8 +209,8 @@ regx_errcode_t regx_match_list_group(
 
     The buffer should be released with `regx_buffer_destroy()`.
 */
-regx_errcode_t regx_match_list_full(
-    const regx_match_list_t *list,
+regx_errcode_t regx_match_arr_full(
+    const regx_match_arr_t *list,
     size_t match_idx,
     regx_buffer_t *out_obj
 );
@@ -263,13 +269,13 @@ regx_errcode_t regx_pattern_find_iter(
 /*
     Finds all non-overlapping matches for a compiled pattern.
 
-    Stores resulting `regx_match_list_t` to `out_obj`.
-    It must be released with `regx_match_list_destroy()`.
+    Stores resulting `regx_match_arr_t` to `out_obj`.
+    It must be released with `regx_match_arr_destroy()`.
 */
 regx_errcode_t regx_pattern_find_all(
     const regx_pattern_t *pattern,
     regx_buffer_t input_buf,
-    regx_match_list_t **out_obj
+    regx_match_arr_t **out_obj
 );
 
 /*
@@ -321,8 +327,6 @@ void regx_iter_destroy(regx_iter_t *iter);
     If `str` is `NULL`, returns an empty buffer.
 */
 regx_buffer_t regx_buffer_from_cstr(const unsigned char *str);
-
-#define REGX_BUF(s) regx_buffer_from_cstr((s))
 
 /*
     Releases memory held by an owned buffer.
@@ -392,7 +396,7 @@ regx_errcode_t regrex_match(
     Compiled pattern is automatically destroyed at the end of the execution.
 
     The returned match list is stored to the `out_obj` 
-    and must be released with `regx_match_list_destroy()`.
+    and must be released with `regx_match_arr_destroy()`.
 
     Returns .REGX_ENOMATCH if no match found; 
     `out_obj` is set to `NULL`
@@ -400,7 +404,7 @@ regx_errcode_t regrex_match(
 regx_errcode_t regrex_find_all(
     regx_buffer_t pattern_buf,
     regx_buffer_t input_buf,
-    regx_match_list_t **out_obj
+    regx_match_arr_t **out_obj
 );
 
 /*

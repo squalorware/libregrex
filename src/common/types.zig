@@ -1,5 +1,8 @@
 //! Shared primitive types used across Regrex engine.
 
+const std = @import("std");
+const maxInt = std.math.maxInt;
+
 /// A Unicode scalar value.
 /// 
 /// Regrex performs matching at Unicode code point level
@@ -7,9 +10,6 @@
 /// 
 /// Used to represent parsed literals, character class entries, 
 /// decoded input characters etc.
-const std = @import("std");
-const maxInt = std.math.maxInt;
-
 pub const Rune = u21;
 
 /// End-of-group sentinel value.
@@ -51,14 +51,6 @@ pub const Group = struct {
     pub fn isNone(self: Group) bool {
         return self.start == Sentinel and self.end == Sentinel;
     }
-};
-
-/// Available options accepted both by `regrex.sub` and `regrex.Pattern.sub`
-pub const SubOptions = struct {
-    /// Maximum number of occurences to replace
-    /// 
-    /// `0` means replacing all occurences (default) 
-    count: usize = 0,
 };
 
 const testing = std.testing;

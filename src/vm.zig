@@ -11,12 +11,14 @@ const std = @import("std");
 const AST = @import("./core/ast.zig");
 const RegrexError = @import("./common/errors.zig").RegrexError;
 const Instruction = @import("./core/icr.zig").Instruction;
-const Match = @import("./Match.zig");
+const matchMod = @import("./match.zig");
 const types = @import("./common/types.zig");
 const utils = @import("./common/utils.zig");
 
-const Group = types.Group;
 const DecodedRune = types.DecodedRune;
+const Group = types.Group;
+const Match = matchMod.Match;
+const MatchArray = matchMod.MatchArray;
 const Rune = types.Rune;
 
 /// A saved alternative execution state instance used by the backtracking VM.
@@ -388,7 +390,7 @@ pub fn execAt(
             },
             // Terminal instruction
             .Match => {
-                const result = try Match.toMatch(
+                const result = try matchMod.toMatch(
                     allocator,
                     input,
                     group_count,
@@ -486,7 +488,7 @@ pub fn findAll(
     bytecode: []const Instruction,
     group_count: usize,
     input: []const u8
-) RegrexError![]Match {
+) RegrexError!MatchArray {
     var iter = findIter(
         alloc,
         bytecode,
@@ -495,26 +497,12 @@ pub fn findAll(
     );
     defer iter.deinit();
 
-    var matches = std.ArrayList(Match).empty;
-    errdefer {
-        for (matches.items) |*m| {
-            m.deinit(alloc);
-        }
-        matches.deinit(alloc);
-    }
+    var matches = MatchArray.init(alloc);
+    errdefer matches.deinit();
 
-    while (try iter.next()) |m| {
-        var owned = m;
+    while (try iter.next()) |m| try matches.append(m);
 
-        matches.append(alloc, owned) catch {
-            owned.deinit(alloc);
-            return RegrexError.MemoryError;
-        };
-    }
-    const result = matches.toOwnedSlice(alloc) catch {
-        return RegrexError.MemoryError;
-    };
-    return result;
+    return matches;
 }
 
 /// Executes the bytecode-compiled pattern to retrieve all of the matches 
@@ -785,20 +773,21 @@ test "VM.findAll() should return all discovered non-overlapping matches" {
         .{ .start = 17, .end = 19 },
     };
 
-    const results = try findAll(
+    var results = try findAll(
         allocator, 
         bytecode[0..], 
         0, 
         "67 lol six seven 67 kek 420"
     );
-    defer Match.free(allocator, results);
+    defer results.deinit();
 
-    try testing.expectEqual(@as(usize, 2), results.len);
+    try testing.expectEqual(@as(usize, 2), results.len());
 
+    const matches = results.items();
     for (expected_matches, 0..) |expected, i| {
-        try testing.expectEqualStrings("67", results[i].full());
-        try testing.expectEqual(expected.start, results[i].start(0));
-        try testing.expectEqual(expected.end,results[i].end(0));
+        try testing.expectEqualStrings("67", matches[i].full());
+        try testing.expectEqual(expected.start, matches[i].start(0));
+        try testing.expectEqual(expected.end,matches[i].end(0));
     }
 }
 
