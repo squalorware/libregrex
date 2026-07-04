@@ -82,12 +82,12 @@ jobs:
           run: |
             md -Force dist
             $compress = @{
-              Path = "zig-out\\lib\\${{ matrix.binary }}", `
-                "zig-out\\include\\regrex.h", `
-                "zig-out\\share\\pkgconfig\\regrex.pc", `
+              Path = "zig-out\lib\${{ matrix.binary }}", `
+                "zig-out\include\regrex.h", `
+                "zig-out\share\pkgconfig\regrex.pc", `
                 "LICENSE", "README.md"
               CompressionLevel = "Optimal"
-              DestinationPath = "dist\\${{ matrix.artifact_name }}.zip"
+              DestinationPath = "dist\${{ matrix.artifact_name }}.zip"
             }
             Compress-Archive @compress
 
