@@ -62,9 +62,9 @@ jobs:
           run: |
             mkdir -p dist
             tar -czf dist/${{ matrix.artifact_name }}.tar.gz \
-            zig-out/lib ${{ matrix.binary }} \
-            zig-out/include regrex.h \
-            zig-out/share/pkgconfig regrex.pc \
+            zig-out/lib \
+            zig-out/include \
+            zig-out/share/pkgconfig \
             ${{ github.workspace }} LICENSE README.md
 
         - name: Package (Windows)
