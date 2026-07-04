@@ -15,7 +15,7 @@
 //!   **Borrowed** `regx_buffer_t` should not be destroyed.
 //! - `regx_pattern_t` is destroyed with `regx_pattern_destroy()`.
 //! - `regx_match_t` is destroyed with `regx_match_destroy()`.
-//! - `regx_match_list_t` is destroyed with `regx_match_list_destroy()`.
+//! - `regx_match_arr_t` is destroyed with `regx_match_arr_destroy()`.
 //! - `regx_iter_t` is destroyed with `regx_iter_destroy()`.
 //!
 //! All exported functions accept nullable pointer arguments and return
@@ -30,6 +30,7 @@ const WrappedOpaque = @import("./opaque.zig").WrappedOpaque;
 const c_alloc = std.heap.c_allocator;
 const testing = std.testing;
 const Match = regrex.Match;
+const MatchArray = regrex.MatchArray;
 const Pattern = regrex.Pattern;
 const RegrexError = regrex.RegrexError;
 
@@ -85,7 +86,7 @@ pub const regx_match_t = opaque {};
 ///Opaque handler for a list of matches.
 ///
 /// It is allocated on the heap and must be released.
-pub const regx_match_list_t = opaque {};
+pub const regx_match_arr_t = opaque {};
 
 /// Opaque handler for compiled reusable regex pattern.
 ///
@@ -109,11 +110,12 @@ fn freeMatchCallback(
     value.deinit(alloc);
 }
 
-fn freeMatchListCallback(
+fn freeMatchArrayCallback(
     alloc: std.mem.Allocator,
-    value: *[]Match,
+    value: *MatchArray,
 ) void {
-    Match.free(alloc, value.*);
+    _ = alloc;
+    value.deinit();
 }
 
 fn freeIteratorCallback(
@@ -125,7 +127,7 @@ fn freeIteratorCallback(
 }
 
 const WrappedMatch = WrappedOpaque(regx_match_t, Match, freeMatchCallback);
-const WrappedMatchList = WrappedOpaque(regx_match_list_t, []Match, freeMatchListCallback);
+const WrappedMatchArray = WrappedOpaque(regx_match_arr_t, MatchArray, freeMatchArrayCallback);
 const WrappedIterator = WrappedOpaque(regx_iter_t, FindIterator, freeIteratorCallback);
 
 /// Stores a nullable `Match` result to a wrapped opaque handler.
@@ -147,6 +149,23 @@ fn storeMatch(match: ?Match, out_obj: *?*regx_match_t) RegrexError!void {
     };
 
     out_obj.* = owned;
+}
+
+fn storeMatchArray(matches: MatchArray, out_obj: ?*?*regx_match_arr_t) RegrexError!void {
+    const out = out_obj orelse {
+        var owned = matches;
+        owned.deinit();
+        return RegrexError.InvalidArgument;
+    };
+
+    out.* = null;
+    var owned = matches;
+    const wrapped = WrappedMatchArray.create(c_alloc, owned) catch {
+        owned.deinit();
+        return RegrexError.MemoryError;
+    };
+
+    out.* = wrapped;
 }
 
 /// Stores the byte buffer to the convenience type `regx_buffer_t`.
@@ -188,14 +207,14 @@ fn storeBuffer(
 /// `regx_match_t` destructor.
 ///
 /// Passing `null` is valid and has no effect.
-pub export fn regx_match_destroy(match: ?*regx_match_t) void {
+export fn regx_match_destroy(match: ?*regx_match_t) void {
     WrappedMatch.destroy(c_alloc, match);
 }
 
 /// Writes the number of captured groups in match to `out_i`.
 ///
 /// Excludes group 0, which is the full match.
-pub export fn regx_match_groups_len(match: ?*const regx_match_t, out_i: ?*usize) regx_errcode_t {
+export fn regx_match_groups_len(match: ?*const regx_match_t, out_i: ?*usize) regx_errcode_t {
     const m = match orelse return .REGREX_EARG;
     const out = out_i orelse return .REGREX_EARG;
     const owned = WrappedMatch.unwrapConst(m);
@@ -207,7 +226,7 @@ pub export fn regx_match_groups_len(match: ?*const regx_match_t, out_i: ?*usize)
 /// Write the byte span of group `i` to `out_obj`.
 ///
 /// Group 0 is the full match. Capturing groups start at index 1.
-pub export fn regx_match_span(
+export fn regx_match_span(
     match: ?*const regx_match_t,
     i: usize,
     out_obj: ?*regx_group_t,
@@ -228,7 +247,7 @@ pub export fn regx_match_span(
 /// to a `out_obj` buffer wrapper.
 ///
 /// The buffer should be released with `regx_buffer_destroy()`.
-pub export fn regx_match_group(
+export fn regx_match_group(
     match: ?*const regx_match_t,
     i: usize,
     out_buf: ?*regx_buffer_t,
@@ -260,7 +279,7 @@ pub export fn regx_match_group(
 /// to a `out_obj` buffer wrapper.
 ///
 /// The buffer should be released with `regx_buffer_destroy()`.
-pub export fn regx_match_full(
+export fn regx_match_full(
     match: ?*const regx_match_t,
     out_buf: ?*regx_buffer_t,
 ) regx_errcode_t {
@@ -285,21 +304,21 @@ pub export fn regx_match_full(
     return .REGREX_OK;
 }
 
-/// `regx_match_list_t` destructor.
+/// `regx_match_arr_t` destructor.
 ///
 /// Passing `null` is valid and has no effect.
-pub export fn regx_match_list_destroy(list: ?*regx_match_list_t) void {
-    WrappedMatchList.destroy(c_alloc, list);
+export fn regx_match_arr_destroy(list: ?*regx_match_arr_t) void {
+    WrappedMatchArray.destroy(c_alloc, list);
 }
 
 /// Writes the number of matches in list to `out_i`.
-pub export fn regx_match_list_len(list: ?*const regx_match_list_t, out_i: ?*usize) regx_errcode_t {
+export fn regx_match_arr_len(list: ?*const regx_match_arr_t, out_i: ?*usize) regx_errcode_t {
     const out = out_i orelse return .REGREX_EARG;
     out.* = 0;
     const l = list orelse return .REGREX_EARG;
-    const owned = WrappedMatchList.unwrapConst(l);
+    const owned = WrappedMatchArray.unwrapConst(l);
 
-    out.* = owned.value.len;
+    out.* = owned.value.len();
     return .REGREX_OK;
 }
 
@@ -307,19 +326,20 @@ pub export fn regx_match_list_len(list: ?*const regx_match_list_t, out_i: ?*usiz
 /// found in match located at `match_idx` in `list`.
 ///
 /// Group 0 is the full match.
-pub export fn regx_match_list_span(
-    list: ?*const regx_match_list_t,
+export fn regx_match_arr_span(
+    list: ?*const regx_match_arr_t,
     match_idx: usize,
     group_idx: usize,
     out_obj: ?*regx_group_t,
 ) regx_errcode_t {
     const l = list orelse return .REGREX_EARG;
     const out = out_obj orelse return .REGREX_EARG;
-    const owned = WrappedMatchList.unwrapConst(l);
+    const owned = WrappedMatchArray.unwrapConst(l);
 
-    if (match_idx >= owned.value.len) return .REGREX_EBADGRP;
+    if (match_idx >= owned.value.len()) return .REGREX_EBADGRP;
 
-    const result = owned.value[match_idx].span(group_idx) catch |err| {
+    const matches = owned.value.items();
+    const result = matches[match_idx].span(group_idx) catch |err| {
         return toErrorCode(err);
     };
 
@@ -332,8 +352,8 @@ pub export fn regx_match_list_span(
 /// to the `out_obj` buffer wrapper.
 
 /// The buffer should be released with `regx_buffer_destroy()`.
-pub export fn regx_match_list_group(
-    list: ?*const regx_match_list_t,
+export fn regx_match_arr_group(
+    list: ?*const regx_match_arr_t,
     match_idx: usize,
     group_idx: usize,
     out_buf: ?*regx_buffer_t,
@@ -345,11 +365,12 @@ pub export fn regx_match_list_group(
         .len = 0,
     };
 
-    const owned = WrappedMatchList.unwrapConst(l);
+    const owned = WrappedMatchArray.unwrapConst(l);
 
-    if (match_idx >= owned.value.len) return .REGREX_EBADGRP;
+    if (match_idx >= owned.value.len()) return .REGREX_EBADGRP;
 
-    const result = owned.value[match_idx].group(group_idx) catch |err| {
+    const matches = owned.value.items();
+    const result = matches[match_idx].group(group_idx) catch |err| {
         return toErrorCode(err);
     };
 
@@ -369,8 +390,8 @@ pub export fn regx_match_list_group(
 /// to the `out_obj` buffer wrapper.
 ///
 /// The buffer should be released with `regx_buffer_destroy()`.
-pub export fn regx_match_list_full(
-    list: ?*const regx_match_list_t,
+export fn regx_match_arr_full(
+    list: ?*const regx_match_arr_t,
     match_idx: usize,
     out_buf: ?*regx_buffer_t,
 ) regx_errcode_t {
@@ -381,11 +402,12 @@ pub export fn regx_match_list_full(
         .len = 0,
     };
 
-    const owned = WrappedMatchList.unwrapConst(l);
+    const owned = WrappedMatchArray.unwrapConst(l);
 
-    if (match_idx >= owned.value.len) return .REGREX_EBADGRP;
+    if (match_idx >= owned.value.len()) return .REGREX_EBADGRP;
 
-    const result = owned.value[match_idx].full();
+    const matches = owned.value.items();
+    const result = matches[match_idx].full();
 
     const buf = c_alloc.dupe(u8, result) catch {
         return .REGREX_ENOSPACE;
@@ -401,7 +423,7 @@ pub export fn regx_match_list_full(
 /// `regx_pattern_t` compiled pattern handler's destructor.
 ///
 /// Passing `null` is valid and has no effect.
-pub export fn regx_pattern_destroy(pattern: ?*regx_pattern_t) void {
+export fn regx_pattern_destroy(pattern: ?*regx_pattern_t) void {
     const p = pattern orelse return;
     p.deinit();
 }
@@ -413,7 +435,7 @@ pub export fn regx_pattern_destroy(pattern: ?*regx_pattern_t) void {
 ///
 /// Returns .REGX_ENOMATCH if no match found; 
 /// `out_obj` is set to `null`
-pub export fn regx_pattern_search(
+export fn regx_pattern_search(
     pattern: ?*const regx_pattern_t,
     input_buf: regx_buffer_t,
     out_obj: ?*?*regx_match_t,
@@ -442,7 +464,7 @@ pub export fn regx_pattern_search(
 ///
 /// Returns .REGX_ENOMATCH if no match found; 
 /// `out_obj` is set to `null`
-pub export fn regx_pattern_match(
+export fn regx_pattern_match(
     pattern: ?*const regx_pattern_t,
     input_buf: regx_buffer_t,
     out_obj: ?*?*regx_match_t,
@@ -468,7 +490,7 @@ pub export fn regx_pattern_match(
 
 /// Stores the iterator to `out_obj`. The iterator must be released
 /// with `regx_iter_destroy()`. The pattern and the input must outlive it.
-pub export fn regx_pattern_find_iter(
+export fn regx_pattern_find_iter(
     pattern: ?*const regx_pattern_t,
     input_buf: regx_buffer_t,
     out_obj: ?*?*regx_iter_t,
@@ -480,10 +502,11 @@ pub export fn regx_pattern_find_iter(
     };
     out.* = null;
 
-    const owned = WrappedIterator.create(
-        c_alloc, 
-        p.findIter(input
-    )) catch |err| {
+    const iter = p.findIter(input) catch |err| {
+        return toErrorCode(err);
+    };
+
+    const owned = WrappedIterator.create(c_alloc, iter) catch |err| {
         return toErrorCode(err);
     };
 
@@ -493,12 +516,12 @@ pub export fn regx_pattern_find_iter(
 
 /// Finds all non-overlapping matches for a compiled pattern.
 ///
-/// Stores resulting `regx_match_list_t` to `out_obj`.
-/// It must be released with `regx_match_list_destroy()`.
-pub export fn regx_pattern_find_all(
+/// Stores resulting `regx_match_arr_t` to `out_obj`.
+/// It must be released with `regx_match_arr_destroy()`.
+export fn regx_pattern_find_all(
     pattern: ?*const regx_pattern_t,
     input_buf: regx_buffer_t,
-    out_obj: ?*?*regx_match_list_t,
+    out_obj: ?*?*regx_match_arr_t,
 ) regx_errcode_t {
     const p = pattern orelse return .REGREX_EARG;
     const out = out_obj orelse return .REGREX_EARG;
@@ -511,14 +534,11 @@ pub export fn regx_pattern_find_all(
     const matches = p.findAll(input) catch |err| {
         return toErrorCode(err);
     };
-    const result = WrappedMatchList.create(
-        c_alloc, 
-        matches
-    ) catch |err| {
+
+    storeMatchArray(matches, out) catch |err| {
         return toErrorCode(err);
     };
 
-    out.* = result;
     return .REGREX_OK;
 }
 
@@ -530,7 +550,7 @@ pub export fn regx_pattern_find_all(
 /// (`count == 0` means replacing all matches).
 
 /// Output buffer must be released with `regx_buffer_destroy()`.
-pub export fn regx_pattern_sub(
+export fn regx_pattern_sub(
     pattern: ?*const regx_pattern_t,
     repl_buf: regx_buffer_t,
     input_buf: regx_buffer_t,
@@ -568,7 +588,7 @@ pub export fn regx_pattern_sub(
 /// Stores produced match to `out_obj`. It must be released
 /// with `regx_match_destroy()`. Returns .REGX_ENOMATCH and sets
 /// `out_obj` to `null` when the iterator is exhausted.
-pub export fn regx_iter_next(
+export fn regx_iter_next(
     iter: ?*regx_iter_t,
     out_obj: ?*?*regx_match_t,
 ) regx_errcode_t {
@@ -594,7 +614,7 @@ pub export fn regx_iter_next(
 ///
 /// Matches already produced by the iterator are not destroyed
 /// and must be released separately.
-pub export fn regx_iter_destroy(iter: ?*regx_iter_t) void {
+export fn regx_iter_destroy(iter: ?*regx_iter_t) void {
     WrappedIterator.destroy(c_alloc, iter);
 }
 
@@ -604,7 +624,7 @@ pub export fn regx_iter_destroy(iter: ?*regx_iter_t) void {
 /// Buffer length excludes the trailing `\0` byte.
 ///
 /// If `str` is `null`, returns an empty buffer.
-pub export fn regx_buffer_from_cstr(str: ?[*:0]const u8) regx_buffer_t {
+export fn regx_buffer_from_cstr(str: ?[*:0]const u8) regx_buffer_t {
     const s = str orelse return .{ .ptr = null, .len = 0 };
 
     return .{ .ptr = s, .len = std.mem.len(s) };
@@ -617,7 +637,7 @@ pub export fn regx_buffer_from_cstr(str: ?[*:0]const u8) regx_buffer_t {
 ///
 /// Passing an empty buffer or a buffer with a `null` pointer is allowed
 /// and has no effect.
-pub export fn regx_buffer_destroy(buffer: regx_buffer_t) void {
+export fn regx_buffer_destroy(buffer: regx_buffer_t) void {
     const ptr = buffer.ptr orelse return;
 
     const mutable: [*]u8 = @constCast(ptr);
@@ -627,7 +647,7 @@ pub export fn regx_buffer_destroy(buffer: regx_buffer_t) void {
 /// Maps return code to a static string message.
 ///
 /// The returned pointer has static storage duration and must not be freed.
-pub export fn regrex_error(code: regx_errcode_t) [*:0]const u8 {
+export fn regrex_error(code: regx_errcode_t) [*:0]const u8 {
     return switch (code) {
         .REGREX_OK => "OK",
         .REGREX_EARG => "Invalid argument",
@@ -652,7 +672,7 @@ pub export fn regrex_error(code: regx_errcode_t) [*:0]const u8 {
 /// Stores the result to `out_obj` as a reusable pattern type
 /// which does not require to be recompiled for each operation.
 /// Must be released with `regx_pattern_destroy()`
-pub export fn regrex_compile(
+export fn regrex_compile(
     pattern_buf: regx_buffer_t,
     out_obj: ?*?*regx_pattern_t,
 ) regx_errcode_t {
@@ -677,7 +697,7 @@ pub export fn regrex_compile(
 ///
 /// Returns .REGX_ENOMATCH if no match found; 
 /// `out_obj` is set to `null`
-pub export fn regrex_search(
+export fn regrex_search(
     pattern_buf: regx_buffer_t,
     input_buf: regx_buffer_t,
     out_obj: ?*?*regx_match_t,
@@ -715,7 +735,7 @@ pub export fn regrex_search(
 ///
 /// Returns .REGX_ENOMATCH if no match found; 
 /// `out_obj` is set to `null`
-pub export fn regrex_match(
+export fn regrex_match(
     pattern_buf: regx_buffer_t,
     input_buf: regx_buffer_t,
     out_obj: ?*?*regx_match_t,
@@ -748,14 +768,14 @@ pub export fn regrex_match(
 /// Compiled pattern is automatically destroyed at the end of the execution.
 ///
 /// The returned match list is stored to the `out_obj` 
-/// and must be released with `regx_match_list_destroy()`.
+/// and must be released with `regx_match_arr_destroy()`.
 ///
 /// Returns .REGX_ENOMATCH if no match found; 
 /// `out_obj` is set to `null`
-pub export fn regrex_find_all(
+export fn regrex_find_all(
     pattern_buf: regx_buffer_t,
     input_buf: regx_buffer_t,
-    out_obj: ?*?*regx_match_list_t,
+    out_obj: ?*?*regx_match_arr_t,
 ) regx_errcode_t {
     const out = out_obj orelse return .REGREX_EARG;
     out.* = null;
@@ -771,11 +791,10 @@ pub export fn regrex_find_all(
         return toErrorCode(err);
     };
 
-    const wrapped = WrappedMatchList.create(c_alloc, result) catch |err| {
+    storeMatchArray(result, out) catch |err| {
         return toErrorCode(err);
     };
 
-    out.* = wrapped;
     return .REGREX_OK;
 }
 
@@ -788,7 +807,7 @@ pub export fn regrex_find_all(
 /// (`count == 0` means replacing all matches).
 ///
 /// Output buffer must be released with `regx_buffer_destroy()`.
-pub export fn regrex_sub(
+export fn regrex_sub(
     pattern_buf: regx_buffer_t,
     repl_buf: regx_buffer_t,
     input_buf: regx_buffer_t,
@@ -1172,7 +1191,7 @@ test "regrex_match() should not search past the beginning" {
 }
 
 test "regrex_find_all() should return a match list" {
-    var list: ?*regx_match_list_t = null;
+    var list: ?*regx_match_arr_t = null;
 
     try testing.expectEqual(
         .REGREX_OK,
@@ -1183,19 +1202,19 @@ test "regrex_find_all() should return a match list" {
         try testing.expect(false);
         return;
     };
-    defer regx_match_list_destroy(l);
+    defer regx_match_arr_destroy(l);
 
     var len: usize = 0;
-    try testing.expectEqual(.REGREX_OK, regx_match_list_len(l, &len));
+    try testing.expectEqual(.REGREX_OK, regx_match_arr_len(l, &len));
     try testing.expectEqual(@as(usize, 2), len);
 
     var span: regx_group_t = undefined;
-    try testing.expectEqual(.REGREX_OK, regx_match_list_span(l, 1, 0, &span));
+    try testing.expectEqual(.REGREX_OK, regx_match_arr_span(l, 1, 0, &span));
     try testing.expectEqual(@as(usize, 4), span.start);
     try testing.expectEqual(@as(usize, 6), span.end);
 
     var group: regx_buffer_t = .{ .ptr = null, .len = 0 };
-    try testing.expectEqual(.REGREX_OK, regx_match_list_group(l, 1, 1, &group));
+    try testing.expectEqual(.REGREX_OK, regx_match_arr_group(l, 1, 1, &group));
     defer destroyBuffer(&group);
     try expectEqualBuffers("22", group);
 }

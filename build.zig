@@ -91,17 +91,26 @@ pub fn build(b: *std.Build) void {
     });
     testing_step.dependOn(&b.addRunArtifact(test_exe).step);
 
-    const clib_mod = b.addModule("clib",.{
-        .root_source_file = b.path("src/clib.zig"),
+    const translate_c = b.addTranslateC(.{
+        .root_source_file = b.path("include/regrex.h"),
+        .target = target,
+        .optimize = optimize,
     });
-    clib_mod.addIncludePath(b.path("include"));
+    translate_c.linkSystemLibrary("c", .{});
+
+    const h_mod = b.addModule("ABI_regrex", .{
+        .root_source_file = translate_c.getOutput(),
+        .target = target,
+        .optimize = optimize,
+    });
+    h_mod.addIncludePath(b.path("include"));
 
     const docs_mod = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .link_libc = true,
         .imports = &.{
-            .{ .name = "clib", .module = clib_mod },
+            .{ .name = "ABI_regrex", .module = h_mod },
         },
     });
 
@@ -127,11 +136,28 @@ fn buildLibrary(
     optimize: std.builtin.OptimizeMode,
     linkage: std.builtin.LinkMode
 ) *Step.Compile {
+    const translate_c = b.addTranslateC(.{
+        .root_source_file = b.path("include/regrex.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    translate_c.linkSystemLibrary("c", .{});
+
+    const h_mod = b.addModule("ABI", .{
+        .root_source_file = translate_c.getOutput(),
+        .target = target,
+        .optimize = optimize,
+    });
+    h_mod.addIncludePath(b.path("include"));
+
     const mod = b.createModule(.{
         .root_source_file = b.path("src/clib.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
+        .imports = &.{
+            .{ .name = "ABI", .module = h_mod },
+        },
     });
 
     const lib = b.addLibrary(.{

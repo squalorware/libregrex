@@ -10,14 +10,16 @@ const std = @import("std");
 const Compiler = @import("./core/Compiler.zig");
 const Lexer = @import("./core/Lexer.zig");
 const Parser = @import("./core/Parser.zig");
-const regexPattern = @import("./pattern.zig");
-const freeCompiledBuffer = regexPattern.freeCompiledBuffer;
-const SubOptions = regexPattern.SubOptions;
+const matchMod = @import("./match.zig");
+const patternMod = @import("./pattern.zig");
+const freeCompiledBuffer = patternMod.freeCompiledBuffer;
+const SubOptions = patternMod.SubOptions;
 
 /// Library-specific error definitions
 pub const RegrexError = @import("./common/errors.zig").RegrexError;
-pub const Match = @import("./Match.zig");
-pub const Pattern = regexPattern.Pattern;
+pub const Match = matchMod.Match;
+pub const MatchArray = matchMod.MatchArray;
+pub const Pattern = patternMod.Pattern;
 
 /// Compiles a regex `pattern` string for later use.
 /// 
@@ -51,7 +53,7 @@ pub fn compile(
 
     // Return an opaque public type that owns the compiled bytecode 
     // and exposes the reusable matching interface.
-    return Pattern.init(
+    return try Pattern.init(
         alloc, 
         parser.group_count, 
         bytecode, 
@@ -77,7 +79,7 @@ pub fn search(
     const compiled: *Pattern = try compile(alloc, pattern);
     defer compiled.deinit();
 
-    return compiled.search(input);
+    return try compiled.search(input);
 }
 
 /// Compiles the string `pattern` and looks for a match 
@@ -98,7 +100,7 @@ pub fn match(
     const compiled: *Pattern = try compile(alloc, pattern);
     defer compiled.deinit();
 
-    return compiled.match(input);
+    return try compiled.match(input);
 }
 
 /// Compiles the string `pattern` and collects 
@@ -107,18 +109,18 @@ pub fn match(
 /// Compiled `*Pattern` object is automatically destroyed at execution end.
 /// 
 /// Returns:
-/// - `[]Match` on success (heap allocated, should be explicitly 
-/// released by caller with `Match.free(alloc, matches)`)
+/// - `MatchArray` on success (heap allocated, should be explicitly 
+/// released by caller with `MatchArray.deinit()`)
 /// - `RegrexError` on failure
 pub fn findAll(
     alloc: std.mem.Allocator,
     pattern: []const u8,
     input: []const u8,
-) RegrexError![]Match {
+) RegrexError!MatchArray {
     const compiled: *Pattern = try compile(alloc, pattern);
     defer compiled.deinit();
 
-    return compiled.findAll(input);
+    return try compiled.findAll(input);
 }
 
 /// Compiles the string `pattern` and searches for matches in the `input` string, 
@@ -142,7 +144,7 @@ pub fn sub(
     const compiled: *Pattern = try compile(alloc, pattern);
     defer compiled.deinit();
 
-    return compiled.sub(repl, input, options);
+    return try compiled.sub(repl, input, options);
 }
 
 const testing = std.testing;
@@ -154,7 +156,7 @@ test {
     _ = @import("./core/Lexer.zig");
     _ = @import("./core/Parser.zig");
     _ = @import("./core/Compiler.zig");
-    _ = @import("./Match.zig");
+    _ = @import("./match.zig");
     _ = @import("./vm.zig");
     _ = @import("./pattern.zig");
     _ = @import("./opaque.zig");
@@ -239,13 +241,14 @@ test "root.search() should support Unicode literal matching" {
 test "root.findAll() should return all non-overlapping matches" {
     const allocator = testing.allocator;
 
-    const matches = try findAll(
+    var result = try findAll(
         allocator,
         "[0-9]+",
         "lol 420 kek 69",
     );
-    defer Match.free(allocator, matches);
+    defer result.deinit();
 
+    const matches = result.items();
     try testing.expectEqual(@as(usize, 2), matches.len);
 
     try testing.expectEqualStrings("420", matches[0].full());
