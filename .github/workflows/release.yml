@@ -53,8 +53,8 @@ jobs:
         - name: Build
           run: |
             zig build \
-              -Dtarget=${{ matrix.target }}
-              -Doptimize=ReleaseSafe
+              -Dtarget=${{ matrix.target }} \
+              -Doptimize=ReleaseSafe \
               -Dlinkage=dynamic
 
         - name: Package (*nix)
@@ -62,9 +62,9 @@ jobs:
           run: |
             mkdir -p dist
             tar -czf dist/${{ matrix.artifact_name }}.tar.gz \
-            -C zig-out/lib ${{ matrix.binary }}
-            -C zig-out/include regrex.h
-            -C zig-out/share/pkgconfig regrex.pc
+            -C zig-out/lib ${{ matrix.binary }} \
+            -C zig-out/include regrex.h \
+            -C zig-out/share/pkgconfig regrex.pc \
             -C ${{ github.workspace }} LICENSE README.md
 
         - name: Package (Windows)
