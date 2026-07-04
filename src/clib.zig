@@ -39,7 +39,7 @@ const RegrexError = regrex.RegrexError;
 //============================
 
 /// Stable return code type used by the C ABI.
-pub const regx_errcode_t = enum(c_uint) {
+pub const regx_errcode_t = enum(c_int) {
     REGREX_OK = 0,
     REGREX_EARG = 1,
     REGREX_ENOMATCH = 2,

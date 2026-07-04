@@ -26,10 +26,10 @@
 extern "C" {
 #endif
 
-#define REGX_BUF(s) regx_buffer_from_cstr((s))
+#define REGX_BUFFER(s) regx_buffer_from_cstr((s))
 
-#ifndef REGX_MAX_GROUPS
-#define REGX_MAX_GROUPS 1024
+#ifndef REGX_MAX_BUFFER_SIZE
+#define REGX_MAX_BUFFER_SIZE 1024
 #endif
 
 /*
@@ -37,21 +37,21 @@ extern "C" {
 */
 typedef enum 
 {
-    REGREX_OK = 0u,              /* Success */
-    REGREX_EARG = 1u,            /* Invalid argument */
-    REGREX_ENOMATCH = 2u,        /* No matching group */
-    REGREX_ENOSPACE = 3u,        /* Memory allocation error */
-    REGREX_EBADGRP = 4u,         /* Group index is out of range */
-    REGREX_EMAXGRP = 5u,         /* Exceeded maximum group count limit */
-    REGREX_EBADUTF8 = 6u,        /* Invalid or malformed UTF-8  */
-    REGREX_ETOKEN = 7u,          /* Unexpected Token */
-    REGREX_EEND = 7u,            /* Unexpected end of pattern */
-    REGREX_EEXPR = 9u,           /* Expected expression */
-    REGREX_EBADESC = 10u,        /* Trailing backslash */
-    REGREX_EBADREP = 11u,        /* Invalid repetition operator */
-    REGREX_ERPAREN = 12u,        /* Closing parenthesis missing */
-    REGREX_ERBRACK = 13u,        /* Closing bracket missing */
-    REGREX_EINTERNAL = 255u,     /* Generic error (unknown) */
+    REGREX_OK = 0,           /* Success */
+    REGREX_EARG,             /* Invalid argument */
+    REGREX_ENOMATCH,         /* No matching group */
+    REGREX_ENOSPACE,         /* Memory allocation error */
+    REGREX_EBADGRP,          /* Group index is out of range */
+    REGREX_EMAXGRP,          /* Exceeded maximum group count limit */
+    REGREX_EBADUTF8,         /* Invalid or malformed UTF-8  */
+    REGREX_ETOKEN,           /* Unexpected Token */
+    REGREX_EEND,             /* Unexpected end of pattern */
+    REGREX_EEXPR,            /* Expected expression */
+    REGREX_EBADESC,          /* Trailing backslash */
+    REGREX_EBADREP,          /* Invalid repetition operator */
+    REGREX_ERPAREN,          /* Closing parenthesis missing */
+    REGREX_ERBRACK,          /* Closing bracket missing */
+    REGREX_EINTERNAL = 255   /* Generic error (unknown) */
 } regx_errcode_t;
 
 /*

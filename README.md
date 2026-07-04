@@ -112,7 +112,7 @@ pub fn main() !void {
     std.debug.print("matched: {s}\n", .{result.full()});
 }
 ```
-Though if you need to use the same pattern more than once, it's better to compile it once to keep a reusable `Pattern` handle until you release it:
+If you need to use the same pattern more than once, it's better to compile it once to keep a reusable `Pattern` handle until you release it:
 ```zig
 // Other code...
 const allocator = std.heap.page_allocator;
@@ -129,7 +129,7 @@ std.debug.print("first match: {s}\n", .{first.full()});
 ```
 `Pattern` provides all the same functionality as the one-off functions - in fact, what, for example, the `regrex.match` is doing is basically compiling a temporary `Pattern` and calling its methods; the `Pattern` is released at the end of the function's execution. 
 
-You can use the regular way with the `findAll` function
+If you need to retrieve all matches you can use `findAll` function to get them at once
 ```zig
 var matches: regrex.MatchArray = try pattern.findAll("foo=123 bar=456 baz=789");
 defer matches.deinit();
@@ -139,7 +139,7 @@ for (matches) |m| {
 }
 ```
 
-Alternatively, you can use the lazy iterator which Pattern provides, offering more versatile control
+Alternatively, you can use the lazy iterator which `Pattern` provides, allowing for more versatile control
 ```zig
 var iter = try pattern.findIter("foo=123 bar=456 baz=789");
 defer iter.deinit();
@@ -156,9 +156,8 @@ while(iter.next()) |m| {
     std.debug.print("{s}\n", .{m});
 }
 ```
-
-as well as any other uses one can come up with
-```zig
+And of course, you can replace the matches (the original input is never mutated - `sub` copies the non-matching bits and inserts the string stored inside `repl_buf` parameter at the byte offsets of the matches)
+```
 const replaced = try pattern.sub("<pair>", "foo=123 bar=456", .{ .count = 0 });
 defer allocator.free(replaced);
 
@@ -169,7 +168,11 @@ std.debug.print("replaced: {s}\n", .{replaced});
 
 The provided C-compatible API is expected to expose all the same functionality as the Zig library, keeping in mind the inevitable limitations and possible pitfalls. The C ABI operates with opaque handler types wrapping over the Zig implementation and explicit destructors for every type to ensure as much maximum memory safety as it is possible due to the nature of C.
 
-`regx_buffer_t` represents a convenience type that holds the string (byte buffer) and its length. If your header provides the `REGX_BUF` macro, it can be used for regular null-terminated string literals and C strings as well.
+- `regx_errcode_t` is an enum type containing execution status codes.
+- `regx_pattern_t` and `regx_match_t` are opaque types wrapping the underlying Zig `Pattern`and `Match` types.
+- `regx_match_arr_t` respectively encapsulates the `MatchArray` type
+- `regx_buffer_t` represents a convenience type that holds the string (byte buffer) and its length. 
+- `REGX_BUF` is a helper macro that allows converting string literals and C strings to `regx_buffer_t`
 ```c
 #include <stdio.h>
 #include "regrex.h"
@@ -180,19 +183,19 @@ int main(void)
     regx_pattern_t *pattern = NULL;
     regx_match_t *match = NULL;
 
-    rc = regrex_compile(REGX_BUF("[0-9]+"), &pattern);
+    rc = regrex_compile(REGX_BUFFER("[0-9]+"), &pattern);
     if (rc != REGREX_OK) {
-        fprintf(stderr, "compile failed: %s\n", regrex_error(rc));
+        fprintf(stderr, "regrex_compile failed: %s\n", regrex_error(rc));
         return 1;
     }
 
-    rc = regx_pattern_search(pattern, REGX_BUF("lol 420 kek"), &match);
+    rc = regx_pattern_search(pattern, REGX_BUFFER("foo 123 bar"), &match);
     if (rc == REGREX_OK) {
         regx_group_t span;
 
         rc = regx_match_span(match, 0, &span);
         if (rc == REGREX_OK) {
-            const char *input = "lol 420 kek";
+            const char *input = "foo 123 bar";
             printf("matched: %.*s\n", (int)(span.end - span.start), input + span.start);
         }
 
@@ -204,7 +207,7 @@ int main(void)
     }
     // Don't forget about the destructors!
     regx_pattern_destroy(pattern);
-    return rc == REGREX_OK || rc == REGREX_ENOMATCH ? 0 : 1;
+    return (int) rc;
 }
 ```
 ## Building

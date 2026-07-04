@@ -2,7 +2,8 @@ name: Release
 on:
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+" # v1.2.3
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
 env:
   ZIG_VERSION: "0.16.0"
 jobs:
@@ -50,11 +51,20 @@ jobs:
           with:
             version: ${{ env.ZIG_VERSION }}
 
-        - name: Build
+        - name: Build (*nix)
+          if: ${{ !contains(matrix.target, 'windows') }}
           run: |
             zig build \
               -Dtarget=${{ matrix.target }} \
               -Doptimize=ReleaseSafe \
+              -Dlinkage=dynamic
+        
+        - name: Build (Windows)
+          if: ${{ contains(matrix.target, 'windows') }}
+          run: |
+            zig build `
+              -Dtarget=${{ matrix.target }} `
+              -Doptimize=ReleaseSafe `
               -Dlinkage=dynamic
 
         - name: Package (*nix)
@@ -70,7 +80,7 @@ jobs:
         - name: Package (Windows)
           if: ${{ contains(matrix.target, 'windows') }}
           run: |
-            mkdir -p dist
+            md -Force dist
             zip -j dist/${{ matrix.artifact_name }}.zip ` 
               zig-out/lib/${{ matrix.binary }} `
               zig-out/include/regrex.h `
