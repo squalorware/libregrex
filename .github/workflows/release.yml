@@ -37,11 +37,11 @@ jobs:
           - target: x86_64-windows-gnu
             runner: windows-latest
             artifact_name: libregrex-windows-x86_64
-            binary: libregrex.dll
+            binary: regrex.dll
           - target: aarch64-windows-gnu
             runner: windows-latest
             artifact_name: libregrex-windows-aarch64
-            binary: libregrex.dll
+            binary: regrex.dll
 
     steps:
         - uses: actions/checkout@v4
@@ -82,7 +82,9 @@ jobs:
           run: |
             md -Force dist
             $compress = @{
-              Path = "zig-out\lib\${{ matrix.binary }}", `
+              Path = "zig-out\bin\${{ matrix.binary }}", `
+                "zig-out\bin\regrex.pdb", `
+                "zig-out\lib\regrex.lib", `
                 "zig-out\include\regrex.h", `
                 "zig-out\share\pkgconfig\regrex.pc", `
                 "LICENSE", "README.md"
