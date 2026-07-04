@@ -131,8 +131,8 @@ std.debug.print("first match: {s}\n", .{first.full()});
 
 You can use the regular way with the `findAll` function
 ```zig
-const matches = try pattern.findAll("foo=123 bar=456 baz=789");
-defer regrex.Match.free(allocator, matches);
+var matches: regrex.MatchArray = try pattern.findAll("foo=123 bar=456 baz=789");
+defer matches.deinit();
 
 for (matches) |m| {
     std.debug.print("match: {s}\n", .{m.full()});
