@@ -1,0 +1,116 @@
+name: Release
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+" # v1.2.3
+env:
+  ZIG_VERSION: "0.16.0"
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-linux-musl
+            runner: ubuntu-latest
+            artifact_name: libregrex-linux-x86_64
+            binary: libregrex.so
+          - target: aarch64-linux-musl
+            runner: ubuntu-latest
+            artifact_name: libregrex-linux-aarch64
+            binary: libregrex.so
+          - target: riscv64-linux-musl
+            runner: ubuntu-latest
+            artifact_name: libregrex-linux-riscv64
+            binary: libregrex.so
+          - target: x86_64-macos
+            runner: macos-13
+            artifact_name: libregrex-macos-x86_64
+            binary: libregrex.so
+          - target: aarch64-macos
+            runner: macos-latest
+            artifact_name: libregrex-macos-aarch64
+            binary: libregrex.so
+          - target: x86_64-windows-gnu
+            runner: windows-latest
+            artifact_name: libregrex-windows-x86_64
+            binary: libregrex.dll
+          - target: aarch64-windows-gnu
+            runner: windows-latest
+            artifact_name: libregrex-windows-aarch64
+            binary: libregrex.dll
+
+    steps:
+        - uses: actions/checkout@v4
+
+        - name: Install Zig
+          uses: mlugg/setup-zig@v1
+          with:
+            version: ${{ env.ZIG_VERSION }}
+
+        - name: Build
+          run: |
+            zig build \
+              -Dtarget=${{ matrix.target }}
+              -Doptimize=ReleaseSafe
+              -Dlinkage=dynamic
+
+        - name: Package (*nix)
+          if: ${{ !contains(matrix.target, "windows") }}
+          run: |
+            mkdir -p dist
+            tar -czf dist/${{ matrix.artifact_name }}.tar.gz \
+            -C zig-out/lib ${{ matrix.binary }}
+            -C zig-out/include regrex.h
+            -C zig-out/share/pkgconfig regrex.pc
+            -C ${{ github.workspace }} LICENSE README.md
+
+        - name: Package (Windows)
+          if: ${{ contains(matrix.target, "windows") }}
+          run: |
+            mkdir -p dist
+            zip -j dist/${{ matrix.artifact_name }}.zip \
+              zig-out/lib/${{ matrix.binary }} \
+              zig-out/include/regrex.h \
+              zig-out/share/pkgconfig/regrex.pc \
+              LICENSE README.md
+
+        - name: Upload artifact
+          uses: actions/upload-artifact@v4
+          with:
+            name: ${{ matrix.artifact_name }}
+            path: dist/
+            retention-days: 7
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum *.tar.gz *.zip | tee checksums.txt
+
+      - name: Create Release  
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
