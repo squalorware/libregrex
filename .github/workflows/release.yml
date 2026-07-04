@@ -46,7 +46,7 @@ jobs:
         - uses: actions/checkout@v4
 
         - name: Install Zig
-          uses: mlugg/setup-zig@v1
+          uses: mlugg/setup-zig@v2
           with:
             version: ${{ env.ZIG_VERSION }}
 
@@ -58,7 +58,7 @@ jobs:
               -Dlinkage=dynamic
 
         - name: Package (*nix)
-          if: ${{ !contains(matrix.target, "windows") }}
+          if: ${{ !contains(matrix.target, 'windows') }}
           run: |
             mkdir -p dist
             tar -czf dist/${{ matrix.artifact_name }}.tar.gz \
@@ -68,7 +68,7 @@ jobs:
             -C ${{ github.workspace }} LICENSE README.md
 
         - name: Package (Windows)
-          if: ${{ contains(matrix.target, "windows") }}
+          if: ${{ contains(matrix.target, 'windows') }}
           run: |
             mkdir -p dist
             zip -j dist/${{ matrix.artifact_name }}.zip \
