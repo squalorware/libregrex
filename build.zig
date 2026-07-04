@@ -150,7 +150,6 @@ fn buildLibrary(
     });
     h_mod.addIncludePath(b.path("include"));
 
-
     const mod = b.createModule(.{
         .root_source_file = b.path("src/clib.zig"),
         .target = target,
