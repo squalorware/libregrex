@@ -60,13 +60,19 @@ jobs:
             $version = $tag.Substring(1, $tag.Length - 1)
             "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+        - name: Install build dependencies (Linux)
+          if: ${{ contains(matrix.target, 'linux') }}
+          run: |
+            sudo apt update
+            sudo apt install -y binutils-${{ matrix.target }} gcc-${{ matrix.target }}
+
         - name: Install Zig
           uses: mlugg/setup-zig@v2
           with:
             version: ${{ env.ZIG_VERSION }}
 
-        - name: Build (POSIX)
-          if: ${{ !contains(matrix.target, 'windows') }}
+        - name: Build (Linux)
+          if: ${{ contains(matrix.target, 'linux') }}
           run: |
             zig build --prefix dist \
               -Dtarget=${{ matrix.target }} \
@@ -74,7 +80,25 @@ jobs:
             ${{ matrix.strip_cmd }} dist/lib/libregrex.so.${{ env.VERSION }}
             cp LICENSE README.md dist/
 
-        - name: Package (POSIX)
+        - name: Build (macOS)
+          if: ${{ contains(matrix.target, 'macos') }}
+          run: |
+            zig build --prefix dist \
+              -Dtarget=${{ matrix.target }} \
+              -Doptimize=ReleaseSafe
+            ${{ matrix.strip_cmd }} dist/lib/libregrex.dylib.${{ env.VERSION }}
+            cp LICENSE README.md dist/
+
+        - name: Build (Windows)
+          if: ${{ contains(matrix.target, 'windows') }}
+          run: |
+            zig build --prefix dist `
+              -Dtarget=${{ matrix.target }} `
+              -Doptimize=ReleaseSafe
+            Remove-Item -Path "dist\bin\regrex.pdb"
+            Copy-Item -Path "LICENSE", "README.md" -Destination "dist" -Force
+
+        - name: Package (Linux & macOS)
           if: ${{ !contains(matrix.target, 'windows') }}
           run: |
             OUT=libregrex${{ env.VERSION }}-${{ matrix.os_arch }}
@@ -85,15 +109,6 @@ jobs:
               share \
               LICENSE README.md
             echo "OUT_FILE=$OUT" >> $GITHUB_ENV
-
-        - name: Build (Windows)
-          if: ${{ contains(matrix.target, 'windows') }}
-          run: |
-            zig build --prefix dist `
-              -Dtarget=${{ matrix.target }} `
-              -Doptimize=ReleaseSafe
-            Remove-Item -Path "dist\bin\regrex.pdb"
-            Copy-Item -Path "LICENSE", "README.md" -Destination "dist" -Force
 
         - name: Package (Windows)
           if: ${{ contains(matrix.target, 'windows') }}
