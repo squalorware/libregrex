@@ -87,6 +87,7 @@ jobs:
             zig build --prefix dist `
               -Dtarget=${{ matrix.target }} `
               -Doptimize=ReleaseSafe
+            Remove-Item -Path "dist\bin\regrex.pdb"
             Copy-Item -Path "LICENSE", "README.md" -Destination "dist" -Force
 
         - name: Package (Windows)
