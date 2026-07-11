@@ -61,7 +61,7 @@ jobs:
             "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
         - name: Install build dependencies (Linux)
-          if: ${{ contains(matrix.target, 'linux') }}
+          if: ${{ contains(matrix.target, 'linux') && !contains(matrix.target, 'x86_64') }}
           run: |
             sudo apt update
             sudo apt install -y binutils-${{ matrix.target }} gcc-${{ matrix.target }}
@@ -86,7 +86,7 @@ jobs:
             zig build --prefix dist \
               -Dtarget=${{ matrix.target }} \
               -Doptimize=ReleaseSafe
-            ${{ matrix.strip_cmd }} dist/lib/libregrex.dylib.${{ env.VERSION }}
+            ${{ matrix.strip_cmd }} dist/lib/libregrex.${{ env.VERSION }}.dylib
             cp LICENSE README.md dist/
 
         - name: Build (Windows)
