@@ -52,8 +52,8 @@ jobs:
           if: ${{ contains(matrix.target, 'windows') }}
           id: pre_version_win
           run: |
-            $tag = "{{ github.ref_name }}"
-            $version = $tag.Substring(1, $tag.Length)
+            $tag = "${{ github.ref_name }}"
+            $version = $tag.Substring(1, $tag.Length - 1)
             "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
         - name: Install Zig
