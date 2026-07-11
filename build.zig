@@ -38,7 +38,7 @@ pub fn build(b: *std.Build) void {
                 \\Name: regrex
                 \\URL: https://github.com/squalorware/libregrex
                 \\Description: A simple Zig implementation of PCRE/Python-inspired regular expression engine.
-                \\Version: 0.1.0
+                \\Version: 0.1.1
                 \\Cflags: -I${includedir}
                 \\Libs: -L${libdir} -lregrex
             );
