@@ -157,7 +157,7 @@ while(iter.next()) |m| {
 }
 ```
 And of course, you can replace the matches (the original input is never mutated - `sub` copies the non-matching bits and inserts the string stored inside `repl_buf` parameter at the byte offsets of the matches)
-```
+```zig
 const replaced = try pattern.sub("<pair>", "foo=123 bar=456", .{ .count = 0 });
 defer allocator.free(replaced);
 
@@ -207,12 +207,16 @@ int main(void)
     }
     // Don't forget about the destructors!
     regx_pattern_destroy(pattern);
-    return (int) rc;
+    return  rc;
 }
 ```
+
+Also, one can take a look at this list (might be expanded) with:
+- A more [in-depth example](https://github.com/squalorware/regrex_c) of using `regrex` with the C programming language;
+
 ## Building
 
-Minimal required version for a successful build is 0.16.0
+Minimal required version for a successful build is 0.16.0. Also, your system needs to have `glibc` installed.
 
 ### Testing
 
