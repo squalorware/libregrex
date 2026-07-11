@@ -172,7 +172,9 @@ The provided C-compatible API is expected to expose all the same functionality a
 - `regx_pattern_t` and `regx_match_t` are opaque types wrapping the underlying Zig `Pattern`and `Match` types.
 - `regx_match_arr_t` respectively encapsulates the `MatchArray` type
 - `regx_buffer_t` represents a convenience type that holds the string (byte buffer) and its length. 
-- `REGX_BUF` is a helper macro that allows converting string literals and C strings to `regx_buffer_t`
+- `REGX_BUFFER` is a helper macro that allows converting string literals and C strings to `regx_buffer_t`
+
+**A simple example program:**
 ```c
 #include <stdio.h>
 #include "regrex.h"
@@ -211,7 +213,7 @@ int main(void)
 }
 ```
 
-Also, one can take a look at this list (might be expanded) with:
+Also, one can take a look at this list (might be expanded) containing:
 - A more [in-depth example](https://github.com/squalorware/regrex_c) of using `regrex` with the C programming language;
 
 ## Building
