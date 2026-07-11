@@ -50,7 +50,7 @@ jobs:
 
         - name: Extract version (Windows)
           if: ${{ contains(matrix.target, 'windows') }}
-          id: pre_version
+          id: pre_version_win
           run: |
             $tag = {{ github.ref_name }}
             $version = $tag.Substring(1, $tag.Length)
