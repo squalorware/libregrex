@@ -14,91 +14,94 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-linux-musl
+          - target: x86_64-linux-gnu
             runner: ubuntu-latest
-            artifact_name: libregrex-linux-x86_64
-            binary: libregrex.so
-          - target: aarch64-linux-musl
+            os_arch: linux-x86_64
+          - target: aarch64-linux-gnu
             runner: ubuntu-latest
-            artifact_name: libregrex-linux-aarch64
-            binary: libregrex.so
-          - target: riscv64-linux-musl
+            os_arch: linux-aarch64
+          - target: riscv64-linux-gnu
             runner: ubuntu-latest
-            artifact_name: libregrex-linux-riscv64
+            os_arch: linux-riscv64
             binary: libregrex.so
           - target: x86_64-macos
             runner: macos-15-intel
-            artifact_name: libregrex-macos-x86_64
-            binary: libregrex.so
+            os_arch: macos-x86_64
           - target: aarch64-macos
             runner: macos-latest
-            artifact_name: libregrex-macos-aarch64
-            binary: libregrex.so
+            os_arch: macos-aarch64
           - target: x86_64-windows-gnu
             runner: windows-latest
-            artifact_name: libregrex-windows-x86_64
-            binary: regrex.dll
+            os_arch: windows-x86_64
           - target: aarch64-windows-gnu
             runner: windows-latest
-            artifact_name: libregrex-windows-aarch64
-            binary: regrex.dll
+            os_arch: windows-aarch64
 
     steps:
         - uses: actions/checkout@v4
+
+        - name: Extract version
+          id: pre_version
+          run: |
+            TAG=${{ github.ref_name }}
+            VERSION=${TAG#v}
+            echo "VERSION=$VERSION" >> $GITHUB_ENV
 
         - name: Install Zig
           uses: mlugg/setup-zig@v2
           with:
             version: ${{ env.ZIG_VERSION }}
 
-        - name: Build (*nix)
+        - name: Build (POSIX)
           if: ${{ !contains(matrix.target, 'windows') }}
           run: |
-            zig build \
+            zig build --prefix dist \
               -Dtarget=${{ matrix.target }} \
-              -Doptimize=ReleaseSafe \
-              -Dlinkage=dynamic
-        
+              -Doptimize=ReleaseSafe
+            cp LICENSE README.md dist/
+
+        - name: Package (POSIX)
+          if: ${{ !contains(matrix.target, 'windows') }}
+          run: |
+            OUT=libregrex${{ env.VERSION }}-${{ matrix.os_arch }}
+            cd dist
+            tar -czf "${OUT}.tar.gz" \
+              lib \
+              include \
+              share \
+              LICENSE README.md
+            echo "OUT_FILE=$OUT" >> $GITHUB_ENV
+
         - name: Build (Windows)
           if: ${{ contains(matrix.target, 'windows') }}
           run: |
-            zig build `
+            zig build --prefix dist `
               -Dtarget=${{ matrix.target }} `
-              -Doptimize=ReleaseSafe `
-              -Dlinkage=dynamic
-
-        - name: Package (*nix)
-          if: ${{ !contains(matrix.target, 'windows') }}
-          run: |
-            mkdir -p dist
-            tar -czf dist/${{ matrix.artifact_name }}.tar.gz \
-            zig-out/lib \
-            zig-out/include \
-            zig-out/share/pkgconfig \
-            LICENSE README.md
+              -Doptimize=ReleaseSafe
+            Copy-Item -Path "LICENSE", "README.md" -Destination "dist" -Force
 
         - name: Package (Windows)
           if: ${{ contains(matrix.target, 'windows') }}
           run: |
-            md -Force dist
+            $outFile = "regrex${{ env.VERSION }}-${{ matrix.os_arch }}"
+            cd dist
             $compress = @{
-              Path = "zig-out\bin\${{ matrix.binary }}", `
-                "zig-out\bin\regrex.pdb", `
-                "zig-out\lib\regrex.lib", `
-                "zig-out\include\regrex.h", `
-                "zig-out\share\pkgconfig\regrex.pc", `
-                "LICENSE", "README.md"
+              Path = "bin", `
+                "lib", `
+                "include", 
+                "LICENSE", `
+                "README.md"
               CompressionLevel = "Optimal"
-              DestinationPath = "dist\${{ matrix.artifact_name }}.zip"
+              DestinationPath = "$($outFile).zip"
             }
             Compress-Archive @compress
+            "OUT_FILE=$outFile" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
         - name: Upload artifact
           uses: actions/upload-artifact@v4
           with:
-            name: ${{ matrix.artifact_name }}
+            name: ${{ env.OUT_FILE }}
             path: dist/
-            retention-days: 7
 
   release:
     name: Create Release
