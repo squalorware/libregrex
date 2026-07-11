@@ -17,19 +17,23 @@ jobs:
           - target: x86_64-linux-gnu
             runner: ubuntu-latest
             os_arch: linux-x86_64
+            strip_cmd: strip --strip-unneeded
           - target: aarch64-linux-gnu
             runner: ubuntu-latest
             os_arch: linux-aarch64
+            strip_cmd: aarch64-linux-gnu-strip --strip-unneeded
           - target: riscv64-linux-gnu
             runner: ubuntu-latest
             os_arch: linux-riscv64
-            binary: libregrex.so
+            strip_cmd: riscv64-linux-gnu-strip --strip-unneeded
           - target: x86_64-macos
             runner: macos-15-intel
+            strip_cmd: strip -x
             os_arch: macos-x86_64
           - target: aarch64-macos
             runner: macos-latest
             os_arch: macos-aarch64
+            strip_cmd: strip -x
           - target: x86_64-windows-gnu
             runner: windows-latest
             os_arch: windows-x86_64
@@ -67,7 +71,7 @@ jobs:
             zig build --prefix dist \
               -Dtarget=${{ matrix.target }} \
               -Doptimize=ReleaseSafe
-            strip --strip-unneeded dist/lib/libregrex.so.${{ env.VERSION }}
+            ${{ matrix.strip_cmd }} dist/lib/libregrex.so.${{ env.VERSION }}
             cp LICENSE README.md dist/
 
         - name: Package (POSIX)
