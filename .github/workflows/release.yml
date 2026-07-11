@@ -67,6 +67,7 @@ jobs:
             zig build --prefix dist \
               -Dtarget=${{ matrix.target }} \
               -Doptimize=ReleaseSafe
+            strip --strip-unneeded dist/lib/libregrex.so.${{ env.VERSION }}
             cp LICENSE README.md dist/
 
         - name: Package (POSIX)
