@@ -50,13 +50,13 @@ This project does not aim to be a proper and serious production-grade implementa
 ### Install
 Fetch and save to `build.zig.zon` in one step
 ```bash
-zig fetch --save https://github.com/squalorware/libregrex/archive/refs/tags/v0.1.0.tar.gz
+zig fetch --save https://github.com/squalorware/libregrex/archive/refs/tags/v0.1.1.tar.gz
 ```
 
 Alternatively, you can fetch it via `git ref`
 
 ```bash
-zig fetch --save git+https://github.com/squalorware/libregrex#v0.1.0
+zig fetch --save git+https://github.com/squalorware/libregrex#v0.1.1
 ```
 
 This will automatically add the dependency and its hash to your `build.zig.zon`.
