@@ -40,12 +40,21 @@ jobs:
     steps:
         - uses: actions/checkout@v4
 
-        - name: Extract version
+        - name: Extract version (POSIX)
+          if: ${{ !contains(matrix.target, 'windows') }}
           id: pre_version
           run: |
             TAG=${{ github.ref_name }}
             VERSION=${TAG#v}
             echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+        - name: Extract version (Windows)
+          if: ${{ contains(matrix.target, 'windows') }}
+          id: pre_version
+          run: |
+            $tag = {{ github.ref_name }}
+            $version = $tag.Substring(1, $tag.Length)
+            "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
         - name: Install Zig
           uses: mlugg/setup-zig@v2
