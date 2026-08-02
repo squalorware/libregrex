@@ -1,6 +1,7 @@
 const managed = @import("./managed.zig");
 const matching = @import("./matching.zig");
 
+pub const conv = @import("./conv.zig");
 pub const Error = @import("./error.zig").Error;
 pub const ManagedArrayList = managed.ManagedArrayList;
 pub const ManagedOpaqueWrapper = managed.ManagedOpaqueWrapper;

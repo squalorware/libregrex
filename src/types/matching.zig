@@ -3,6 +3,8 @@ const Error = @import("./error.zig").Error;
 pub const ManagedArrayList = @import("./managed.zig").ManagedArrayList;
 const Sentinel = std.math.maxInt(usize);
 
+pub const MAX_GROUPS_LEN = 1024;
+
 /// Holds starting and ending indices of a byte range inside a string
 ///
 /// Follows slice semantics - `start` is inclusive, `end` is exclusive
