@@ -38,7 +38,7 @@ pub fn ManagedArrayList(
             var owned = item;
 
             self.inner.append(self.allocator, item) catch {
-                owned.deinit(self.alloc);
+                owned.deinit(self.allocator);
                 return Error.MemoryError;
             };
         }
@@ -53,6 +53,29 @@ pub fn ManagedArrayList(
 
         pub fn get(self: Self, i: usize) T {
             return self.inner.items[i];
+        }
+
+        pub fn set(self: *Self, i: usize, val: T) Error!void {
+            if (i >= self.inner.items.len) {
+                return Error.InvalidArgument;
+            }
+
+            self.inner.items[i].deinit(self.allocator);
+            self.inner.items[i] = val;
+        }
+
+        pub fn clone(self: *Self) Error!Self {
+            const copy = self.inner.clone() catch {
+                return Error.MemoryError;
+            };
+            return .{
+                .allocator = self.allocator,
+                .inner = copy,
+            };
+        }
+
+        pub fn pop(self: *Self) ?T {
+            return self.inner.pop();
         }
     };
 }
