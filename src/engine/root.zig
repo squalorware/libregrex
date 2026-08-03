@@ -3,14 +3,13 @@ const RegrexError = @import("types").Error;
 const AST = @import("./syntax.zig");
 const bytecode = @import("./bytecode.zig");
 const tokens = @import("./tokens.zig");
-const Instruction = bytecode.Instruction;
 const InstructionList = bytecode.InstructionList;
-const TokenList = tokens.TokenList;
-pub const Token = tokens.Token;
 pub const Lexer = @import("./Lexer.zig");
 pub const Parser = @import("./Parser.zig");
 pub const Compiler = @import("./Compiler.zig");
 pub const VM = @import("./VM.zig");
+pub const Token = tokens.Token;
+const TokenList = tokens.TokenList;
 
 pub fn initVM(alloc: std.mem.Allocator, pattern: []const u8, inst_list: *InstructionList) RegrexError!VM {
     var arena = std.heap.ArenaAllocator.init(alloc);

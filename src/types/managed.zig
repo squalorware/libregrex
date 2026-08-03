@@ -77,6 +77,12 @@ pub fn ManagedArrayList(
         pub fn pop(self: *Self) ?T {
             return self.inner.pop();
         }
+
+        pub fn toOwnedSlice(self: *Self) Error![]T {
+            return self.inner.toOwnedSlice(self.alloc) catch {
+                return Error.MemoryError;
+            };
+        }
     };
 }
 
