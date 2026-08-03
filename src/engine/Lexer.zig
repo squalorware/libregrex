@@ -13,12 +13,6 @@ const TokenType = tokens.TokenType;
 const TokenList = tokens.TokenList;
 const mapRuneToTokenType = tokens.mapRuneToTokenType;
 
-// const RegrexError = @import("../common/errors.zig").RegrexError;
-// const Rune = @import("../common/types.zig").Rune;
-// const Token = @import("./Token.zig");
-// const TokenType = Token.TokenType;
-// const mapRuneToTokenType = Token.mapRuneToTokenType;
-
 /// Stateful lexical analyzer and tokenizer
 pub const Self = @This();
 

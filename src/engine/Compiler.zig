@@ -219,7 +219,7 @@ pub fn compile(
     self: Self, 
     alloc: std.mem.Allocator, 
     node: *const AST.Node
-) RegrexError![]void {
+) RegrexError!void {
     try self.emit(.{ .Save = 0 });
     try self.compileNode(alloc, node);
     try self.emit(.{ .Save = 1 });

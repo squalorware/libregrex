@@ -3,7 +3,7 @@
 
 /// Regular Expression AST Node.
 ///
-/// Use pointers for recursive structures
+/// Forms a recursive tree structure with pointers to another Nodes
 pub const Node = union(enum) {
     /// Literal Unicode code point
     Literal: Literal,
