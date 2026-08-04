@@ -41,8 +41,8 @@ instructions: *InstructionList,
 
 /// Initializes a compiler state and 
 /// allocates bytecode dynamic buffer
-pub fn init(il: *InstructionList) Self {
-    return .{ .instructions = il };
+pub fn init(inst_list: *InstructionList) Self {
+    return .{ .instructions = inst_list };
 }
 
 /// Appends an `Instruction` and returns its bytecode index 
