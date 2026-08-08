@@ -10,19 +10,19 @@ const testing = std.testing;
 ///
 ///     item.deinit(allocator)
 ///
-/// `deinit_cb` may be provided when `T` requires different destruction
-/// logic. In that case, the callback is used instead of `T.deinit()`.
+/// `T_destructor_cb` may be provided when `T` requires different release logic.
+///  In such case, the passed callback function is used instead of `T.deinit()`.
 ///
 /// Operations that accept a `T` by value (`init`, `append`, and `set`) transfer
 /// ownership of that value to the list on success.
 ///
 /// Operations that remove values (`pop` and `toOwnedSlice`) transfer ownership
 /// from the list to the caller.
-pub fn ManagedArrayList(
+pub fn ManagedDynamicBuffer(
     comptime T: type,
-    comptime deinit_cb: ?*const fn(
-        item: *T,
+    comptime T_destructor_cb: ?*const fn(
         allocator: std.mem.Allocator,
+        item: *T,
     ) void,
 ) type {
     return struct {
@@ -40,6 +40,7 @@ pub fn ManagedArrayList(
         /// initialization.
         pub fn init(alloc: std.mem.Allocator, buffer: ?[]const T) Error!Self {
             var inner: std.ArrayList(T) = .empty;
+            errdefer inner.deinit(alloc);
 
             if (buffer) |buf| {
                 inner.appendSlice(alloc, buf) catch {
@@ -56,8 +57,8 @@ pub fn ManagedArrayList(
         /// Releases an individual owned value according to this list's
         /// destruction policy.
         fn deinitItem(self: Self, item: *T) void {
-            if (deinit_cb) |callback| {
-                callback(item, self.allocator);
+            if (T_destructor_cb) |callback_fn| {
+                callback_fn(self.allocator, item);
             } else {
                 item.deinit(self.allocator);
             }
@@ -83,6 +84,20 @@ pub fn ManagedArrayList(
 
             self.inner.append(self.allocator, owned) catch {
                 self.deinitItem(&owned);
+                return Error.MemoryError;
+            };
+        }
+
+        /// Extends the buffer with `slice`.
+        ///
+        /// The input slice remains owned by the caller.
+        ///
+        /// On success, ownership of the copied `T` values transfers to the list;
+        /// the caller must not separately deinitialize the original values.
+        ///
+        /// On failure, ownership remains entirely with the caller.
+        pub fn appendSlice(self: *Self, slice: []const T) Error!void {
+            self.inner.appendSlice(self.allocator, slice) catch {
                 return Error.MemoryError;
             };
         }
