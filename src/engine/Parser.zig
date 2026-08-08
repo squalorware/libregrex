@@ -4,6 +4,7 @@ const Rune = @import("unicode").Rune;
 const AST = @import("./syntax.zig");
 const Lexer = @import("./Lexer.zig");
 const tokens = @import("./tokens.zig");
+const testing = std.testing;
 const RegrexError = types.Error;
 const Token = tokens.Token;
 const TokenType = tokens.TokenType;
@@ -360,4 +361,91 @@ pub fn parse(self: *Parser) RegrexError!*AST.Node {
         return RegrexError.UnexpectedToken;
     }
     return ast;
+}
+
+test "Should parse anchored lowercase character class repeat" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var token_buffer = try tokens.TokenListBuffer.init(alloc, null);
+    defer token_buffer.deinit();
+
+    const lexer = Lexer.init("^[a-z]*$");
+    try lexer.tokenize(&token_buffer);
+
+    var parser = Parser.init(alloc, token_buffer.items());
+    const ast = try parser.parse();
+
+    switch (ast.*) {
+        .Sequence => |seq| {
+            try testing.expectEqual(@as(usize, 3), seq.nodes.len);
+            try testing.expect(seq.nodes[0].* == .StartAnchor);
+            switch (seq.nodes[1].*) {
+                .Repeat => |rep| {
+                    try testing.expectEqual(@as(usize, 0), rep.min);
+                    try testing.expectEqual(@as(?usize, null), rep.max);
+
+                    switch (rep.node.*) {
+                        .CharClass => |cls| {
+                            try testing.expectEqual(false, cls.negated);
+                            try testing.expectEqual(@as(usize, 1), cls.ranges.len);
+                            try testing.expectEqual(@as(Rune, 'a'), cls.ranges[0].start);
+                            try testing.expectEqual(@as(Rune, 'z'), cls.ranges[0].end);
+                        },
+                        else => try testing.expect(false),
+                    }
+                },
+                else => try testing.expect(false),
+            }
+            try testing.expect(seq.nodes[2].* == .EndAnchor);
+        },
+        else => try testing.expect(false),
+    }
+}
+
+test "Should parse non-capturing group" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var token_buffer = try tokens.TokenListBuffer.init(alloc, null);
+    defer token_buffer.deinit();
+
+    const lexer = Lexer.init("(?:ab)+");
+    try lexer.tokenize(&token_buffer);
+
+    var parser = Parser.init(alloc, token_buffer.items());
+    const ast = try parser.parse();
+
+    switch (ast.*) {
+        .Repeat => |rep| {
+            try testing.expectEqual(@as(usize, 1), rep.min);
+            try testing.expectEqual(@as(?usize, null), rep.max);
+
+            switch (rep.node.*) {
+                .NonCaptureGroup => |grp| {
+                    switch (grp.node.*) {
+                        .Sequence => |seq| {
+                            try testing.expectEqual(@as(usize, 2), seq.nodes.len);
+
+                            switch (seq.nodes[0].*) {
+                                .Literal => |lit| try testing.expectEqual(@as(Rune, 'a'), lit.value),
+                                else => try testing.expect(false),
+                            }
+                            switch (seq.nodes[1].*) {
+                                .Literal => |lit| try testing.expectEqual(@as(Rune, 'b'), lit.value),
+                                else => try testing.expect(false),
+                            }
+                        },
+                        else => try testing.expect(false),
+                    }
+                },
+                else => try testing.expect(false),
+            }
+        },
+        else => try testing.expect(false),
+    }
 }
