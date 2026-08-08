@@ -4,8 +4,8 @@
 pub const Error = error {
     InvalidArgument,
     NoMatch,
-    /// Group index is outside of range
-    InvalidGroupIndex,
+    /// Index is out of range
+    OutOfRange,
     /// Exceeded maximum group count limit
     GroupBufferOverflow,
     /// Expected an expression; found an empty branch/sequence.
