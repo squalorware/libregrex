@@ -2,7 +2,8 @@
 //! 
 //! Provides bytecode instruction definitions
 //! for the virtual machine executing regular expressions
-const ManagedArrayList = @import("types").ManagedArrayList;
+const Allocator = @import("std").mem.Allocator;
+const ManagedDynamicBuffer = @import("types").ManagedDynamicBuffer;
 const AST = @import("./syntax.zig");
 
 /// A pair of bytecode addresses used by `Instruction.Split`
@@ -41,15 +42,15 @@ pub const Instruction = union(enum) {
     Match,
 };
 
-fn freeInstructionCallback(list: *InstructionList) void {
-    for (list.items()) |*inst| {
-        switch (inst.*) {
-            .Class => |cls| {
-                list.alloc.free(cls.ranges);
-                list.alloc.free(cls.chars);
-            },
-            else => {},
-        }
+/// Callback to release memory allocated for CharClass fields
+pub fn deinitInstruction(allocator: Allocator, item: *Instruction) void {
+    switch (item.*) {
+        .Class => |cls| {
+            allocator.free(cls.ranges);
+            allocator.free(cls.chars);
+        },
+        else => {},
     }
 }
-pub const InstructionList = ManagedArrayList(Instruction, freeInstructionCallback);
+
+pub const BytecodeBuffer = ManagedDynamicBuffer(Instruction, deinitInstruction);

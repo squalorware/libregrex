@@ -1,6 +1,6 @@
 const testing = @import("std").testing;
 const Rune = @import("unicode").Rune;
-const ManagedArrayList = @import("types").ManagedArrayList;
+const ManagedDynamicBuffer = @import("types").ManagedDynamicBuffer;
 /// Known types of tokens produced by lexer.
 ///
 /// Some tokens can be assigned a context-specific meaning, e.g. `CARET`
@@ -50,7 +50,7 @@ pub const Token = struct {
     pos: usize = 0,
 };
 
-pub const TokenList = ManagedArrayList(Token, null);
+pub const TokenListBuffer = ManagedDynamicBuffer(Token, null);
 
 /// Maps metacharacters to dedicated token types.
 /// Returns `null` for regular literal characters.

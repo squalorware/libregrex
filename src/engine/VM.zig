@@ -4,7 +4,7 @@ const Rune = @import("unicode").Rune;
 const AST = @import("./syntax.zig");
 const bytecode = @import("./bytecode.zig");
 const utils = @import("./utils.zig");
-const InstructionList = bytecode.InstructionList;
+const Instruction = bytecode.Instruction;
 const RegrexError = types.Error;
 const Match = types.Match;
 const toMatch = types.conv.toMatch;
@@ -32,7 +32,7 @@ const Frame = struct {
 };
 
 /// Backtracking VM execution stack for saving alternative execution states.
-const Stack = types.ManagedArrayList(Frame, null);
+const Stack = types.ManagedDynamicBuffer(Frame, null);
 
 /// Clones a capture-slot buffer for a saved backtracking frame.
 ///
@@ -86,7 +86,7 @@ fn hasRestoredState(
     return false;
 }
 
-/// Executes bytecode in the `InstructionList` against the input string starting at `start_pos`
+/// Executes bytecode instructions against the input string starting at `start_pos`
 ///
 /// Returns `Match` if a match was found in the input.
 /// 
@@ -96,7 +96,7 @@ pub fn execAt(
     input: []const u8, 
     start_pos: usize,
     group_count: usize,
-    inst_list: InstructionList
+    instructions: []const Instruction,
 ) RegrexError!?Match {
     const capture_slots = (group_count + 1) * 2;
     var captures = allocator.alloc(usize, capture_slots) catch {
@@ -108,7 +108,7 @@ pub fn execAt(
         slot.* = null;
     }
 
-    var stack = Stack.init(allocator);
+    var stack = try Stack.init(allocator, null);
     defer stack.deinit();
 
      // Initialize the program execution counter
@@ -116,12 +116,12 @@ pub fn execAt(
     var pos: usize = start_pos;
     // Bytecode instructions execution loop
     while (true) {
-        if (pc >= inst_list.len()) {
+        if (pc >= instructions.len) {
             if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) continue;
             return null;
         }
 
-        const inst = inst_list.get(pc);
+        const inst = instructions[pc];
         switch (inst) {
             .Rune => |expected| {
                 const matcher = RuneMatcher{ .literal = expected };

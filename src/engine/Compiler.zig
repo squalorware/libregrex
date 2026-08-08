@@ -7,7 +7,7 @@ const RegrexError = @import("types").Error;
 const AST = @import("./syntax.zig");
 const bytecode = @import("./bytecode.zig");
 const Instruction = bytecode.Instruction;
-const InstructionList = bytecode.InstructionList;
+const BytecodeBuffer = bytecode.BytecodeBuffer;
 
 /// Deep-copies a character class into bytecode memory.
 /// 
@@ -37,11 +37,11 @@ fn cloneCharClass(
 
 pub const Compiler = @This();
 
-instructions: *InstructionList,
+instructions: *BytecodeBuffer,
 
 /// Initializes a compiler state and 
 /// allocates bytecode dynamic buffer
-pub fn init(inst_list: *InstructionList) Compiler {
+pub fn init(inst_list: *BytecodeBuffer) Compiler {
     return .{ .instructions = inst_list };
 }
 

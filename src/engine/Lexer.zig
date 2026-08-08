@@ -10,7 +10,7 @@ const Rune = @import("unicode").Rune;
 const tokens = @import("./tokens.zig");
 const Token = tokens.Token;
 const TokenType = tokens.TokenType;
-const TokenList = tokens.TokenList;
+const TokenListBuffer = tokens.TokenListBuffer;
 const mapRuneToTokenType = tokens.mapRuneToTokenType;
 
 /// Stateful lexical analyzer and tokenizer
@@ -41,7 +41,7 @@ pub fn init(pattern: []const u8) Lexer {
 /// - `RegrexError.InvalidUnicode` if Rune contains an invalid UTF-8 code point
 /// - `RegrexError.MemoryError` if failed allocating or manipulating dynamic Token buffer
 /// - `RegrexError.TrailingEscape` if pattern ends after backslash.
-pub fn tokenize(self: Lexer, tlist: *TokenList) RegrexError!void {
+pub fn tokenize(self: Lexer, tlist: *TokenListBuffer) RegrexError!void {
     const view = std.unicode.Utf8View.init(self.pattern) catch {
         return RegrexError.InvalidUnicode;
     };
