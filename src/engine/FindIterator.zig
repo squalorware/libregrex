@@ -39,6 +39,10 @@ pub fn init(
     };
 }
 
+pub fn deinit(self: *Self) void {
+    self.* = undefined;
+}
+
 fn advanceAfterEmptyMatch(self: *Self) RegrexError!void {
     if (!try advanceOneRune(self.input, &self.pos, null)) {
         self.done = true;
