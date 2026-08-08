@@ -1,6 +1,6 @@
 const std = @import("std");
 const types = @import("types");
-const advanceOneRune = @import("./syntax.zig").advanceOneRune;
+const advanceOneRune = @import("./utils.zig").advanceOneRune;
 const Match = types.matching.Match;
 const RegrexError = types.Error;
 
@@ -40,7 +40,7 @@ pub fn init(
 }
 
 fn advanceAfterEmptyMatch(self: *Self) RegrexError!void {
-    if (!try advanceOneRune(self.input, self.pos, null)) {
+    if (!try advanceOneRune(self.input, &self.pos, null)) {
         self.done = true;
     }
 }
@@ -58,18 +58,21 @@ fn advanceAfterEmptyMatch(self: *Self) RegrexError!void {
 pub fn next(self: *Self) RegrexError!?Match {
     if (self.done) return null;
 
-    while (self.pos <= self.input.len) {
+    while (!self.done) {
         const maybe_match = try self.func(
             self.alloc,
             self.input,
             self.ctx,
             self.pos
         );
-        if (maybe_match) |match| {
+        if (maybe_match) |found| {
+            var match = found;
+            errdefer match.deinit(self.alloc);
+
             const start = try match.start(0);
             const end = try match.end(0);
-
-            if (end > start) {
+                
+            if (end > start) {    
                 self.pos = end;
             } else {
                 self.advanceAfterEmptyMatch() catch |err| {
@@ -81,13 +84,22 @@ pub fn next(self: *Self) RegrexError!?Match {
 
             return match;
         }
-        if (!try advanceOneRune(self.input, self.pos, null)) {
+        if (!try advanceOneRune(self.input, &self.pos, null)) {
             self.done = true;
-
             return null;
         }
     }
 
     self.done = true;
     return null;
+}
+
+/// Returns the position from which the next scan will resume.
+///
+/// After a successful `next()`:
+/// - for a non-empty match, this equals the match end;
+/// - for an empty match, this points after the code point skipped for progress;
+/// - for an empty match at end-of-input, this equals `input.len`.
+pub fn nextPos(self: *const Self) usize {
+    return self.pos;
 }
