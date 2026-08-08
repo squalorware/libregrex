@@ -8,6 +8,7 @@ const std = @import("std");
 const RegrexError = @import("types").Error;
 const Rune = @import("unicode").Rune;
 const tokens = @import("./tokens.zig");
+const testing = std.testing;
 const Token = tokens.Token;
 const TokenType = tokens.TokenType;
 const TokenListBuffer = tokens.TokenListBuffer;
@@ -82,27 +83,27 @@ pub fn tokenize(self: Lexer, tlist: *TokenListBuffer) RegrexError!void {
     });
 }
 
+test "Should break up a pattern into a valid token stream" {
+    const allocator = testing.allocator;
 
-// const testing = std.testing;
+    var token_buffer = try tokens.TokenListBuffer.init(allocator, null);
+    defer token_buffer.deinit();
 
-// test "Should break up a pattern into a valid token stream" {
-//     const allocator = testing.allocator;
-//     var lexer = Self.init("a\\.b*c");
-//     const tokens = try lexer.tokenize(allocator);
-//     defer allocator.free(tokens);
+    const lexer = Lexer.init("a\\.b*c");
+    try lexer.tokenize(&token_buffer);
 
-//     const expected = [_]Token{
-//         .{ .typ = .CHAR, .val = Rune.from('a'), .pos = 0 },
-//         .{ .typ = .ESCAPED_CHAR, .val = Rune.from('.'), .pos = 1 },
-//         .{ .typ = .CHAR, .val = Rune.from('b'), .pos = 3 },
-//         .{ .typ = .STAR, .val = Rune.from('*'), .pos = 4 },
-//         .{ .typ = .CHAR, .val = Rune.from('c'), .pos = 5 },
-//         .{ .typ = .EOF, .val = null, .pos = 6 },
-//     };
+    const expected = [_]Token{
+        .{ .typ = .CHAR, .val = Rune.from('a'), .pos = 0 },
+        .{ .typ = .ESCAPED_CHAR, .val = Rune.from('.'), .pos = 1 },
+        .{ .typ = .CHAR, .val = Rune.from('b'), .pos = 3 },
+        .{ .typ = .STAR, .val = Rune.from('*'), .pos = 4 },
+        .{ .typ = .CHAR, .val = Rune.from('c'), .pos = 5 },
+        .{ .typ = .EOF, .val = null, .pos = 6 },
+    };
 
-//     for (tokens, 0..) |token, i| {
-//         try testing.expectEqual(expected[i].typ, token.typ);
-//         try testing.expectEqual(expected[i].val, token.val);
-//         try testing.expectEqual(expected[i].pos, token.pos);
-//     }
-// }
+    for (token_buffer.items(), 0..) |token, i| {
+        try testing.expectEqual(expected[i].typ, token.typ);
+        try testing.expectEqual(expected[i].val, token.val);
+        try testing.expectEqual(expected[i].pos, token.pos);
+    }
+}
