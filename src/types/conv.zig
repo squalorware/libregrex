@@ -72,7 +72,7 @@ test "toMatch() should return a Match with valid full match and no capture group
     var m = try toMatch(allocator, input, 0, slots[0..]);
     defer m.deinit(allocator);
 
-    try testing.expectEqualStrings("420", m.full());
+    try testing.expectEqualStrings("420", try m.full());
     try testing.expectEqual(@as(usize, 1), m.groups.len);
     try testing.expectEqual(@as(usize, 4), try m.start(0));
     try testing.expectEqual(@as(usize, 7), try m.end(0));
@@ -89,7 +89,7 @@ test "toMatch() should return a Match with a valid subgroup" {
     var m = try toMatch(allocator, input, 1, slots[0..]);
     defer m.deinit(allocator);
 
-    try testing.expectEqualStrings("420", m.full());
+    try testing.expectEqualStrings("420", try m.full());
     try testing.expectEqual(@as(usize, 2), m.groups.len);
     try testing.expectEqual(@as(usize, 1), m.subgroups().len);
     try testing.expectEqualStrings("420", try m.group(1));
@@ -106,7 +106,7 @@ test "toMatch() should create a Match with unmatched subgroups as sentinel group
     var m = try toMatch(allocator, input, 1, slots[0..]);
     defer m.deinit(allocator);
 
-    try testing.expectEqualStrings("420", m.full());
+    try testing.expectEqualStrings("420", try m.full());
 
     const no_match_sent = m.subgroups()[0];
     try testing.expect(no_match_sent.isNone());
@@ -121,7 +121,7 @@ test "toMatch() should create a Match with partially captured groups as sentinel
     var m = try toMatch(allocator, input, 1, slots[0..]);
     defer m.deinit(allocator);
 
-    try testing.expectEqualStrings("420", m.full());
+    try testing.expectEqualStrings("420", try m.full());
 
     const no_match_sent = m.subgroups()[0];
     try testing.expect(no_match_sent.isNone());
@@ -142,7 +142,7 @@ test "toMatch() should create a Match with multiple capture groups" {
     var m = try toMatch(allocator, input, 3, slots[0..]);
     defer m.deinit(allocator);
 
-    try testing.expectEqualStrings("lol 420 kek", m.full());
+    try testing.expectEqualStrings("lol 420 kek", try m.full());
     try testing.expectEqual(@as(usize, 4), m.groups.len);
 
     const captures = m.subgroups();

@@ -166,7 +166,7 @@ test "Match.full() should return the full match string representation" {
     var fix = try MatchFixture.init(allocator, 4, 7, &.{});
     defer fix.deinit(allocator);
 
-    try testing.expectEqualStrings("420", fix.match.full());
+    try testing.expectEqualStrings("420", try fix.match.full());
 }
 
 test "Match.group(0) should return the full match string representation" {

@@ -20,6 +20,8 @@ pub const Error = error {
     TrailingEscape,
     /// Token invalid in current context
     UnexpectedToken,
+    /// Instruction invalid in current context
+    UnexpectedInstruction,
     /// Unexpected end of pattern (EOF before construct complete)
     UnexpectedEnd,
     /// Missing `)`
