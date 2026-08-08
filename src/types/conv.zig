@@ -1,5 +1,5 @@
 const std = @import("std");
-const RegrexError = @import("types").Error;
+const RegrexError = @import("./error.zig").Error;
 const matching = @import("./matching.zig");
 const Match = matching.Match;
 const Span = matching.Span;

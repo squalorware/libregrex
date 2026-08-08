@@ -14,7 +14,7 @@ const TokenList = tokens.TokenList;
 const mapRuneToTokenType = tokens.mapRuneToTokenType;
 
 /// Stateful lexical analyzer and tokenizer
-pub const Self = @This();
+pub const Lexer = @This();
 
 /// String pattern buffer (borrowed)
 pattern: []const u8,
@@ -22,7 +22,7 @@ pattern: []const u8,
 pos: usize = 0,
 
 /// Creates a lexer over a borrowed UTF-8 pattern buffer.
-pub fn init(pattern: []const u8) Self {
+pub fn init(pattern: []const u8) Lexer {
     return .{
         .pattern = pattern,
         .pos = 0,
@@ -41,7 +41,7 @@ pub fn init(pattern: []const u8) Self {
 /// - `RegrexError.InvalidUnicode` if Rune contains an invalid UTF-8 code point
 /// - `RegrexError.MemoryError` if failed allocating or manipulating dynamic Token buffer
 /// - `RegrexError.TrailingEscape` if pattern ends after backslash.
-pub fn tokenize(self: Self, tlist: *TokenList) RegrexError!void {
+pub fn tokenize(self: Lexer, tlist: *TokenList) RegrexError!void {
     const view = std.unicode.Utf8View.init(self.pattern) catch {
         return RegrexError.InvalidUnicode;
     };

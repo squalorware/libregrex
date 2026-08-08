@@ -9,7 +9,7 @@ const Token = tokens.Token;
 const TokenType = tokens.TokenType;
 
 /// Parser state instance for a single token stream
-pub const Self = @This();
+pub const Parser = @This();
 
 /// Controls AST lifetime.
 alloc: std.mem.Allocator,
@@ -25,7 +25,7 @@ token_list: []const Token,
 pub fn init(
     alloc: std.mem.Allocator,
     tlist: []const Token,
-) Self {
+) Parser {
     return .{
         .alloc = alloc,
         .token_list = tlist,
@@ -33,13 +33,13 @@ pub fn init(
 }
 
 /// Returns a token at the current 'cursor' position
-fn current(self: Self) Token {
+fn current(self: Parser) Token {
     return self.token_list[self.pos];
 }
 
 /// Returns a token at `pos + offset` or `null` 
 /// if index out of range
-fn peek(self: Self, offset: usize) ?Token {
+fn peek(self: Parser, offset: usize) ?Token {
     const idx = self.pos + offset;
 
     if (idx >= self.token_list.len) {
@@ -50,7 +50,7 @@ fn peek(self: Self, offset: usize) ?Token {
 }
 
 /// Returns the current token and moves one position 'forward'
-fn advance(self: *Self) Token {
+fn advance(self: *Parser) Token {
     const token = self.current();
     self.pos += 1;
     return token;
@@ -58,7 +58,7 @@ fn advance(self: *Self) Token {
 
 /// Takes `TokenType` and checks if current token 
 /// has matching type
-fn match(self: *Self, typ: TokenType) bool {
+fn match(self: *Parser, typ: TokenType) bool {
     if (self.current().typ == typ) {
         _ = self.advance();
         return true;
@@ -71,7 +71,7 @@ fn match(self: *Self, typ: TokenType) bool {
 /// 
 /// Returns `Error.UnexpectedToken` if type mismatch -
 /// current token doesn't match context
-fn expect(self: *Self, typ: TokenType) RegrexError!Token {
+fn expect(self: *Parser, typ: TokenType) RegrexError!Token {
     if (self.current().typ != typ) {
         return RegrexError.UnexpectedToken;
     }
@@ -79,7 +79,7 @@ fn expect(self: *Self, typ: TokenType) RegrexError!Token {
 }
 
 /// Allocates and initializes an AST Node
-fn createNode(self: *Self, node: AST.Node) RegrexError!*AST.Node {
+fn createNode(self: *Parser, node: AST.Node) RegrexError!*AST.Node {
     const ptr = self.alloc.create(AST.Node) catch {
         return RegrexError.MemoryError;
     };
@@ -90,7 +90,7 @@ fn createNode(self: *Self, node: AST.Node) RegrexError!*AST.Node {
 /// Parses branching.
 /// 
 /// Alteration has the lowest precedence in this grammar
-fn parseBranch(self: *Self) RegrexError!*AST.Node {
+fn parseBranch(self: *Parser) RegrexError!*AST.Node {
     var left = try self.parseSequence();
 
     while (self.match(.PIPE)) {
@@ -106,7 +106,7 @@ fn parseBranch(self: *Self) RegrexError!*AST.Node {
 }
 
 /// Parses a sequence of quantified Atoms until `EOF`, `RPAREN` or `PIPE`
-fn parseSequence(self: *Self) RegrexError!*AST.Node {
+fn parseSequence(self: *Parser) RegrexError!*AST.Node {
     var nodes = std.ArrayList(*AST.Node).empty;
     errdefer nodes.deinit(self.alloc);
 
@@ -143,7 +143,7 @@ fn parseSequence(self: *Self) RegrexError!*AST.Node {
 }
 
 /// Parses an Atom and an optional postfix quantifier (`*`, `+` or `?`)
-fn parseQuantifier(self: *Self) RegrexError!*AST.Node {
+fn parseQuantifier(self: *Parser) RegrexError!*AST.Node {
     const node = try self.parseAtom();
 
     // Parse 'zero or more'
@@ -182,7 +182,7 @@ fn parseQuantifier(self: *Self) RegrexError!*AST.Node {
 }
 
 /// Parses the base indivisible expression
-fn parseAtom(self: *Self) RegrexError!*AST.Node {
+fn parseAtom(self: *Parser) RegrexError!*AST.Node {
     const token = self.current();
 
     switch (token.typ) {
@@ -223,7 +223,7 @@ fn parseAtom(self: *Self) RegrexError!*AST.Node {
 }
 
 /// Parses a capturing `(...)` or non-capturing `(?:...)` group
-fn parseGroup(self: *Self) RegrexError!*AST.Node {
+fn parseGroup(self: *Parser) RegrexError!*AST.Node {
     const first = self.peek(0);
     const next = self.peek(1);
 
@@ -275,7 +275,7 @@ fn parseGroup(self: *Self) RegrexError!*AST.Node {
 /// - inclusive ranges (e.g. `a-z`, `0-9`)
 /// - escaped class members (e.g. `\*`)
 /// - leading negation (`^`)
-fn parseCharClass(self: *Self) RegrexError!AST.CharClass {
+fn parseCharClass(self: *Parser) RegrexError!AST.CharClass {
     const negated = self.match(.CARET);
 
     var ranges = std.ArrayList(AST.CharRange).empty;
@@ -353,7 +353,7 @@ fn parseCharClass(self: *Self) RegrexError!AST.CharClass {
 /// 
 /// Returns `RegrexError.UnexpectedToken` if the `Token` stream
 /// does not end with `EOF`
-pub fn parse(self: *Self) RegrexError!*AST.Node {
+pub fn parse(self: *Parser) RegrexError!*AST.Node {
     const ast = try self.parseBranch();
 
     if (self.current().typ != .EOF) {

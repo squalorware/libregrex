@@ -16,7 +16,7 @@ pub const ExecContextFn = *const fn(
 /// `FindIterator` borrows compiled bytecode and the input buffer. It does not
 /// precompute or store all matches. Each call to `next()` resumes scanning from
 /// the current byte position and runs the VM only until the next match is found.
-pub const Self = @This();
+pub const FindIterator = @This();
 
 alloc: std.mem.Allocator,
 input: []const u8,
@@ -30,7 +30,7 @@ pub fn init(
     input: []const u8,
     ctx: *const anyopaque,
     func: ExecContextFn,
-) Self {
+) FindIterator {
     return .{
         .alloc = alloc,
         .input = input,
@@ -39,11 +39,11 @@ pub fn init(
     };
 }
 
-pub fn deinit(self: *Self) void {
+pub fn deinit(self: *FindIterator) void {
     self.* = undefined;
 }
 
-fn advanceAfterEmptyMatch(self: *Self) RegrexError!void {
+fn advanceAfterEmptyMatch(self: *FindIterator) RegrexError!void {
     if (!try advanceOneRune(self.input, &self.pos, null)) {
         self.done = true;
     }
@@ -59,7 +59,7 @@ fn advanceAfterEmptyMatch(self: *Self) RegrexError!void {
 /// - `Error.MemoryError` if allocation failed
 /// - `Error.InvalidUnicode`
 ///     (propagated by `VM.execAt` or encountered during lookup)
-pub fn next(self: *Self) RegrexError!?Match {
+pub fn next(self: *FindIterator) RegrexError!?Match {
     if (self.done) return null;
 
     while (!self.done) {
@@ -104,6 +104,6 @@ pub fn next(self: *Self) RegrexError!?Match {
 /// - for a non-empty match, this equals the match end;
 /// - for an empty match, this points after the code point skipped for progress;
 /// - for an empty match at end-of-input, this equals `input.len`.
-pub fn nextPos(self: *const Self) usize {
+pub fn nextPos(self: *const FindIterator) usize {
     return self.pos;
 }

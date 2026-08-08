@@ -35,18 +35,18 @@ fn cloneCharClass(
     };
 }
 
-pub const Self = @This();
+pub const Compiler = @This();
 
 instructions: *InstructionList,
 
 /// Initializes a compiler state and 
 /// allocates bytecode dynamic buffer
-pub fn init(inst_list: *InstructionList) Self {
+pub fn init(inst_list: *InstructionList) Compiler {
     return .{ .instructions = inst_list };
 }
 
 /// Appends an `Instruction` and returns its bytecode index 
-fn emit(self: Self, inst: Instruction) RegrexError!usize {
+fn emit(self: Compiler, inst: Instruction) RegrexError!usize {
     const idx = self.instructions.len();
     try self.instructions.append(inst);
 
@@ -57,13 +57,13 @@ fn emit(self: Self, inst: Instruction) RegrexError!usize {
 /// 
 /// Used for forward jumps where the target address is unknown
 /// until after compiling a branch or repeating body
-fn patch(self: Self, idx: usize, inst: Instruction) void {
+fn patch(self: Compiler, idx: usize, inst: Instruction) void {
     try self.instructions.set(idx, inst);
 }
 
 /// Emit bytecode for an AST Node
 fn compileNode(
-    self: Self, 
+    self: Compiler, 
     alloc: std.mem.Allocator, 
     node: *const AST.Node
 ) RegrexError!void {
@@ -115,7 +115,7 @@ fn compileNode(
 /// 
 /// Returns `RegrexError.InvalidRepeat` for unsupported repeat patterns.
 fn compileRepeat(
-    self: Self, 
+    self: Compiler, 
     alloc: std.mem.Allocator, 
     rep: AST.Repeat
 ) RegrexError!void {
@@ -179,7 +179,7 @@ fn compileRepeat(
 /// - `Jump(after)`
 /// - right branch
 fn compileBranch(
-    self: Self, 
+    self: Compiler, 
     alloc: std.mem.Allocator,
     branch: AST.Branch
 ) RegrexError!void {
@@ -216,7 +216,7 @@ fn compileBranch(
 /// If bytecode contains `Class` instructions, their internal slices 
 /// must be freed by the owner as well.  
 pub fn compile(
-    self: Self, 
+    self: Compiler, 
     alloc: std.mem.Allocator, 
     node: *const AST.Node
 ) RegrexError!void {
