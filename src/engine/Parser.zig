@@ -432,11 +432,11 @@ test "Should parse non-capturing group" {
                             try testing.expectEqual(@as(usize, 2), seq.nodes.len);
 
                             switch (seq.nodes[0].*) {
-                                .Literal => |lit| try testing.expectEqual(@as(Rune, 'a'), lit.value),
+                                .Literal => |lit| try testing.expectEqual(@as(u21, 'a'), lit.value),
                                 else => try testing.expect(false),
                             }
                             switch (seq.nodes[1].*) {
-                                .Literal => |lit| try testing.expectEqual(@as(Rune, 'b'), lit.value),
+                                .Literal => |lit| try testing.expectEqual(@as(u21, 'b'), lit.value),
                                 else => try testing.expect(false),
                             }
                         },
