@@ -1,13 +1,12 @@
 const std = @import("std");
 const types = @import("types");
 const advanceOneRune = @import("./utils.zig").advanceOneRune;
-const Match = types.matching.Match;
+const Match = types.Match;
 const RegrexError = types.Error;
 
 pub const ExecContextFn = *const fn(
-    alloc: std.mem.Allocator,
-    input: []const u8,
     ctx: *const anyopaque,
+    input: []const u8,
     pos: usize,
 ) RegrexError!?Match;
 
@@ -19,23 +18,30 @@ pub const ExecContextFn = *const fn(
 pub const FindIterator = @This();
 
 alloc: std.mem.Allocator,
-input: []const u8,
 ctx: *const anyopaque,
 func: ExecContextFn,
+input: []const u8,
 pos: usize = 0,
 done: bool = false,
 
+// alloc: std.mem.Allocator,
+// input: []const u8,
+// ctx: *const anyopaque,
+// func: ExecContextFn,
+// pos: usize = 0,
+// done: bool = false,
+
 pub fn init(
     alloc: std.mem.Allocator,
-    input: []const u8,
     ctx: *const anyopaque,
+    input: []const u8,
     func: ExecContextFn,
 ) FindIterator {
     return .{
         .alloc = alloc,
-        .input = input,
         .ctx = ctx,
         .func = func,
+        .input = input,
     };
 }
 
@@ -64,10 +70,9 @@ pub fn next(self: *FindIterator) RegrexError!?Match {
 
     while (!self.done) {
         const maybe_match = try self.func(
-            self.alloc,
-            self.input,
             self.ctx,
-            self.pos
+            self.input,
+            self.pos,
         );
         if (maybe_match) |found| {
             var match = found;

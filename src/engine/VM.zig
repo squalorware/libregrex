@@ -25,7 +25,7 @@ const Frame = struct {
     captures: []?usize,
 
     /// Releases the capture-slot snapshot owned by this Frame
-    fn deinit(self: *Frame, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Frame, alloc: std.mem.Allocator) void {
         alloc.free(self.captures);
         self.* = undefined;
     }
@@ -60,7 +60,7 @@ fn hasBacktracked(
     captures: *[]?usize,
 ) bool {
     const frame = stack.pop() orelse return false;
-    alloc.free(captures);
+    alloc.free(captures.*);
     pc.* = frame.pc;
     pos.* = frame.pos;
     captures.* = frame.captures;
@@ -99,7 +99,7 @@ pub fn execAt(
     instructions: []const Instruction,
 ) RegrexError!?Match {
     const capture_slots = (group_count + 1) * 2;
-    var captures = allocator.alloc(usize, capture_slots) catch {
+    var captures = allocator.alloc(?usize, capture_slots) catch {
         return RegrexError.MemoryError;
     };
     errdefer allocator.free(captures);
@@ -136,7 +136,7 @@ pub fn execAt(
                 }
             },
             .Any => {
-                const matcher = RuneMatcher{ .any };
+                const matcher = RuneMatcher{ .any = {} };
                 const fail_condition = !matchRune(input[pos], matcher);
 
                 if (try utils.advanceOneRune(input, &pos, fail_condition)) {
@@ -147,7 +147,7 @@ pub fn execAt(
                     return null;
                 }
             },
-            .CharClass => |cls| {
+            .Class => |cls| {
                 const matcher = RuneMatcher{ .char_class = cls };
                 const fail_condition = !matchRune(input[pos], matcher);
 

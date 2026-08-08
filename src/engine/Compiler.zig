@@ -58,7 +58,7 @@ fn emit(self: Compiler, inst: Instruction) RegrexError!usize {
 /// 
 /// Used for forward jumps where the target address is unknown
 /// until after compiling a branch or repeating body
-fn patch(self: Compiler, idx: usize, inst: Instruction) void {
+fn patch(self: Compiler, idx: usize, inst: Instruction) RegrexError!void {
     try self.instructions.set(idx, inst);
 }
 
@@ -91,18 +91,18 @@ fn compileNode(
             }
         },
         .Repeat => |rep| {
-            try self.compileRepeat(rep);
+            try self.compileRepeat(alloc, rep);
         },
         .Branch => |branch| {
-            try self.compileBranch(branch);
+            try self.compileBranch(alloc, branch);
         },
         .CaptureGroup => |grp| {
             _ = try self.emit(.{ .Save = grp.pos * 2 });
-            try self.compileNode(grp.node);
+            try self.compileNode(alloc, grp.node);
             _ = try self.emit(.{ .Save = grp.pos * 2 + 1 });
         },
         .NonCaptureGroup => |grp| {
-            try self.compileNode(grp.node);
+            try self.compileNode(alloc, grp.node);
         },
     }
 }
@@ -130,7 +130,7 @@ fn compileRepeat(
 
         const after = self.instructions.len();
 
-        self.patch(split_idx, .{
+        try self.patch(split_idx, .{
             .Split = .{
                 .first = body_start,
                 .second = after,
@@ -161,7 +161,7 @@ fn compileRepeat(
 
         const after = self.instructions.len();
 
-        self.patch(split_idx, .{
+        try self.patch(split_idx, .{
             .Split = .{
                 .first = body_start,
                 .second = after,
@@ -196,14 +196,14 @@ fn compileBranch(
 
     const after = self.instructions.len();
 
-    self.patch(split_idx, .{
+    try self.patch(split_idx, .{
         .Split = .{
             .first = left_start,
             .second = right_start,
         },
     });
 
-    self.patch(jump_idx, .{
+    try self.patch(jump_idx, .{
         .Jump = after,
     });
 }
@@ -221,10 +221,10 @@ pub fn compile(
     alloc: std.mem.Allocator, 
     node: *const AST.Node
 ) RegrexError!void {
-    try self.emit(.{ .Save = 0 });
-    try self.compileNode(alloc, node);
-    try self.emit(.{ .Save = 1 });
-    try self.emit(.Match);
+    _ = try self.emit(.{ .Save = 0 });
+    _ = try self.compileNode(alloc, node);
+    _ = try self.emit(.{ .Save = 1 });
+    _ = try self.emit(.Match);
 }
 
 test "Should compile a sequence of literals `abc`" {
@@ -242,12 +242,12 @@ test "Should compile a sequence of literals `abc`" {
     const chars = [_]u21 {'a', 'b', 'c'};
     for (chars, 0..) |ch, i| {
         const node = try ast_alloc.create(AST.Node);
-        node.* = .{ .Literal = .{ .value = ch } };
+        node = .{ .Literal = .{ .value = ch } };
         tree[i] = node;
     }
 
     const root = try ast_alloc.create(AST.Node);
-    root.* = .{
+    root = .{
         .Sequence = .{
             .nodes = tree,
         },
@@ -259,22 +259,22 @@ test "Should compile a sequence of literals `abc`" {
     try testing.expectEqual(@as(usize, 6), inst_list.len());
 
     const first_inst = try inst_list.get(0);
-    try testing.expect(first_inst.* == Instruction.Save);
-    try testing.expectEqual(@as(usize, 0), first_inst.*.Save);
+    try testing.expect(first_inst == Instruction.Save);
+    try testing.expectEqual(@as(usize, 0), first_inst.Save);
 
     for (chars, 0..) |ch, i| {
         const pos = i + 1;
         const inst = try inst_list.get(pos);
-        try testing.expect(inst.* == Instruction.Rune);
-        try testing.expectEqual(@as(u21, ch), inst.*.Rune);
+        try testing.expect(inst == Instruction.Rune);
+        try testing.expectEqual(@as(u21, ch), inst.Rune);
     }
 
     const next_inst = try inst_list.get(4);
-    try testing.expect(next_inst.* == Instruction.Save);
-    try testing.expectEqual(@as(usize, 1), next_inst.*.Save);
+    try testing.expect(next_inst == Instruction.Save);
+    try testing.expectEqual(@as(usize, 1), next_inst.Save);
 
     const last_inst = try inst_list.get(5);
-    try testing.expect(last_inst.* == Instruction.Match);
+    try testing.expect(last_inst == Instruction.Match);
 }
 
 test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
@@ -288,7 +288,7 @@ test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
     defer inst_list.deinit();
 
     const start = try ast_alloc.create(AST.Node);
-    start.* = .{ .StartAnchor = .{} };
+    start = .{ .StartAnchor = .{} };
 
     const ranges = try ast_alloc.alloc(AST.CharRange, 1);
     ranges[0] = .{
@@ -298,7 +298,7 @@ test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
     const chars = try ast_alloc.alloc(u21, 0);
 
     const class_node = try ast_alloc.create(AST.Node);
-    class_node.* = .{
+    class_node = .{
         .CharClass = .{
             .ranges = ranges,
             .chars = chars,
@@ -307,7 +307,7 @@ test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
     };
 
     const repeat = try ast_alloc.create(AST.Node);
-    repeat.* = .{
+    repeat = .{
         .Repeat = .{
             .node = class_node,
             .min = 0,
@@ -316,7 +316,7 @@ test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
     };
 
     const end = try ast_alloc.create(AST.Node);
-    end.* = .{ .EndAnchor = .{} };
+    end = .{ .EndAnchor = .{} };
 
     const tree = try ast_alloc.alloc(*AST.Node, 3);
     tree[0] = start;
@@ -324,7 +324,7 @@ test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
     tree[2] = end;
 
     const root = try ast_alloc.create(AST.Node);
-    root.* = .{
+    root = .{
         .Sequence = .{
             .nodes = tree,
         },
@@ -336,37 +336,37 @@ test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
     try testing.expectEqual(@as(usize, 8), inst_list.len());
 
     const first_inst = try inst_list.get(0);
-    try testing.expect(first_inst.* == .Save);
-    try testing.expectEqual(@as(usize, 0), first_inst.*.Save);
+    try testing.expect(first_inst == .Save);
+    try testing.expectEqual(@as(usize, 0), first_inst.Save);
 
     var next_inst: *Instruction = try inst_list.get(1);
-    try testing.expect(next_inst.* == .AssertStart);
+    try testing.expect(next_inst == .AssertStart);
 
     next_inst = try inst_list.get(2);
-    try testing.expect(next_inst.* == .Split);
-    try testing.expectEqual(@as(usize, 3), next_inst.*.Split.first);
-    try testing.expectEqual(@as(usize, 5), next_inst.*.Split.second);
+    try testing.expect(next_inst == .Split);
+    try testing.expectEqual(@as(usize, 3), next_inst.Split.first);
+    try testing.expectEqual(@as(usize, 5), next_inst.Split.second);
 
     next_inst = try inst_list.get(3);
-    try testing.expect(next_inst.* == .Class);
-    try testing.expectEqual(false, next_inst.*.Class.negated);
-    try testing.expectEqual(@as(usize, 1), next_inst.*.Class.ranges.len);
-    try testing.expectEqual(@as(u21, 'a'), next_inst.*.Class.ranges[0].start);
-    try testing.expectEqual(@as(u21, 'z'), next_inst.*.Class.ranges[0].end);
+    try testing.expect(next_inst == .Class);
+    try testing.expectEqual(false, next_inst.Class.negated);
+    try testing.expectEqual(@as(usize, 1), next_inst.Class.ranges.len);
+    try testing.expectEqual(@as(u21, 'a'), next_inst.Class.ranges[0].start);
+    try testing.expectEqual(@as(u21, 'z'), next_inst.Class.ranges[0].end);
 
     next_inst = try inst_list.get(4);
-    try testing.expect(next_inst.* == .Jump);
-    try testing.expectEqual(@as(usize, 2), next_inst.*.Jump);
+    try testing.expect(next_inst == .Jump);
+    try testing.expectEqual(@as(usize, 2), next_inst.Jump);
 
     next_inst = try inst_list.get(5);
-    try testing.expect(next_inst.* == .AssertEnd);
+    try testing.expect(next_inst == .AssertEnd);
 
     next_inst = try inst_list.get(6);
-    try testing.expect(next_inst.* == .Save);
-    try testing.expectEqual(@as(usize, 1), next_inst.*.Save);
+    try testing.expect(next_inst == .Save);
+    try testing.expectEqual(@as(usize, 1), next_inst.Save);
 
     next_inst = try inst_list.get(7);
-    try testing.expect(next_inst.* == .Match);
+    try testing.expect(next_inst == .Match);
 }
 
 test "Should compile branching `a|b`" {
@@ -381,12 +381,12 @@ test "Should compile branching `a|b`" {
     defer inst_list.deinit();
 
     const left = try ast_alloc.create(AST.Node);
-    left.* = .{ .Literal = .{ .value = 'a' } };
+    left = .{ .Literal = .{ .value = 'a' } };
     const right = try ast_alloc.create(AST.Node);
-    right.* = .{ .Literal = .{ .value = 'b' } };
+    right = .{ .Literal = .{ .value = 'b' } };
 
     const root = try ast_alloc.create(AST.Node);
-    root.* = .{
+    root = .{
         .Branch = .{
             .left = left,
             .right = right,
@@ -399,32 +399,32 @@ test "Should compile branching `a|b`" {
     try testing.expectEqual(@as(usize, 7), inst_list.len());
 
     const first_inst = try inst_list.get(0);
-    try testing.expect(first_inst.* == .Save);
-    try testing.expectEqual(@as(usize, 0), first_inst.*.Save);
+    try testing.expect(first_inst == .Save);
+    try testing.expectEqual(@as(usize, 0), first_inst.Save);
 
     var next_inst = try inst_list.get(1);
-    try testing.expect(next_inst.* == .Split);
-    try testing.expectEqual(@as(usize, 2), next_inst.*.Split.first);
-    try testing.expectEqual(@as(usize, 4), next_inst.*.Split.second);
+    try testing.expect(next_inst == .Split);
+    try testing.expectEqual(@as(usize, 2), next_inst.Split.first);
+    try testing.expectEqual(@as(usize, 4), next_inst.Split.second);
 
     next_inst = try inst_list.get(2);
-    try testing.expect(next_inst.* == .Rune);
-    try testing.expectEqual(@as(u21, 'a'), next_inst.*.Rune);
+    try testing.expect(next_inst == .Rune);
+    try testing.expectEqual(@as(u21, 'a'), next_inst.Rune);
 
     next_inst = try inst_list.get(3);
-    try testing.expect(next_inst.* == .Jump);
-    try testing.expectEqual(@as(usize, 5), next_inst.*.Jump);
+    try testing.expect(next_inst == .Jump);
+    try testing.expectEqual(@as(usize, 5), next_inst.Jump);
 
     next_inst = try inst_list.get(4);
-    try testing.expect(next_inst.* == .Rune);
-    try testing.expectEqual(@as(u21, 'b'), next_inst.*.Rune);
+    try testing.expect(next_inst == .Rune);
+    try testing.expectEqual(@as(u21, 'b'), next_inst.Rune);
 
     next_inst = try inst_list.get(5);
-    try testing.expect(next_inst.* == .Save);
-    try testing.expectEqual(@as(usize, 1), next_inst.*.Save);
+    try testing.expect(next_inst == .Save);
+    try testing.expectEqual(@as(usize, 1), next_inst.Save);
 
     next_inst = try inst_list.get(6);
-    try testing.expect(next_inst.* == .Match);
+    try testing.expect(next_inst == .Match);
 }
 
 test "Should compile a capture group `(a)`" {
@@ -439,10 +439,10 @@ test "Should compile a capture group `(a)`" {
     defer inst_list.deinit();
 
     const lit = try ast_alloc.create(AST.Node);
-    lit.* = .{ .Literal = .{ .value = 'a' } };
+    lit = .{ .Literal = .{ .value = 'a' } };
 
     const root = try ast_alloc.create(AST.Node);
-    root.* = .{
+    root = .{
         .CaptureGroup = .{
             .pos = 1,
             .node = lit,
@@ -456,27 +456,27 @@ test "Should compile a capture group `(a)`" {
     try testing.expectEqual(@as(usize, 6), inst_list.len());
 
     const first_inst = try inst_list.get(0);
-    try testing.expect(first_inst.* == .Save);
-    try testing.expectEqual(@as(usize, 0), first_inst.*.Save);
+    try testing.expect(first_inst == .Save);
+    try testing.expectEqual(@as(usize, 0), first_inst.Save);
 
     var next_inst = try inst_list.get(1);
-    try testing.expect(next_inst.* == .Save);
-    try testing.expectEqual(@as(usize, 2), next_inst.*.Save);
+    try testing.expect(next_inst == .Save);
+    try testing.expectEqual(@as(usize, 2), next_inst.Save);
 
     next_inst = try inst_list.get(2);
-    try testing.expect(next_inst.* == .Rune);
-    try testing.expectEqual(@as(u21, 'a'), next_inst.*.Rune);
+    try testing.expect(next_inst == .Rune);
+    try testing.expectEqual(@as(u21, 'a'), next_inst.Rune);
 
     next_inst = try inst_list.get(3);
-    try testing.expect(next_inst.* == .Save);
-    try testing.expectEqual(@as(usize, 3), next_inst.*.Save);
+    try testing.expect(next_inst == .Save);
+    try testing.expectEqual(@as(usize, 3), next_inst.Save);
 
     next_inst = try inst_list.get(4);
-    try testing.expect(next_inst.* == .Save);
-    try testing.expectEqual(@as(usize, 1), next_inst.*.Save);
+    try testing.expect(next_inst == .Save);
+    try testing.expectEqual(@as(usize, 1), next_inst.Save);
 
     next_inst = try inst_list.get(5);
-    try testing.expect(next_inst.* == .Match);
+    try testing.expect(next_inst == .Match);
 }
 
 test "Should compile an optional repeat `a?`" {
@@ -491,10 +491,10 @@ test "Should compile an optional repeat `a?`" {
     defer inst_list.deinit();
 
     const lit = try ast_alloc.create(AST.Node);
-    lit.* = .{ .Literal = .{ .value = 'a' } };
+    lit = .{ .Literal = .{ .value = 'a' } };
 
     const root = try ast_alloc.create(AST.Node);
-    root.* = .{
+    root = .{
         .Repeat = .{
             .node = lit,
             .min = 0,
@@ -508,22 +508,22 @@ test "Should compile an optional repeat `a?`" {
     try testing.expectEqual(@as(usize, 5), inst_list.len());
 
     const first_inst = try inst_list.get(0);
-    try testing.expect(first_inst.* == .Save);
-    try testing.expectEqual(@as(usize, 0), first_inst.*.Save);
+    try testing.expect(first_inst == .Save);
+    try testing.expectEqual(@as(usize, 0), first_inst.Save);
 
     var next_inst = try inst_list.get(1);
-    try testing.expect(next_inst.* == .Split);
-    try testing.expectEqual(@as(usize, 2), next_inst.*.Split.first);
-    try testing.expectEqual(@as(usize, 3), next_inst.*.Split.second);
+    try testing.expect(next_inst == .Split);
+    try testing.expectEqual(@as(usize, 2), next_inst.Split.first);
+    try testing.expectEqual(@as(usize, 3), next_inst.Split.second);
 
     next_inst = try inst_list.get(2);
-    try testing.expect(next_inst.* == .Rune);
-    try testing.expectEqual(@as(u21, 'a'), next_inst.*.Rune);
+    try testing.expect(next_inst == .Rune);
+    try testing.expectEqual(@as(u21, 'a'), next_inst.Rune);
 
     next_inst = try inst_list.get(3);
-    try testing.expect(next_inst.* == .Save);
-    try testing.expectEqual(@as(usize, 1), next_inst.*.Save);
+    try testing.expect(next_inst == .Save);
+    try testing.expectEqual(@as(usize, 1), next_inst.Save);
 
     next_inst = try inst_list.get(4);
-    try testing.expect(next_inst.* == .Match);
+    try testing.expect(next_inst == .Match);
 }

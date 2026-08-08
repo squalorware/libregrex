@@ -282,7 +282,7 @@ fn parseCharClass(self: *Parser) RegrexError!AST.CharClass {
     var ranges = std.ArrayList(AST.CharRange).empty;
     errdefer ranges.deinit(self.alloc);
 
-    var chars = std.ArrayList(Rune).empty;
+    var chars = std.ArrayList(u21).empty;
     errdefer chars.deinit(self.alloc);
 
     while (
@@ -372,7 +372,7 @@ test "Should parse anchored lowercase character class repeat" {
     var token_buffer = try tokens.TokenListBuffer.init(alloc, null);
     defer token_buffer.deinit();
 
-    const lexer = Lexer.init("^[a-z]*$");
+    var lexer = Lexer.init("^[a-z]*$");
     try lexer.tokenize(&token_buffer);
 
     var parser = Parser.init(alloc, token_buffer.items());
@@ -414,7 +414,7 @@ test "Should parse non-capturing group" {
     var token_buffer = try tokens.TokenListBuffer.init(alloc, null);
     defer token_buffer.deinit();
 
-    const lexer = Lexer.init("(?:ab)+");
+    var lexer = Lexer.init("(?:ab)+");
     try lexer.tokenize(&token_buffer);
 
     var parser = Parser.init(alloc, token_buffer.items());

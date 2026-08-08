@@ -42,17 +42,17 @@ pub fn init(pattern: []const u8) Lexer {
 /// - `RegrexError.InvalidUnicode` if Rune contains an invalid UTF-8 code point
 /// - `RegrexError.MemoryError` if failed allocating or manipulating dynamic Token buffer
 /// - `RegrexError.TrailingEscape` if pattern ends after backslash.
-pub fn tokenize(self: Lexer, tlist: *TokenListBuffer) RegrexError!void {
+pub fn tokenize(self: *Lexer, tlist: *TokenListBuffer) RegrexError!void {
     const view = std.unicode.Utf8View.init(self.pattern) catch {
         return RegrexError.InvalidUnicode;
     };
     var iter = view.iterator();
 
-    while (iter.nextCodepoint()) |rune| {
+    while (iter.nextCodepoint()) |char| {
         const current_pos = self.pos;
         self.pos += 1;
     
-        if (rune == '\\') {
+        if (char == '\\') {
             const escaped = iter.nextCodepoint() orelse {
                 return RegrexError.TrailingEscape;
             };
@@ -68,11 +68,12 @@ pub fn tokenize(self: Lexer, tlist: *TokenListBuffer) RegrexError!void {
             continue;
         }
         // if `null` - it's a regular literal
+        const rune = try Rune.from(char);
         const typ = mapRuneToTokenType(rune) orelse .CHAR;
 
         try tlist.append(.{ 
             .typ = typ, 
-            .val = try Rune.from(rune), 
+            .val = try Rune.from(char), 
             .pos = current_pos, 
         });
     }
