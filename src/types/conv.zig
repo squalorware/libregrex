@@ -1,6 +1,7 @@
 const std = @import("std");
 const RegrexError = @import("./error.zig").Error;
 const matching = @import("./matching.zig");
+const testing = std.testing;
 const Match = matching.Match;
 const Span = matching.Span;
 
@@ -60,4 +61,96 @@ pub fn toMatch(
         .input = input,
         .groups = groups_buf,
     };
+}
+
+test "toMatch() should return a Match with valid full match and no capture groups" {
+    const allocator = testing.allocator;
+    const input = "lol 420 kek";
+    // Capture slot with whole match start and end indices
+    const slots = [_]?usize { 4, 7 };
+
+    var m = try toMatch(allocator, input, 0, slots[0..]);
+    defer m.deinit(allocator);
+
+    try testing.expectEqualStrings("420", m.full());
+    try testing.expectEqual(@as(usize, 1), m.groups.len);
+    try testing.expectEqual(@as(usize, 4), try m.start(0));
+    try testing.expectEqual(@as(usize, 7), try m.end(0));
+
+    try testing.expectEqual(@as(usize, 0), m.subgroups().len);
+}
+
+test "toMatch() should return a Match with a valid subgroup" {
+    const allocator = testing.allocator;
+    const input = "lol 420 kek";
+    // Capture slot with whole match start and end indices
+    const slots = [_]?usize { 4, 7, 4, 7, };
+
+    var m = try toMatch(allocator, input, 1, slots[0..]);
+    defer m.deinit(allocator);
+
+    try testing.expectEqualStrings("420", m.full());
+    try testing.expectEqual(@as(usize, 2), m.groups.len);
+    try testing.expectEqual(@as(usize, 1), m.subgroups().len);
+    try testing.expectEqualStrings("420", try m.group(1));
+    try testing.expectEqual(@as(usize, 4), try m.start(1));
+    try testing.expectEqual(@as(usize, 7), try m.end(1));
+}
+
+test "toMatch() should create a Match with unmatched subgroups as sentinel groups" {
+    const allocator = testing.allocator;
+    const input = "lol 420 kek";
+    // Capture slot with whole match start and end indices
+    const slots = [_]?usize { 4, 7, null, null };
+
+    var m = try toMatch(allocator, input, 1, slots[0..]);
+    defer m.deinit(allocator);
+
+    try testing.expectEqualStrings("420", m.full());
+
+    const no_match_sent = m.subgroups()[0];
+    try testing.expect(no_match_sent.isNone());
+}
+
+test "toMatch() should create a Match with partially captured groups as sentinel groups" {
+    const allocator = testing.allocator;
+    const input = "lol 420 kek";
+    // Capture slot with whole match start and end indices
+    const slots = [_]?usize { 4, 7, 4, null };
+
+    var m = try toMatch(allocator, input, 1, slots[0..]);
+    defer m.deinit(allocator);
+
+    try testing.expectEqualStrings("420", m.full());
+
+    const no_match_sent = m.subgroups()[0];
+    try testing.expect(no_match_sent.isNone());
+}
+
+test "toMatch() should create a Match with multiple capture groups" {
+    const allocator = testing.allocator;
+    const input = "lol 420 kek";
+    // Capture slot with whole match start and end indices
+    const slots = [_]?usize {
+        0, 11, // group 0 (full match)
+        0, 3, // group 1
+        4, 7, // group 2
+        8, 11 // group 3
+    };
+    const expected = [_][]const u8 {"lol", "420", "kek"};
+
+    var m = try toMatch(allocator, input, 3, slots[0..]);
+    defer m.deinit(allocator);
+
+    try testing.expectEqualStrings("lol 420 kek", m.full());
+    try testing.expectEqual(@as(usize, 4), m.groups.len);
+
+    const captures = m.subgroups();
+
+    try testing.expectEqual(@as(usize, 3), captures.len);
+
+    for (captures, 0..) |_, i| {
+        const group_idx = i + 1;
+        try testing.expectEqualStrings(expected[i], try m.group(group_idx));
+    }
 }

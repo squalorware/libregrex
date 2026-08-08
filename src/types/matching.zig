@@ -126,4 +126,218 @@ pub const Match = struct {
     }
 };
 
+const test_input = "lol 420 kek";
+
+const MatchFixture = struct {
+    match: Match,
+    /// Creates a test match and copies group spans
+    /// into allocator-owned memory.
+    pub fn init(
+        allocator: std.mem.Allocator,
+        full_start: usize,
+        full_end: usize,
+        captures: []const Span,
+    ) !MatchFixture {
+        const owned_groups = try allocator.alloc(Span, captures.len + 1);
+        owned_groups[0] = .{
+            .start = full_start,
+            .end = full_end,
+        };
+        for (captures, 0..) |g, i| {
+            owned_groups[i + 1] = g;
+        }
+
+        return .{
+            .match = .{
+                .input = test_input,
+                .groups = owned_groups,
+            },
+        };
+    }
+
+    pub fn deinit(self: *MatchFixture, alloc: std.mem.Allocator) void {
+        self.match.deinit(alloc);
+        self.* = undefined;
+    }
+};
+
+test "Match.full() should return the full match string representation" {
+    const allocator = testing.allocator;
+    var fix = try MatchFixture.init(allocator, 4, 7, &.{});
+    defer fix.deinit(allocator);
+
+    try testing.expectEqualStrings("420", fix.match.full());
+}
+
+test "Match.group(0) should return the full match string representation" {
+    const allocator = testing.allocator;
+    var fix = try MatchFixture.init(allocator, 4, 7, &.{});
+    defer fix.deinit(allocator);
+
+    const result = try fix.match.group(0);
+
+    try testing.expectEqualStrings("420", result);
+}
+
+test "Match.span(0) should return the byte span of the full match" {
+    const allocator = testing.allocator;
+    var fix = try MatchFixture.init(allocator, 4, 7, &.{});
+    defer fix.deinit(allocator);
+
+    const result = try fix.match.span(0);
+
+    try testing.expectEqual(@as(usize, 4), result.start);
+    try testing.expectEqual(@as(usize, 7), result.end);
+}
+
+test "Match.group(i) should return a subgroup string representation" {
+    const allocator = testing.allocator;
+    const captured = [_]Span {
+        .{
+            .start = 4,
+            .end = 7,
+        },
+    };
+
+    var fix = try MatchFixture.init(
+        allocator,
+        0,
+        test_input.len,
+        captured[0..],
+    );
+    defer fix.deinit(allocator);
+
+    const result = try fix.match.group(1);
+
+    try testing.expectEqualStrings("420", result);
+}
+
+test "Match.span(i) should return subgroup byte span" {
+    const allocator = testing.allocator;
+    const captured = [_]Span {
+        .{
+            .start = 4,
+            .end = 7,
+        },
+    };
+
+    var fix = try MatchFixture.init(
+        allocator,
+        0,
+        test_input.len,
+        captured[0..],
+    );
+    defer fix.deinit(allocator);
+
+    const result = try fix.match.span(1);
+
+    try testing.expectEqual(@as(usize, 4), result.start);
+    try testing.expectEqual(@as(usize, 7), result.end);
+}
+
+test "Match.group(i), Match.span(i) should return `Error.NoMatch` for an unmatched capture group" {
+    const allocator = testing.allocator;
+    const unmatched = [_]Span { 
+        Span.none() 
+    };
+
+    var fix = try MatchFixture.init(
+        allocator,
+        0,
+        test_input.len,
+        unmatched[0..],
+    );
+    defer fix.deinit(allocator);
+
+    try testing.expectError(Error.NoMatch, fix.match.group(1));
+    try testing.expectError(Error.NoMatch, fix.match.span(1)); 
+}
+
+test "Match.group(i), Match.span(i) should return `Error.OutOfRange` for a group out of range" {
+    const allocator = testing.allocator;
+    const captured = [_]Span {
+        .{
+            .start = 4,
+            .end = 7,
+        },
+    };
+
+    var fix = try MatchFixture.init(
+        allocator,
+        0,
+        test_input.len,
+        captured[0..],
+    );
+    defer fix.deinit(allocator);
+
+    try testing.expectError(Error.OutOfRange, fix.match.group(2));
+    try testing.expectError(Error.OutOfRange, fix.match.span(2));
+}
+
+test "Match.subgroups() should return captures excluding full match" {
+    const allocator = testing.allocator;
+    const captures = [_]Span {
+        .{ .start = 0, .end = 3 },
+        .{ .start = 4, .end = 7 },
+        Span.none(),
+    };
+
+    var fix = try MatchFixture.init(
+        allocator,
+        0,
+        test_input.len,
+        captures[0..],
+    );
+    defer fix.deinit(allocator);
+
+    const result = fix.match.subgroups();
+
+    try testing.expectEqual(@as(usize, 3), result.len);
+    try testing.expectEqual(@as(usize, 0), result[0].start);
+    try testing.expectEqual(@as(usize, 3), result[0].end);
+    try testing.expectEqual(@as(usize, 4), result[1].start);
+    try testing.expectEqual(@as(usize, 7), result[1].end);
+    try testing.expect(result[2].isNone());
+}
+
+/// A resizable dynamic buffer to store Match entries
 pub const MatchListBuffer = ManagedDynamicBuffer(Match, null);
+
+test "MatchArray.init() should create an empty array" {
+    const allocator = testing.allocator;
+
+    var matches = try MatchListBuffer.init(allocator, null);
+    defer matches.deinit();
+
+    try testing.expectEqual(@as(usize, 0), matches.len());
+}
+
+test "MatchArray.append() should store owned matches" {
+    const allocator = testing.allocator;
+
+    var matches = try MatchListBuffer.init(allocator, null);
+    defer matches.deinit();
+
+    const groups = try allocator.alloc(Span, 1);
+    groups[0] = .{
+        .start = 0,
+        .end = 3,
+    };
+
+    const m = Match{
+        .input = "kek",
+        .groups = groups,
+    };
+
+    try matches.append(m);
+
+    try testing.expectEqual(@as(usize, 1), matches.len());
+
+    const stored = try matches.get(0);
+
+    try testing.expectEqualStrings("kek", stored.input);
+    try testing.expectEqual(@as(usize, 1), stored.groups.len);
+    try testing.expectEqual(@as(usize, 0), stored.groups[0].start);
+    try testing.expectEqual(@as(usize, 3), stored.groups[0].end);
+}
+

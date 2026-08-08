@@ -1,3 +1,4 @@
+const testing = @import("std").testing;
 const managed = @import("./managed.zig");
 const matching = @import("./matching.zig");
 
@@ -10,3 +11,9 @@ pub const Match = matching.Match;
 pub const MatchListBuffer = matching.MatchListBuffer;
 pub const Span = matching.Span;
 pub const DynamicStringBuffer = managed.ManagedDynamicBuffer(u8, null);
+
+test {
+    _ = @import("./matching.zig");
+    _ = @import("./managed.zig");
+    _ = @import("./conv.zig");
+}

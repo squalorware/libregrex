@@ -4,6 +4,17 @@ const std = @import("std");
 const Error = @import("./error.zig").Error;
 const testing = std.testing;
 
+fn hasDeinit(comptime T: type) bool {
+    return switch(@typeInfo(T)) {
+        .@"struct",
+        .@"union",
+        .@"enum",
+        .@"opaque",
+        => @hasDecl(T, "deinit"),
+        else => false,
+    };
+}
+
 /// Heap-allocated dynamic array that owns its stored `T` values.
 ///
 /// By default, stored values are released using:
@@ -59,7 +70,7 @@ pub fn ManagedDynamicBuffer(
         fn deinitItem(self: Self, item: *T) void {
             if (T_destructor_cb) |callback_fn| {
                 callback_fn(self.allocator, item);
-            } else {
+            } else if (comptime hasDeinit(T)) {
                 item.deinit(self.allocator);
             }
         }
