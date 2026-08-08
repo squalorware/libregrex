@@ -90,15 +90,15 @@ test "Should break up a pattern into a valid token stream" {
     var token_buffer = try tokens.TokenListBuffer.init(allocator, null);
     defer token_buffer.deinit();
 
-    const lexer = Lexer.init("a\\.b*c");
+    var lexer = Lexer.init("a\\.b*c");
     try lexer.tokenize(&token_buffer);
 
     const expected = [_]Token{
-        .{ .typ = .CHAR, .val = Rune.from('a'), .pos = 0 },
-        .{ .typ = .ESCAPED_CHAR, .val = Rune.from('.'), .pos = 1 },
-        .{ .typ = .CHAR, .val = Rune.from('b'), .pos = 3 },
-        .{ .typ = .STAR, .val = Rune.from('*'), .pos = 4 },
-        .{ .typ = .CHAR, .val = Rune.from('c'), .pos = 5 },
+        .{ .typ = .CHAR, .val = try Rune.from('a'), .pos = 0 },
+        .{ .typ = .ESCAPED_CHAR, .val = try Rune.from('.'), .pos = 1 },
+        .{ .typ = .CHAR, .val = try Rune.from('b'), .pos = 3 },
+        .{ .typ = .STAR, .val = try Rune.from('*'), .pos = 4 },
+        .{ .typ = .CHAR, .val = try Rune.from('c'), .pos = 5 },
         .{ .typ = .EOF, .val = null, .pos = 6 },
     };
 

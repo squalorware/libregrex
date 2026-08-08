@@ -4,6 +4,7 @@ const Rune = @import("unicode").Rune;
 const AST = @import("./syntax.zig");
 const bytecode = @import("./bytecode.zig");
 const utils = @import("./utils.zig");
+const testing = std.testing;
 const Instruction = bytecode.Instruction;
 const RegrexError = types.Error;
 const Match = types.Match;
@@ -137,7 +138,7 @@ pub fn execAt(
             },
             .Any => {
                 const matcher = RuneMatcher{ .any = {} };
-                const fail_condition = !matchRune(input[pos], matcher);
+                const fail_condition = (pos >= input.len) or !matchRune(input[pos], matcher);
 
                 if (try utils.advanceOneRune(input, &pos, fail_condition)) {
                     pc += 1;
@@ -149,7 +150,7 @@ pub fn execAt(
             },
             .Class => |cls| {
                 const matcher = RuneMatcher{ .char_class = cls };
-                const fail_condition = !matchRune(input[pos], matcher);
+                const fail_condition = (pos >= input.len) or !matchRune(input[pos], matcher);
 
                 if (try utils.advanceOneRune(input, &pos, fail_condition)) {
                     pc += 1;
@@ -189,6 +190,7 @@ pub fn execAt(
                 captures[slot] = pos;
                 pc += 1;
             },
+            .Hold => return RegrexError.UnexpectedInstruction,
             // Branch execution; execute `left` branch and store `right` branch to backtracking stack
             .Split => |split| {
                 const alt_captures = try cloneCaptures(allocator, captures);
@@ -219,4 +221,109 @@ pub fn execAt(
             },
         }
     }
+}
+
+test "execAt() should produce a Match from given position" {
+    const allocator = testing.allocator;
+    const inst_list = [_]Instruction {
+        .{ .Save = 0 },
+        .{ .Rune = '4' },
+        .{ .Rune = '2' },
+        .{ .Rune = '0' },
+        .{ .Save = 1 },
+        .Match,
+    };
+
+    var result = (try execAt(
+        allocator,
+        "lol 420 kek",
+        4,
+        0,
+        inst_list[0..],
+    )) orelse {
+        try testing.expect(false);
+        return;
+    };
+    defer result.deinit(allocator);
+
+    try testing.expectEqualStrings("420", try result.full());
+    try testing.expectEqual(@as(usize, 4), try result.start(0));
+    try testing.expectEqual(@as(usize, 7), try result.end(0));
+}
+
+test "execAt() should handle capture slots" {
+    const allocator = testing.allocator;
+    const inst_list = [_]Instruction {
+        .{ .Save = 0 },
+        .{ .Save = 2 },
+        .{ .Rune = '4' },
+        .{ .Rune = '2' },
+        .{ .Rune = '0' },
+        .{ .Save = 3 },
+        .{ .Save = 1 },
+        .Match,
+    };
+
+    var result = (try execAt(
+        allocator,
+        "420",
+        0,
+        1,
+        inst_list[0..],
+    )) orelse {
+        try testing.expect(false);
+        return;
+    };
+    defer result.deinit(allocator);
+
+    try testing.expectEqualStrings("420", try result.full());
+
+    const expected_group = try result.group(1);
+    try testing.expectEqualStrings("420", expected_group);
+}
+
+test "execAt() should correctly handle an anchored lowercase character class repeat" {
+    const allocator = testing.allocator;
+    const ranges = [_]AST.CharRange {
+        .{ .start = 'a', .end = 'z' },
+    };
+    const chars = [_]u21 {};
+    const lowercase_class: AST.CharClass = .{
+        .ranges = ranges[0..],
+        .chars = chars[0..],
+        .negated = false,
+    };
+    const inst_list = [_]Instruction {
+        .{ .Save = 0 },
+        .AssertStart,
+        .{ .Split = .{ .first = 3, .second = 5 } },
+        .{ .Class = lowercase_class },
+        .{ .Jump = 2 },
+        .AssertEnd,
+        .{ .Save = 1 },
+        .Match,
+    };
+
+    var result = (try execAt(
+        allocator,
+        "abc",
+        0,
+        0,
+        inst_list[0..],
+    )) orelse {
+        try testing.expect(false);
+        return;
+    };
+    defer result.deinit(allocator);
+
+    try testing.expectEqualStrings("abc", try result.full());
+
+    const no_match = try execAt(
+        allocator,
+        "abc123",
+        0,
+        0,
+        inst_list[0..],
+    );
+    try testing.expect(no_match == null);
 }

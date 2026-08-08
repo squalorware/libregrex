@@ -77,20 +77,20 @@ test "Should map a character to corresponding token type" {
         rune: Rune,
         expected: ?TokenType,
     }{
-        .{ .rune = Rune.from('.'), .expected = .DOT },
-        .{ .rune = Rune.from('^'), .expected = .CARET },
-        .{ .rune = Rune.from('$'), .expected = .DOLLAR },
-        .{ .rune = Rune.from('*'), .expected = .STAR },
-        .{ .rune = Rune.from('+'), .expected = .PLUS },
-        .{ .rune = Rune.from('?'), .expected = .QUESTION },
-        .{ .rune = Rune.from('|'), .expected = .PIPE },
-        .{ .rune = Rune.from('('), .expected = .LPAREN },
-        .{ .rune = Rune.from(')'), .expected = .RPAREN },
-        .{ .rune = Rune.from('['), .expected = .LBRACKET },
-        .{ .rune = Rune.from(']'), .expected = .RBRACKET },
-        .{ .rune = Rune.from('-'), .expected = .DASH },
+        .{ .rune = try Rune.from('.'), .expected = .DOT },
+        .{ .rune = try Rune.from('^'), .expected = .CARET },
+        .{ .rune = try Rune.from('$'), .expected = .DOLLAR },
+        .{ .rune = try Rune.from('*'), .expected = .STAR },
+        .{ .rune = try Rune.from('+'), .expected = .PLUS },
+        .{ .rune = try Rune.from('?'), .expected = .QUESTION },
+        .{ .rune = try Rune.from('|'), .expected = .PIPE },
+        .{ .rune = try Rune.from('('), .expected = .LPAREN },
+        .{ .rune = try Rune.from(')'), .expected = .RPAREN },
+        .{ .rune = try Rune.from('['), .expected = .LBRACKET },
+        .{ .rune = try Rune.from(']'), .expected = .RBRACKET },
+        .{ .rune = try Rune.from('-'), .expected = .DASH },
         // Not a regex metacharacter
-        .{ .rune = Rune.from('a'), .expected = null },
+        .{ .rune = try Rune.from('a'), .expected = null },
     };
 
     for (cases) |c| {

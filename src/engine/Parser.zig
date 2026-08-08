@@ -391,8 +391,8 @@ test "Should parse anchored lowercase character class repeat" {
                         .CharClass => |cls| {
                             try testing.expectEqual(false, cls.negated);
                             try testing.expectEqual(@as(usize, 1), cls.ranges.len);
-                            try testing.expectEqual(@as(Rune, 'a'), cls.ranges[0].start);
-                            try testing.expectEqual(@as(Rune, 'z'), cls.ranges[0].end);
+                            try testing.expectEqual(@as(u21, 'a'), cls.ranges[0].start);
+                            try testing.expectEqual(@as(u21, 'z'), cls.ranges[0].end);
                         },
                         else => try testing.expect(false),
                     }

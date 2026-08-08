@@ -56,11 +56,11 @@ pub fn matchRune(rune: u21, matcher: RuneMatcher) bool {
 /// 
 /// Returns `Error.InvalidUnicode` if encounters broken UTF-8 
 pub fn advanceOneRune(input: []const u8, pos: *usize, fail_condition: ?bool) RegrexError!bool {
-    const rune = try Rune.from(input[pos.*]);
-    const not_ok = fail_condition orelse (pos.* > input.len);
+    const not_ok = fail_condition orelse (pos.* >= input.len);
 
     if (not_ok) return false;
     
+    const rune = try Rune.from(input[pos.*]);
     pos.* += rune.len;
     return true;
 }
