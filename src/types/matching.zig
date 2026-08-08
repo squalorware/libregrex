@@ -1,7 +1,8 @@
 const std = @import("std");
 const Error = @import("./error.zig").Error;
-pub const ManagedArrayList = @import("./managed.zig").ManagedArrayList;
+const ManagedDynamicBuffer = @import("./managed.zig").ManagedDynamicBuffer;
 const Sentinel = std.math.maxInt(usize);
+const testing = std.testing;
 
 pub const MAX_GROUPS_LEN = 1024;
 
@@ -29,6 +30,18 @@ pub const Span = struct {
         return self.start == Sentinel and self.end == Sentinel;
     }
 };
+    
+test "Span.none() should return an empty Span" {
+    const g = Span.none();
+
+    try testing.expect(g.isNone());
+}
+
+test "Span.isNone() should return false for non-empty Span" {
+    const g = Span{ .start = 1, .end = 3 };
+
+    try testing.expect(!g.isNone());
+}
 
 pub const Match = struct {
     /// Borrowed input buffer against which the regex was executed.
@@ -57,10 +70,10 @@ pub const Match = struct {
     /// `i = 0` returns the whole match span.
     ///
     /// Returns:
-    /// - `Error.InvalidGroupIndex` if `i` is outside the available group range;
+    /// - `Error.OutOfRange` if `i` is outside the available group range;
     /// - `Error.NoMatch` if the group exists but did not participate in the match.
     pub fn span(self: Match, i: usize) Error!Span {
-        if (i >= self.groups.len) return Error.InvalidGroupIndex;
+        if (i >= self.groups.len) return Error.OutOfRange;
 
         const g = self.groups[i];
         if (g.isNone()) return Error.NoMatch;
@@ -71,7 +84,7 @@ pub const Match = struct {
     /// Returns the starting index of byte span `i`
     ///
     /// Returns:
-    /// - `Error.InvalidGroupIndex` if `i` is outside the available group range;
+    /// - `Error.OutOfRange` if `i` is outside the available group range;
     /// - `Error.NoMatch` if the group exists but did not participate in the match.
     pub fn start(self: Match, i: usize) Error!usize {
         const g = try self.span(i);
@@ -82,7 +95,7 @@ pub const Match = struct {
     /// Returns the ending index of byte span `i`
     ///
     /// Returns:
-    /// - `Error.InvalidGroupIndex` if `i` is outside the available group range;
+    /// - `Error.OutOfRange` if `i` is outside the available group range;
     /// - `Error.NoMatch` if the group exists but did not participate in the match.
     pub fn end(self: Match, i: usize) Error!usize {
         const g = try self.span(i);
@@ -95,7 +108,7 @@ pub const Match = struct {
     /// `i = 0` returns the whole match.
     ///
     /// Returns:
-    /// - `Error.InvalidGroupIndex` if `i` is outside the available group range;
+    /// - `Error.OutOfRange` if `i` is outside the available group range;
     /// - `Error.NoMatch` if the group exists but did not participate in the match.
     pub fn group(self: Match, i: usize) Error![]const u8 {
         const g = try self.span(i);
@@ -113,17 +126,4 @@ pub const Match = struct {
     }
 };
 
-pub const MatchList = ManagedArrayList(Match, null);
-    // const testing = std.testing;
-
-    // test "Span.none() should return an empty Span" {
-    //     const g = Span.none();
-
-    //     try testing.expect(g.isNone());
-    // }
-
-    // test "Span.isNone() should return false for non-empty Span" {
-    //     const g = Span{ .start = 1, .end = 3 };
-
-    //     try testing.expect(!g.isNone());
-    // }
+pub const MatchListBuffer = ManagedDynamicBuffer(Match, null);

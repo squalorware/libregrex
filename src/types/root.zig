@@ -3,8 +3,10 @@ const matching = @import("./matching.zig");
 
 pub const conv = @import("./conv.zig");
 pub const Error = @import("./error.zig").Error;
-pub const ManagedArrayList = managed.ManagedArrayList;
+pub const opt_args = @import("./opt_args.zig");
+pub const ManagedDynamicBuffer = managed.ManagedDynamicBuffer;
 pub const ManagedOpaqueWrapper = managed.ManagedOpaqueWrapper;
 pub const Match = matching.Match;
-pub const MatchList = matching.MatchList;
+pub const MatchListBuffer = matching.MatchListBuffer;
 pub const Span = matching.Span;
+pub const DynamicStringBuffer = managed.ManagedDynamicBuffer(u8, null);
