@@ -136,16 +136,6 @@ pub fn ManagedDynamicBuffer(
             self.inner.items[i] = val;
         }
 
-        pub fn clone(self: *Self) Error!Self {
-            const copy = self.inner.clone(self.alloc) catch {
-                return Error.MemoryError;
-            };
-            return .{
-                .allocator = self.allocator,
-                .inner = copy,
-            };
-        }
-
         pub fn pop(self: *Self) ?T {
             return self.inner.pop();
         }
@@ -164,6 +154,250 @@ pub fn ManagedDynamicBuffer(
             };
         }
     };
+}
+
+const TestItem = struct {
+    id: usize,
+    data: []u8,
+    deinit_count: *usize,
+
+    pub fn init(alloc: std.mem.Allocator, id: usize, deinit_count: *usize) !TestItem {
+        return .{ 
+            .id = id, 
+            .data = try alloc.dupe(u8, "test"),
+            .deinit_count = deinit_count 
+        };
+    }
+
+    pub fn deinit(self: *TestItem, alloc: std.mem.Allocator) void {
+        alloc.free(self.data);
+        self.deinit_count.* += 1;
+        self.* = undefined;
+    }
+};
+
+const TestItemList = ManagedDynamicBuffer(TestItem, null);
+
+test "ManagedDynamicBuffer initialized empty, initialized with slice, append and appendSlice" {
+    const allocator = testing.allocator;
+    var deinit_count: usize = 0;
+
+    const items = [_]TestItem {
+        try TestItem.init(allocator, 13, &deinit_count),
+        try TestItem.init(allocator, 42, &deinit_count),
+        try TestItem.init(allocator, 67, &deinit_count),
+        try TestItem.init(allocator, 69, &deinit_count),
+        try TestItem.init(allocator, 420, &deinit_count),
+        try TestItem.init(allocator, 666, &deinit_count),
+    };
+
+    // Init empty, append
+    {
+        var list = try TestItemList.init(allocator, null);
+        defer list.deinit();
+
+        try testing.expectEqual(@as(usize, 0), list.len());
+
+        try list.append(items[2]);
+        try testing.expectEqual(@as(usize, 1), list.len());
+        try testing.expectEqual(@as(usize, 67), (try list.get(0)).id);
+    } 
+    try testing.expectEqual(@as(usize, 1), deinit_count);
+    // reset counter
+    deinit_count = 0;
+
+    // Init with slice, append
+    {
+        var list = try TestItemList.init(allocator, items[0..3]);
+        defer list.deinit();
+
+        try testing.expectEqual(@as(usize, 3), list.len());
+        try testing.expectEqual(@as(usize, 13), (try list.get(0)).id);
+        try testing.expectEqual(@as(usize, 42), (try list.get(1)).id);
+        try testing.expectEqual(@as(usize, 67), (try list.get(2)).id);
+
+        try list.append(items[5]);
+        try testing.expectEqual(@as(usize, 4), list.len());
+        try testing.expectEqual(@as(usize, 420), (try list.get(3)).id);
+    }
+    try testing.expectEqual(@as(usize, 4), deinit_count);
+    deinit_count = 0;
+
+    // Init empty, appendSlice
+    {
+        var list = try TestItemList.init(allocator, null);
+        defer list.deinit();
+
+        try testing.expectEqual(@as(usize, 0), list.len());
+
+        try list.appendSlice(items[0..3]);
+        try testing.expectEqual(@as(usize, 3), list.len());
+        try testing.expectEqual(@as(usize, 13), (try list.get(0)).id);
+        try testing.expectEqual(@as(usize, 42), (try list.get(1)).id);
+        try testing.expectEqual(@as(usize, 67), (try list.get(2)).id);
+    }
+    try testing.expectEqual(@as(usize, 3), deinit_count);
+    deinit_count = 0;
+
+    // Init with slice, appendSlice
+    {
+        var list = try TestItemList.init(allocator, items[0..3]);
+        defer list.deinit();
+
+        try testing.expectEqual(@as(usize, 3), list.len());
+        try testing.expectEqual(@as(usize, 13), (try list.get(0)).id);
+        try testing.expectEqual(@as(usize, 42), (try list.get(1)).id);
+        try testing.expectEqual(@as(usize, 67), (try list.get(2)).id);
+
+        try list.appendSlice(items[3..]);
+        try testing.expectEqual(@as(usize, 6), list.len());
+        try testing.expectEqual(@as(usize, 69), (try list.get(3)).id);
+        try testing.expectEqual(@as(usize, 420), (try list.get(4)).id);
+        try testing.expectEqual(@as(usize, 666), (try list.get(5)).id);
+    }
+    try testing.expectEqual(@as(usize, 6), deinit_count);
+}
+
+test "ManagedDynamicBuffer get, set and ownership on error" {
+    const allocator = testing.allocator;
+    var deinit_count: usize = 0;
+
+    // get and error
+    {
+        const item = try TestItem.init(allocator, 67, &deinit_count);
+        var list = try TestItemList.init(allocator, null);
+        defer list.deinit();
+
+        try testing.expectEqual(@as(usize, 0), list.len());
+
+        try list.append(item);
+
+        try testing.expectEqual(@as(usize, 1), list.len());
+        try testing.expectEqual(@as(usize, 67), (try list.get(0)).id);
+        try testing.expectError(Error.OutOfRange, list.get(1));
+        item.deinit(allocator);
+    }
+    try testing.expectEqual(@as(usize, 1), deinit_count);
+    deinit_count = 0;
+
+    // set
+    {
+        const initial = try TestItem.init(allocator, 420, &deinit_count);
+        const replacement = try TestItem.init(allocator, 67, &deinit_count);
+        var list = try TestItemList.init(allocator, null);
+        defer list.deinit();
+
+        try testing.expectEqual(@as(usize, 0), list.len());
+
+        try list.append(initial);
+        try testing.expectEqual(@as(usize, 1), list.len());
+        try testing.expectEqual(@as(usize, 420), (try list.get(0)).id);
+
+        try list.set(0, replacement);
+        try testing.expectEqual(@as(usize, 1), list.len());
+        try testing.expectEqual(@as(usize, 67), (try list.get(0)).id);
+    }
+    try testing.expectEqual(@as(usize, 2), deinit_count);
+    deinit_count = 0;
+
+    // set and error
+    {
+        const item = try TestItem.init(allocator, 67, &deinit_count);
+        var list = try TestItemList.init(allocator, null);
+        defer list.deinit();
+
+        try testing.expectEqual(@as(usize, 0), list.len());
+
+        try testing.expectError(Error.OutOfRange, list.set(1, item));
+        item.deinit(allocator);
+    }
+    try testing.expectEqual(@as(usize, 1), deinit_count);
+    deinit_count = 0;
+}
+
+test "ManagedDynamicBuffer pop" {
+    const allocator = testing.allocator;
+    var deinit_count: usize = 0;
+
+    const item = try TestItem.init(allocator, 67, &deinit_count);
+    var list = try TestItemList.init(allocator, null);
+    defer list.deinit();
+
+    try list.append(item);
+    var popped = list.pop().?;
+
+    try testing.expectEqual(@as(usize, 0), list.len());
+    // pop shouldn't destroy the item
+    try testing.expectEqual(@as(usize, 0), deinit_count);
+
+    popped.deinit(allocator);
+    try testing.expectEqual(@as(usize, 1), deinit_count);
+}
+
+test "ManagedDynamicBuffer toOwnedSlice" {
+    const allocator = testing.allocator;
+    var deinit_count: usize = 0;
+
+    const items = [_]TestItem {
+        try TestItem.init(allocator, 67, &deinit_count),
+        try TestItem.init(allocator, 420, &deinit_count),
+    };
+    var list = try TestItemList.init(allocator, items);
+    defer list.deinit();
+
+    try testing.expectEqual(@as(usize, 2), list.len());
+    const owned = try list.toOwnedSlice();
+
+    try testing.expectEqual(@as(usize, 0), list.len());
+    try testing.expectEqual(@as(usize, 2), owned.len);
+
+    // TestItemList doesn't own items anymore
+    try testing.expectEqual(@as(usize, 0), deinit_count);
+    for (owned) |*item| {
+        item.deinit(allocator);
+    }
+    allocator.free(owned);
+    try testing.expectEqual(@as(usize, 2), deinit_count);
+}
+
+const TestCallbackItem = struct {
+    data: []u8,
+    deinit_count: *usize,
+    cb_deinit_count: *usize,
+
+    pub fn deinit(self: *TestCallbackItem, alloc: std.mem.Allocator) void {
+        alloc.free(self.data);
+        self.deinit_count += 1;
+        self.*= undefined;
+    }
+};
+
+fn deinit_cb(alloc: std.mem.Allocator, item: *TestCallbackItem) void {
+    alloc.free(item.data);
+    item.cb_deinit_count += 1;
+    item.* = undefined;
+}
+
+const TestCallbackItemList = ManagedDynamicBuffer(TestCallbackItem, deinit_cb);
+
+test "ManagedDynamicBuffer with custom deinit callback" {
+    const allocator = testing.allocator;
+    var deinit_count: usize = 0;
+    var cb_deinit_count: usize = 0;
+
+    {
+        var list = try TestCallbackItemList.init(allocator, null);
+        defer list.deinit();
+
+        try list.append(.{
+            .data = try allocator.dupe(u8, "test"),
+            .deinit_count = &deinit_count,
+            .cb_deinit_count = &cb_deinit_count,
+        });
+    }
+    // Ensure the callback was triggered instead of default deinit
+    try testing.expectEqual(@as(usize, 0), deinit_count);
+    try testing.expectEqual(@as(usize, 1), deinit_count);
 }
 
 pub fn ManagedOpaqueWrapper(
