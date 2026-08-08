@@ -114,7 +114,7 @@ pub const Pattern = opaque {
                 self.instructions
             )) |m| return m;
 
-            const rune = try Rune.from(input[pos]) catch break;
+            const rune = Rune.from(input[pos]) catch break;
             pos += rune.len;
         }
         return null;
@@ -123,18 +123,18 @@ pub const Pattern = opaque {
     /// Creates an interface for `vm.execAt` to be called from inside the `FindGenerator`
     /// while being within current `Pattern` context
     fn execAdapter(
-        ptr: *const Pattern,
-        input: []const u8, 
-        pos: usize
+        ctx: *const anyopaque,
+        input: []const u8,
+        pos: usize,
     ) RegrexError!?Match {
-        const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
+        const self: *const CompiledPattern = @ptrCast(@alignCast(ctx));
 
         return try vm.execAt(
             self.alloc, 
             input, 
             pos, 
             self.group_count, 
-            self.instructions
+            self.instructions,
         );
     }
 
@@ -147,10 +147,10 @@ pub const Pattern = opaque {
     pub fn findIter(ptr: *Pattern, input: []const u8) RegrexError!FindIterator {
         const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
 
-        return try FindIterator.init(
+        return FindIterator.init(
             self.alloc,
-            input,
             self,
+            input,
             execAdapter,
         );
     }
@@ -198,7 +198,6 @@ pub const Pattern = opaque {
     /// - `RegrexError.InvalidUnicode` (propagated by `VM.execAt` or encountered during lookup)
     pub fn sub(ptr: *Pattern, input: []const u8, repl: []const u8, opts: SubOptions) RegrexError![]u8 {
         const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
-        const count: usize = opts.count orelse 0;
 
         var out_buf = try DynamicStringBuffer.init(self.alloc, null);
         defer out_buf.deinit();
@@ -209,7 +208,7 @@ pub const Pattern = opaque {
         var copy_pos: usize = 0;
         var repl_count: usize = 0;
 
-        while(count == 0 or count > repl_count) {
+        while(opts.count == 0 or opts.count > repl_count) {
             const found = (try iter.next()) orelse break;
 
             var matched = found;

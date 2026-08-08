@@ -27,10 +27,10 @@ pub fn compile(alloc: std.mem.Allocator, pattern_str: []const u8) RegrexError!*P
     var token_list = try tokens.TokenListBuffer.init(alloc, null);
     defer token_list.deinit();
 
-    const lexer = engine.Lexer.init(pattern_str);
+    var lexer = engine.Lexer.init(pattern_str);
     try lexer.tokenize(&token_list);
 
-    var parser = engine.Parser.init(arena.allocator, token_list.items());
+    var parser = engine.Parser.init(arena.allocator(), token_list.items());
     const ast = try parser.parse();
 
     var bcode = try bytecode.BytecodeBuffer.init(alloc, null);
@@ -119,4 +119,9 @@ pub fn sub(
     defer compiled.deinit();
 
     return try compiled.sub(input, repl, opts);
+}
+
+test {
+    _ = @import("types");
+    _ = @import("engine");
 }
