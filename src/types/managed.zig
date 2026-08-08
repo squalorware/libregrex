@@ -461,3 +461,43 @@ pub fn ManagedOpaqueWrapper(
         }
     };
 }
+
+const TestOpaque = opaque {};
+const TestPayload = struct {
+    value: usize,
+    freed: *bool,
+};
+
+fn freeTestPayloadCb(alloc: std.mem.Allocator,payload: *TestPayload) void {
+    _ = alloc;
+    payload.freed.* = true;
+}
+
+test "ManagedOpaqueWrapper should create, unwrap and destroy an opaque handler" {
+    const allocator = testing.allocator;
+    const WrappedTest = ManagedOpaqueWrapper(TestOpaque, TestPayload, freeTestPayloadCb);
+
+    var freed = false;
+
+    const wrapped = try WrappedTest.create(allocator, .{
+        .value = 42,
+        .freed = &freed,
+    });
+
+    const owned_mut = WrappedTest.unwrap(wrapped);
+    try testing.expectEqual(@as(usize, 42), owned_mut.value.value);
+
+    const owned_const = WrappedTest.unwrapConst(wrapped);
+    try testing.expectEqual(@as(usize, 42), owned_const.value.value);
+
+    WrappedTest.destroy(allocator, wrapped);
+
+    try testing.expect(freed);
+}
+
+test "ManagedOpaqueWrapepr.destroy should not fail when passed null value" {
+    const allocator = testing.allocator;
+    const WrappedTest = ManagedOpaqueWrapper(TestOpaque, TestPayload, freeTestPayloadCb);
+
+    WrappedTest.destroy(allocator, @as(?*TestOpaque, null));
+}
