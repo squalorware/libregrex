@@ -6,6 +6,7 @@ const std = @import("std");
 const RegrexError = @import("types").Error;
 const AST = @import("./syntax.zig");
 const bytecode = @import("./bytecode.zig");
+const testing = std.testing;
 const Instruction = bytecode.Instruction;
 const BytecodeBuffer = bytecode.BytecodeBuffer;
 
@@ -224,4 +225,305 @@ pub fn compile(
     try self.compileNode(alloc, node);
     try self.emit(.{ .Save = 1 });
     try self.emit(.Match);
+}
+
+test "Should compile a sequence of literals `abc`" {
+    const allocator = testing.allocator;
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const ast_alloc = arena.allocator();
+
+    var inst_list = try bytecode.BytecodeBuffer.init(allocator, null);
+    defer inst_list.deinit();
+
+    const tree = try ast_alloc.alloc(*AST.Node, 3);
+    const chars = [_]u21 {'a', 'b', 'c'};
+    for (chars, 0..) |ch, i| {
+        const node = try ast_alloc.create(AST.Node);
+        node.* = .{ .Literal = .{ .value = ch } };
+        tree[i] = node;
+    }
+
+    const root = try ast_alloc.create(AST.Node);
+    root.* = .{
+        .Sequence = .{
+            .nodes = tree,
+        },
+    };
+
+    const compiler = Compiler.init(&inst_list);
+    try compiler.compile(allocator, root);
+
+    try testing.expectEqual(@as(usize, 6), inst_list.len());
+
+    const first_inst = try inst_list.get(0);
+    try testing.expect(first_inst.* == Instruction.Save);
+    try testing.expectEqual(@as(usize, 0), first_inst.*.Save);
+
+    for (chars, 0..) |ch, i| {
+        const pos = i + 1;
+        const inst = try inst_list.get(pos);
+        try testing.expect(inst.* == Instruction.Rune);
+        try testing.expectEqual(@as(u21, ch), inst.*.Rune);
+    }
+
+    const next_inst = try inst_list.get(4);
+    try testing.expect(next_inst.* == Instruction.Save);
+    try testing.expectEqual(@as(usize, 1), next_inst.*.Save);
+
+    const last_inst = try inst_list.get(5);
+    try testing.expect(last_inst.* == Instruction.Match);
+}
+
+test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
+    const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const ast_alloc = arena.allocator();
+
+    var inst_list = try bytecode.BytecodeBuffer.init(allocator, null);
+    defer inst_list.deinit();
+
+    const start = try ast_alloc.create(AST.Node);
+    start.* = .{ .StartAnchor = .{} };
+
+    const ranges = try ast_alloc.alloc(AST.CharRange, 1);
+    ranges[0] = .{
+        .start = 'a',
+        .end = 'z',
+    };
+    const chars = try ast_alloc.alloc(u21, 0);
+
+    const class_node = try ast_alloc.create(AST.Node);
+    class_node.* = .{
+        .CharClass = .{
+            .ranges = ranges,
+            .chars = chars,
+            .negated = false,
+        },
+    };
+
+    const repeat = try ast_alloc.create(AST.Node);
+    repeat.* = .{
+        .Repeat = .{
+            .node = class_node,
+            .min = 0,
+            .max = null,
+        }
+    };
+
+    const end = try ast_alloc.create(AST.Node);
+    end.* = .{ .EndAnchor = .{} };
+
+    const tree = try ast_alloc.alloc(*AST.Node, 3);
+    tree[0] = start;
+    tree[1] = repeat;
+    tree[2] = end;
+
+    const root = try ast_alloc.create(AST.Node);
+    root.* = .{
+        .Sequence = .{
+            .nodes = tree,
+        },
+    };
+
+    const compiler = Compiler.init(&inst_list);
+    try compiler.compile(allocator, root);
+
+    try testing.expectEqual(@as(usize, 8), inst_list.len());
+
+    const first_inst = try inst_list.get(0);
+    try testing.expect(first_inst.* == .Save);
+    try testing.expectEqual(@as(usize, 0), first_inst.*.Save);
+
+    var next_inst: *Instruction = try inst_list.get(1);
+    try testing.expect(next_inst.* == .AssertStart);
+
+    next_inst = try inst_list.get(2);
+    try testing.expect(next_inst.* == .Split);
+    try testing.expectEqual(@as(usize, 3), next_inst.*.Split.first);
+    try testing.expectEqual(@as(usize, 5), next_inst.*.Split.second);
+
+    next_inst = try inst_list.get(3);
+    try testing.expect(next_inst.* == .Class);
+    try testing.expectEqual(false, next_inst.*.Class.negated);
+    try testing.expectEqual(@as(usize, 1), next_inst.*.Class.ranges.len);
+    try testing.expectEqual(@as(u21, 'a'), next_inst.*.Class.ranges[0].start);
+    try testing.expectEqual(@as(u21, 'z'), next_inst.*.Class.ranges[0].end);
+
+    next_inst = try inst_list.get(4);
+    try testing.expect(next_inst.* == .Jump);
+    try testing.expectEqual(@as(usize, 2), next_inst.*.Jump);
+
+    next_inst = try inst_list.get(5);
+    try testing.expect(next_inst.* == .AssertEnd);
+
+    next_inst = try inst_list.get(6);
+    try testing.expect(next_inst.* == .Save);
+    try testing.expectEqual(@as(usize, 1), next_inst.*.Save);
+
+    next_inst = try inst_list.get(7);
+    try testing.expect(next_inst.* == .Match);
+}
+
+test "Should compile branching `a|b`" {
+    const allocator = testing.allocator;
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const ast_alloc = arena.allocator();
+
+    var inst_list = try bytecode.BytecodeBuffer.init(allocator, null);
+    defer inst_list.deinit();
+
+    const left = try ast_alloc.create(AST.Node);
+    left.* = .{ .Literal = .{ .value = 'a' } };
+    const right = try ast_alloc.create(AST.Node);
+    right.* = .{ .Literal = .{ .value = 'b' } };
+
+    const root = try ast_alloc.create(AST.Node);
+    root.* = .{
+        .Branch = .{
+            .left = left,
+            .right = right,
+        },
+    };
+
+    const compiler = Compiler.init(&inst_list);
+    try compiler.compile(allocator, root);
+
+    try testing.expectEqual(@as(usize, 7), inst_list.len());
+
+    const first_inst = try inst_list.get(0);
+    try testing.expect(first_inst.* == .Save);
+    try testing.expectEqual(@as(usize, 0), first_inst.*.Save);
+
+    var next_inst = try inst_list.get(1);
+    try testing.expect(next_inst.* == .Split);
+    try testing.expectEqual(@as(usize, 2), next_inst.*.Split.first);
+    try testing.expectEqual(@as(usize, 4), next_inst.*.Split.second);
+
+    next_inst = try inst_list.get(2);
+    try testing.expect(next_inst.* == .Rune);
+    try testing.expectEqual(@as(u21, 'a'), next_inst.*.Rune);
+
+    next_inst = try inst_list.get(3);
+    try testing.expect(next_inst.* == .Jump);
+    try testing.expectEqual(@as(usize, 5), next_inst.*.Jump);
+
+    next_inst = try inst_list.get(4);
+    try testing.expect(next_inst.* == .Rune);
+    try testing.expectEqual(@as(u21, 'b'), next_inst.*.Rune);
+
+    next_inst = try inst_list.get(5);
+    try testing.expect(next_inst.* == .Save);
+    try testing.expectEqual(@as(usize, 1), next_inst.*.Save);
+
+    next_inst = try inst_list.get(6);
+    try testing.expect(next_inst.* == .Match);
+}
+
+test "Should compile a capture group `(a)`" {
+    const allocator = testing.allocator;
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const ast_alloc = arena.allocator();
+
+    var inst_list = try bytecode.BytecodeBuffer.init(allocator, null);
+    defer inst_list.deinit();
+
+    const lit = try ast_alloc.create(AST.Node);
+    lit.* = .{ .Literal = .{ .value = 'a' } };
+
+    const root = try ast_alloc.create(AST.Node);
+    root.* = .{
+        .CaptureGroup = .{
+            .pos = 1,
+            .node = lit,
+        },
+    };
+
+
+    const compiler = Compiler.init(&inst_list);
+    try compiler.compile(allocator, root);
+
+    try testing.expectEqual(@as(usize, 6), inst_list.len());
+
+    const first_inst = try inst_list.get(0);
+    try testing.expect(first_inst.* == .Save);
+    try testing.expectEqual(@as(usize, 0), first_inst.*.Save);
+
+    var next_inst = try inst_list.get(1);
+    try testing.expect(next_inst.* == .Save);
+    try testing.expectEqual(@as(usize, 2), next_inst.*.Save);
+
+    next_inst = try inst_list.get(2);
+    try testing.expect(next_inst.* == .Rune);
+    try testing.expectEqual(@as(u21, 'a'), next_inst.*.Rune);
+
+    next_inst = try inst_list.get(3);
+    try testing.expect(next_inst.* == .Save);
+    try testing.expectEqual(@as(usize, 3), next_inst.*.Save);
+
+    next_inst = try inst_list.get(4);
+    try testing.expect(next_inst.* == .Save);
+    try testing.expectEqual(@as(usize, 1), next_inst.*.Save);
+
+    next_inst = try inst_list.get(5);
+    try testing.expect(next_inst.* == .Match);
+}
+
+test "Should compile an optional repeat `a?`" {
+    const allocator = testing.allocator;
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const ast_alloc = arena.allocator();
+
+    var inst_list = try bytecode.BytecodeBuffer.init(allocator, null);
+    defer inst_list.deinit();
+
+    const lit = try ast_alloc.create(AST.Node);
+    lit.* = .{ .Literal = .{ .value = 'a' } };
+
+    const root = try ast_alloc.create(AST.Node);
+    root.* = .{
+        .Repeat = .{
+            .node = lit,
+            .min = 0,
+            .max = 1,
+        },
+    };
+
+    const compiler = Compiler.init(&inst_list);
+    try compiler.compile(allocator, root);
+
+    try testing.expectEqual(@as(usize, 5), inst_list.len());
+
+    const first_inst = try inst_list.get(0);
+    try testing.expect(first_inst.* == .Save);
+    try testing.expectEqual(@as(usize, 0), first_inst.*.Save);
+
+    var next_inst = try inst_list.get(1);
+    try testing.expect(next_inst.* == .Split);
+    try testing.expectEqual(@as(usize, 2), next_inst.*.Split.first);
+    try testing.expectEqual(@as(usize, 3), next_inst.*.Split.second);
+
+    next_inst = try inst_list.get(2);
+    try testing.expect(next_inst.* == .Rune);
+    try testing.expectEqual(@as(u21, 'a'), next_inst.*.Rune);
+
+    next_inst = try inst_list.get(3);
+    try testing.expect(next_inst.* == .Save);
+    try testing.expectEqual(@as(usize, 1), next_inst.*.Save);
+
+    next_inst = try inst_list.get(4);
+    try testing.expect(next_inst.* == .Match);
 }
