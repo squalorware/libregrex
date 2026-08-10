@@ -16,7 +16,7 @@ ROOT_DIR = SCRIPT_DIR.parent
 DEFAULT_UNICODE_VERSION = os.getenv("UTF_VERSION", "17.0.0")
 DEFAULT_OUTPUT_PATH = os.getenv("OUT_PATH", ROOT_DIR / "src/unicode/mapping_table.zon")
 DEFAULT_CACHE_DIR = os.getenv("CACHE_DIR", ROOT_DIR / ".unicode-cache")
-DEFAULT_TEMPLATE_PATH = os.getenv("TEMPLATE_PATH", ROOT_DIR / "src/tools/tables.tpl")
+DEFAULT_TEMPLATE_PATH = os.getenv("TEMPLATE_PATH", ROOT_DIR / "tools/tables.tpl")
 
 MAX_UNICODE = 0x10FFFF
 SURROGATE_START = 0xD800
@@ -268,7 +268,7 @@ def parse_codepoint_range(
     return start, end
 
 
-def parse_property_ranges(path: Path, property_name: str,) -> list[CodepointRange]:
+def parse_property_ranges(path: Path, property_name: str) -> list[CodepointRange]:
     ranges: list[CodepointRange] = []
 
     with path.open("r", encoding="utf-8") as src:
@@ -369,7 +369,35 @@ def zig_hex(codepoint: int) -> str:
     return f"0x{codepoint:06X}"
 
 
-def init_parser() -> argparse.Namespace:
+def render_range_array(ranges: list[CodepointRange]) -> str:
+    lines = []
+
+    for start, end in ranges:
+        lines.append(
+            "    .{ "
+            f".start = {zig_hex(start)}, "
+            f".end = {zig_hex(end)} "
+            "},"
+        )
+
+    return "\n".join(lines)
+
+
+def render_case_fold_array(mappings: list[CaseFoldMapping]) -> str:
+    lines = []
+
+    for source, target in mappings:
+        lines.append(
+            "    .{ "
+            f".source = {zig_hex(source)}, "
+            f".target = {zig_hex(target)} "
+            "},"
+        )
+
+    return "\n".join(lines)
+
+
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=(
         "Download a pinned Unicode Character Database release and create a lookup table"
     ))
@@ -412,5 +440,36 @@ def init_parser() -> argparse.Namespace:
 
 
 if __name__ == "__main__":
-    print(SCRIPT_DIR)
-    print(ROOT_DIR)
+    args = parse_args()
+
+    files = download_ucd_files(
+        version=args.unicode_version,
+        cache_dir=args.cache_dir,
+        force=args.force_download,
+    )
+
+    digit_ranges, word_ranges = parse_unicode_data(files["UnicodeData.txt"])
+    whitespace_ranges = parse_property_ranges(files["PropList.txt"], "White_Space")
+    case_folds = parse_simple_case_folding(files["CaseFolding.txt"])
+
+    with open(DEFAULT_TEMPLATE_PATH, "r") as f:
+        content = f.read()
+
+    template = Template(content)
+    output = template.substitute({
+        "version": args.unicode_version,
+        "digit_ranges": render_range_array(digit_ranges),
+        "word_ranges": render_range_array(word_ranges),
+        "whitespace_ranges": render_range_array(whitespace_ranges),
+        "case_folds": render_case_fold_array(case_folds),
+    })
+
+    with args.output.open("wb") as f:
+        f.write(output.encode("utf-8"))
+
+    print(f"Generated {args.output}")
+    print(f"  Unicode version: {args.unicode_version}")
+    print(f"  digit ranges: {len(digit_ranges)}")
+    print(f"  word ranges: {len(word_ranges)}")
+    print(f"  whitespace ranges: {len(whitespace_ranges)}")
+    print(f"  simple case folds: {len(case_folds)}")
