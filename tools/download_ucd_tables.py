@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python3
 import argparse
 import os
 import tempfile
@@ -16,7 +16,7 @@ ROOT_DIR = SCRIPT_DIR.parent
 DEFAULT_UNICODE_VERSION = os.getenv("UTF_VERSION", "17.0.0")
 DEFAULT_OUTPUT_PATH = os.getenv("OUT_PATH", ROOT_DIR / "src/unicode/mapping_table.zon")
 DEFAULT_CACHE_DIR = os.getenv("CACHE_DIR", ROOT_DIR / ".unicode-cache")
-DEFAULT_TEMPLATE_PATH = os.getenv("TEMPLATE_PATH", ROOT_DIR / "tools/tables.tpl")
+DEFAULT_TEMPLATE_PATH = os.getenv("TEMPLATE_PATH", ROOT_DIR / "tools/mapping_table.tpl")
 
 MAX_UNICODE = 0x10FFFF
 SURROGATE_START = 0xD800
@@ -164,10 +164,10 @@ def parse_unicode_data(path: Path) -> tuple[
             General categories beginning with L or N, plus underscore.
     """
 
-    digit_ranges: list[CodepointRange] = []
+    d_ranges: list[CodepointRange] = []
 
     # Explicitly include LOW LINE, U+005F.
-    word_ranges: list[CodepointRange] = [(0x005F, 0x005F)]
+    w_ranges: list[CodepointRange] = [(0x005F, 0x005F)]
 
     # UnicodeData.txt sometimes represents large blocks using:
     #
@@ -175,12 +175,12 @@ def parse_unicode_data(path: Path) -> tuple[
     #   <..., Last>
     pending_range: tuple[int, str, str] | None = None
 
-    def add_category_range(start: int, end: int, cat: str) -> None:
+    def add_category_range(rstart: int, rend: int, cat: str) -> None:
         if cat == "Nd":
-            digit_ranges.append((start, end))
+            d_ranges.append((rstart, rend))
 
         if cat.startswith(("L", "N")):
-            word_ranges.append((start, end))
+            w_ranges.append((rstart, rend))
 
     with path.open("r", encoding="utf-8") as src:
         for line_number, raw_line in enumerate(src, start=1):
@@ -241,8 +241,8 @@ def parse_unicode_data(path: Path) -> tuple[
         raise ValueError(f"{path}: unterminated First/Last range")
 
     return (
-        merge_ranges(digit_ranges),
-        merge_ranges(word_ranges),
+        merge_ranges(d_ranges),
+        merge_ranges(w_ranges),
     )
 
 
@@ -273,12 +273,12 @@ def parse_property_ranges(path: Path, property_name: str) -> list[CodepointRange
 
     with path.open("r", encoding="utf-8") as src:
         for line_number, raw_line in enumerate(src, start=1):
-            content = raw_line.split("#", maxsplit=1)[0].strip()
+            cont = raw_line.split("#", maxsplit=1)[0].strip()
 
-            if not content:
+            if not cont:
                 continue
 
-            parts = content.split(";", maxsplit=1)
+            parts = cont.split(";", maxsplit=1)
 
             if len(parts) != 2:
                 raise ValueError(f"{path}:{line_number}: malformed property record")
@@ -317,14 +317,14 @@ def parse_simple_case_folding(path: Path) -> list[CaseFoldMapping]:
 
     with path.open("r", encoding="utf-8") as src:
         for line_number, raw_line in enumerate(src, start=1):
-            content = raw_line.split("#", maxsplit=1)[0].strip()
+            cont = raw_line.split("#", maxsplit=1)[0].strip()
 
-            if not content:
+            if not cont:
                 continue
 
             fields = [
                 field.strip()
-                for field in content.split(";")
+                for field in cont.split(";")
             ]
 
             if len(fields) < 3:
