@@ -13,6 +13,7 @@ pub const Node = union(enum) {
     StartAnchor: StartAnchor,
     /// `$` Input end anchor
     EndAnchor: EndAnchor,
+    Assertion: Assertion,
     /// Character class (e.g. `[a-z]`, `[0-9]` etc.)
     CharClass: CharClass,
     /// Concatenation of multiple Nodes
@@ -39,10 +40,50 @@ pub const StartAnchor = struct {};
 
 pub const EndAnchor = struct {};
 
+pub const AssertionType = enum {
+    start_abs,
+    end_abs,
+    word_bounds,
+    non_word_bounds,
+};
+
+pub const Assertion = struct {
+    typ: AssertionType,
+};
+
 /// Inclusive character range used inside a character class.
 pub const CharRange = struct {
     start: u21,
     end: u21,
+};
+
+pub const PresetClass = enum {
+    digit,
+    word,
+    whitespace,
+};
+
+pub const PresetClassSet = packed struct (u8) {
+    digit: bool = false,
+    word: bool = false,
+    whitespace: bool = false,
+    _padding: u5 = 0,
+
+    pub fn insert(self: *PresetClassSet, cls: PresetClass) void {
+        switch (cls) {
+            .digit => self.digit = true,
+            .word => self.word = true,
+            .whitespace => self.whitespace = true,
+        }
+    }
+
+    pub fn contains(self: PresetClassSet, cls: PresetClass) bool {
+        return switch (cls) {
+            .digit => self.digit,
+            .word => self.word,
+            .whitespace => self.whitespace,
+        };
+    }
 };
 
 /// Character-class expression.
@@ -55,6 +96,8 @@ pub const CharRange = struct {
 pub const CharClass = struct {
     ranges: []const CharRange,
     chars: []const u21,
+    preset: PresetClassSet = .{},
+    negated_preset: PresetClassSet = .{},
     negated: bool = false,
 };
 
