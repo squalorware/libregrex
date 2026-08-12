@@ -1,6 +1,7 @@
 const testing = @import("std").testing;
 const Error = @import("types").Error;
 
+/// Results of comparing a Unicode character against the lookup table
 pub const SearchOrder = enum {
     /// The key occurs before the current item
     before,
@@ -10,15 +11,22 @@ pub const SearchOrder = enum {
     after,
 };
 
+/// Determines if a `RunePair` is compared as a range or as a case-fold mapping
 pub const CompareMode = enum {
+    /// .start and .end delimit an inclusive Unicode codepoint range
     range,
+    /// .start is a source codepoint in a case-fold mapping; .end is a target
     case_fold,
 };
 
+/// An entry from the lookup table containing a pair of Unicode codepoints
+///
+/// Can represent both a character class range and a simple case-fold mapping
 pub const RunePair = struct {
     start: u21,
     end: u21,
 
+    /// Compares given scalar against an inclusive range `[low..high]`
     pub fn compare(low: u21, high: u21, rune: u21) SearchOrder {
         if (rune < low) return .before;
         if (rune > high) return .after;
@@ -27,6 +35,13 @@ pub const RunePair = struct {
     }
 };
 
+/// The lookup table representation
+///
+/// Contains Unicode character-class ranges and 1-to-1 simple case-fold mappings
+/// from the Unicode Character Database of specific version, recorded by `unicode_version`
+///
+/// Provides typing for data loaded from the generated `rune_table.zon` file;
+/// See `tools/download_ucd_tables.py`
 pub const RuneTable = struct {
     unicode_version: []const u8,
     digit_ranges: []const RunePair,
@@ -35,16 +50,27 @@ pub const RuneTable = struct {
     case_folds: []const RunePair,
 };
 
+/// Preset Unicode character classes
 pub const RuneClass = enum {
+    /// Decimal numeric characters
     digit,
+    /// Alphabetical characters
     word,
+    /// Whitespace characters
     whitespace,
 };
 
+/// A decoded Unicode scalar value together with its byte length
 pub const Rune = struct {
+    /// Number of bytes required to encode the scalar as UTF-8
     len: u4,
+    /// Unicode scalar value
     val: u21,
 
+    /// Creates a Rune from a Unicode scalar literal
+    ///
+    /// Returns `Error.InvalidUnicode` if value is outside of the Unicode range
+    /// or is a surrogate codepoint
     pub fn from(literal: u21) Error!Rune {
         const byte_length = switch(literal) {
             0x0000...0x007F => @as(u4, 1),
@@ -58,6 +84,7 @@ pub const Rune = struct {
         return Rune { .len = byte_length, .val = literal };
     }
 
+    /// Returns the raw scalar value represented by this Rune
     pub fn raw(self: Rune) u21 {
         return self.val;
     }

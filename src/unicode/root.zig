@@ -11,6 +11,11 @@ pub const CaseFold = RunePair;
 pub const RuneClass = utypes.RuneClass;
 pub const Rune = utypes.Rune;
 
+/// Compares a Unicode codepoint against the lookup table
+///
+/// `mode` controls whether it is compared as a range or as a case-fold mapping
+///
+/// Returns the position of the scalar relative to the specified range
 fn compare(map: RunePair, rune: u21, mode: CompareMode) SearchOrder {
     return switch(mode) {
         .range => RunePair.compare(map.start, map.end, rune),
@@ -18,6 +23,12 @@ fn compare(map: RunePair, rune: u21, mode: CompareMode) SearchOrder {
     };
 }
 
+/// Searches the scalar codepoint in the sorted lookup table
+///
+/// If `mode` is `CompareMode.range` the key is matched against
+/// the inclusive `start..end` range of each item in `items`
+///
+/// If `mode` is `CompareMode.case_fold` uses only `item.start` as a lookup key
 fn binarySearch(items: []const RunePair, key: u21, mode: CompareMode) ?*const RunePair {
     var low: usize = 0;
     var high: usize = items.len;
@@ -34,10 +45,12 @@ fn binarySearch(items: []const RunePair, key: u21, mode: CompareMode) ?*const Ru
     return null;
 }
 
+/// Checks if Rune occurs within given ranges
 fn contains(ranges: []const CharRange, rune: u21) bool {
     return binarySearch(ranges, rune, CompareMode.range) != null;
 }
 
+/// Checks if Rune belongs to one of the preset character classes
 pub fn is(cls: RuneClass, rune: u21) bool {
     return switch(cls) {
         .digit => contains(table.digit_ranges, rune),
@@ -46,6 +59,9 @@ pub fn is(cls: RuneClass, rune: u21) bool {
     };
 }
 
+/// Searches for a simple Unicode case-fold mapping for `rune` in the lookup table
+///
+/// If `rune` has no correspondent mapping returns it unchanged
 pub fn simpleCaseFold(rune: u21) u21 {
     const map = binarySearch(
         table.case_folds[0..],
@@ -56,6 +72,8 @@ pub fn simpleCaseFold(rune: u21) u21 {
     return map.end;
 }
 
+/// Checks the case-folding of two characters
+/// (if mapping exists, given scalars are different cases of the same character)
 pub fn foldEqual(left: u21, right: u21) bool {
     return simpleCaseFold(left) == simpleCaseFold(right);
 }
