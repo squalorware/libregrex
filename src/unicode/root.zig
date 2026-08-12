@@ -1,33 +1,60 @@
-const types = @import("types");
-const RegrexError = types.Error;
-const tables = @import("./tables.zig");
+const std = @import("std");
+const Error = @import("types").Error;
+const utypes = @import("./utypes.zig");
+const table: utypes.RuneTable = @import("./rune_table.zon");
+const RunePair = utypes.RunePair;
+const CompareMode = utypes.CompareMode;
+const SearchOrder = utypes.SearchOrder;
+pub const CharRange = RunePair;
+pub const CaseFold = RunePair;
+pub const RuneClass = utypes.RuneClass;
+pub const Rune = utypes.Rune;
 
-fn unicodeByteLen(value: u21) ?u4 {
-    return switch(value) {
-        0x0000...0x007F => 1,
-        0x0080...0x07FF => 2,
-        0x0800...0xD7FF,
-        0xE000...0xFFFF => 3,
-        0x10000...0x10FFFF => 4,
-        else => null,
+fn compare(map: RunePair, rune: u21, mode: CompareMode) SearchOrder {
+    return switch(mode) {
+        .range => RunePair.compare(map.start, map.end, rune),
+        .case_fold => RunePair.compare(map.start, map.start, rune),
     };
 }
 
-pub const Rune = struct {
-    len: u4,
-    val: u21,
+fn binarySearch(items: []const RunePair, key: u21, mode: CompareMode) ?*const RunePair {
+    var low: usize = 0;
+    var high: usize = items.len;
 
-    pub fn from(value: u21) RegrexError!Rune {
-        const byte_length = unicodeByteLen(value) orelse {
-            return RegrexError.InvalidUnicode;
-        };
-        return Rune{
-            .len = byte_length,
-            .val = value,
-        };
-    }
+    while (low < high) {
+        const mid = low + (high - low) / 2;
 
-    pub fn raw(self: Rune) u21 {
-        return self.val;
+        switch (compare(items[mid], key, mode)) {
+            .before => high = mid,
+            .after => low = mid + 1,
+            .match => return &items[mid],
+        }
     }
-};
+    return null;
+}
+
+fn contains(ranges: []const CharRange, rune: u21) bool {
+    return binarySearch(ranges, rune, CompareMode.range) != null;
+}
+
+pub fn is(cls: RuneClass, rune: u21) bool {
+    return switch(cls) {
+        .digit => contains(table.digit_ranges, rune),
+        .word => contains(table.word_ranges, rune),
+        .whitespace => contains(table.whitespace_ranges, rune),
+    };
+}
+
+pub fn simpleCaseFold(rune: u21) u21 {
+    const map = binarySearch(
+        table.case_folds[0..],
+        rune,
+        CompareMode.case_fold
+    ) orelse return rune;
+
+    return map.end;
+}
+
+pub fn foldEqual(left: u21, right: u21) bool {
+    return simpleCaseFold(left) == simpleCaseFold(right);
+}
