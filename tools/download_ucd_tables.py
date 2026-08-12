@@ -310,12 +310,12 @@ def parse_simple_case_folding(path: Path) -> list[CodepointPair]:
     Parse one-code-point Unicode case folding.
 
     Included statuses:
-        C — common mapping
-        S — simple mapping
+        C - common mapping
+        S - simple mapping
 
     Ignored statuses:
-        F — full, potentially multi-code-point mapping
-        T — Turkic-specific mapping
+        F - full, potentially multi-code-point mapping
+        T - Turkic-specific mapping
     """
 
     mappings: dict[int, int] = {}
