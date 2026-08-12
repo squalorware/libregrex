@@ -2,6 +2,7 @@ const std = @import("std");
 const Error = @import("types").Error;
 const utypes = @import("./utypes.zig");
 const table: utypes.RuneTable = @import("./rune_table.zon");
+const testing = std.testing;
 const RunePair = utypes.RunePair;
 const CompareMode = utypes.CompareMode;
 const SearchOrder = utypes.SearchOrder;
@@ -57,4 +58,54 @@ pub fn simpleCaseFold(rune: u21) u21 {
 
 pub fn foldEqual(left: u21, right: u21) bool {
     return simpleCaseFold(left) == simpleCaseFold(right);
+}
+
+test "unicode.is should recognize Unicode numeric scalars" {
+    try testing.expect(is(.digit, '0'));
+    try testing.expect(is(.digit, '9'));
+
+    try testing.expect(!is(.digit, 'A'));
+    try testing.expect(!is(.digit, ' '));
+}
+
+test "unicode.is should recognize Unicode alphabetical scalars" {
+    try testing.expect(is(.word, 'a'));
+    try testing.expect(is(.word, 'Z'));
+    try testing.expect(is(.word, '0'));
+
+    try testing.expect(!is(.word, ' '));
+}
+
+test "unicode.is should recognize Unicode whitespace scalars" {
+    try testing.expect(is(.whitespace, ' '));
+    try testing.expect(is(.whitespace, '\t'));
+    try testing.expect(is(.whitespace, '\n'));
+
+    try testing.expect(!is(.whitespace, 'a'));
+}
+
+test "unicode.simpleCaseFold should correctly fold character case" {
+    try testing.expectEqual(
+        @as(u21, 'a'),
+        simpleCaseFold('A'),
+    );
+
+    try testing.expectEqual(
+        @as(u21, 'z'),
+        simpleCaseFold('Z'),
+    );
+}
+
+test "unicode.simpleCaseFold should preserve character with no case mapping" {
+    try testing.expectEqual(
+        @as(u21, '1'),
+        simpleCaseFold('1'),
+    );
+}
+
+test "unicode.foldEqual should correctly compare characters with simple case folding" {
+    try testing.expect(foldEqual('A', 'a'));
+    try testing.expect(foldEqual('Z', 'z'));
+
+    try testing.expect(!foldEqual('A', 'B'));
 }
