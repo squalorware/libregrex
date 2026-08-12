@@ -8,6 +8,8 @@ from pathlib import Path
 from string import Template
 from urllib.request import Request, urlopen
 
+# Type alias for convenience
+CodepointPair = tuple[int, int]
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT_DIR = SCRIPT_DIR.parent
@@ -26,10 +28,6 @@ UCD_FILENAMES = (
     "PropList.txt",
     "CaseFolding.txt",
 )
-
-
-CodepointRange = tuple[int, int]
-CaseFoldMapping = tuple[int, int]
 
 
 def ucd_url(version: str, filename: str) -> str:
@@ -71,6 +69,13 @@ def fetch_file(url: str, dest: Path) -> None:
 
 
 def download_ucd_files(version: str, cache_dir: Path, force: bool) -> dict[str, Path]:
+    """
+    Downloads the files required to build a lookup table from the Unicode website
+
+    If files are present at the output path, doesn't download unless force download flag is set to true
+
+    Returns a map of filenames to their full paths (downloaded or cached)
+    """
     cached_version_dir = cache_dir / version
     file_map: dict[str, Path] = {}
 
@@ -102,7 +107,7 @@ def is_valid_scalar(codepoint: int) -> bool:
     )
 
 
-def validate_range(start: int,end: int) -> None:
+def validate_pair(start: int,end: int) -> None:
     if start > end:
         raise ValueError(f"Invalid code-point range: U+{start:04X}..U+{end:04X}")
 
@@ -124,13 +129,13 @@ def validate_range(start: int,end: int) -> None:
         )
 
 
-def merge_ranges(ranges: Iterable[CodepointRange]) -> list[CodepointRange]:
-    ordered = sorted(ranges)
+def merge_pairs(pairs: Iterable[CodepointPair]) -> list[CodepointPair]:
+    ordered = sorted(pairs)
 
     if not ordered:
         return []
 
-    merged: list[CodepointRange] = []
+    merged: list[CodepointPair] = []
 
     current_start, current_end = ordered[0]
 
@@ -150,8 +155,8 @@ def merge_ranges(ranges: Iterable[CodepointRange]) -> list[CodepointRange]:
 
 
 def parse_unicode_data(path: Path) -> tuple[
-    list[CodepointRange],
-    list[CodepointRange],
+    list[CodepointPair],
+    list[CodepointPair],
 ]:
     """
     Parse UnicodeData.txt.
@@ -164,10 +169,10 @@ def parse_unicode_data(path: Path) -> tuple[
             General categories beginning with L or N, plus underscore.
     """
 
-    d_ranges: list[CodepointRange] = []
+    d_ranges: list[CodepointPair] = []
 
     # Explicitly include LOW LINE, U+005F.
-    w_ranges: list[CodepointRange] = [(0x005F, 0x005F)]
+    w_ranges: list[CodepointPair] = [(0x005F, 0x005F)]
 
     # UnicodeData.txt sometimes represents large blocks using:
     #
@@ -241,14 +246,14 @@ def parse_unicode_data(path: Path) -> tuple[
         raise ValueError(f"{path}: unterminated First/Last range")
 
     return (
-        merge_ranges(d_ranges),
-        merge_ranges(w_ranges),
+        merge_pairs(d_ranges),
+        merge_pairs(w_ranges),
     )
 
 
 def parse_codepoint_range(
     value: str,
-) -> CodepointRange:
+) -> CodepointPair:
     value = value.strip()
 
     if ".." in value:
@@ -263,13 +268,13 @@ def parse_codepoint_range(
         start = int(value, 16)
         end = start
 
-    validate_range(start, end)
+    validate_pair(start, end)
 
     return start, end
 
 
-def parse_property_ranges(path: Path, property_name: str) -> list[CodepointRange]:
-    ranges: list[CodepointRange] = []
+def parse_property_ranges(path: Path, property_name: str) -> list[CodepointPair]:
+    ranges: list[CodepointPair] = []
 
     with path.open("r", encoding="utf-8") as src:
         for line_number, raw_line in enumerate(src, start=1):
@@ -297,10 +302,10 @@ def parse_property_ranges(path: Path, property_name: str) -> list[CodepointRange
         raise ValueError(f"{path}: property {property_name!r} was not found"
         )
 
-    return merge_ranges(ranges)
+    return merge_pairs(ranges)
 
 
-def parse_simple_case_folding(path: Path) -> list[CaseFoldMapping]:
+def parse_simple_case_folding(path: Path) -> list[CodepointPair]:
     """
     Parse one-code-point Unicode case folding.
 
@@ -369,28 +374,14 @@ def zig_hex(codepoint: int) -> str:
     return f"0x{codepoint:06X}"
 
 
-def render_range_array(ranges: list[CodepointRange]) -> str:
+def render_pairs_list(pairs: list[CodepointPair]) -> str:
     lines = []
 
-    for start, end in ranges:
+    for start, end in pairs:
         lines.append(
             "    .{ "
             f".start = {zig_hex(start)}, "
             f".end = {zig_hex(end)} "
-            "},"
-        )
-
-    return "\n".join(lines)
-
-
-def render_case_fold_array(mappings: list[CaseFoldMapping]) -> str:
-    lines = []
-
-    for source, target in mappings:
-        lines.append(
-            "    .{ "
-            f".start = {zig_hex(source)}, "
-            f".end = {zig_hex(target)} "
             "},"
         )
 
@@ -415,7 +406,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_OUTPUT_PATH,
         help=(
-            "Generated Zig module path "
+            "Path to write the output .zon file to "
             f"(default: {DEFAULT_OUTPUT_PATH})"
         ),
     )
@@ -425,7 +416,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_CACHE_DIR,
         help=(
-            "Directory used to cache downloaded UCD files "
+            "Path to store the downloaded UCD files "
             f"(default: {DEFAULT_CACHE_DIR})"
         ),
     )
@@ -458,10 +449,10 @@ if __name__ == "__main__":
     template = Template(content)
     output = template.substitute({
         "version": args.unicode_version,
-        "digit_ranges": render_range_array(digit_ranges),
-        "word_ranges": render_range_array(word_ranges),
-        "whitespace_ranges": render_range_array(whitespace_ranges),
-        "case_folds": render_case_fold_array(case_folds),
+        "digit_ranges": render_pairs_list(digit_ranges),
+        "word_ranges": render_pairs_list(word_ranges),
+        "whitespace_ranges": render_pairs_list(whitespace_ranges),
+        "case_folds": render_pairs_list(case_folds),
     })
 
     with args.output.open("wb") as f:
