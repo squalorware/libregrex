@@ -60,6 +60,10 @@ pub fn foldEqual(left: u21, right: u21) bool {
     return simpleCaseFold(left) == simpleCaseFold(right);
 }
 
+test {
+    _ = @import("./utypes.zig");
+}
+
 test "unicode.is should recognize Unicode numeric scalars" {
     try testing.expect(is(.digit, '0'));
     try testing.expect(is(.digit, '9'));

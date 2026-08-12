@@ -123,5 +123,6 @@ pub fn sub(
 
 test {
     _ = @import("types");
+    _ = @import("unicode");
     _ = @import("engine");
 }

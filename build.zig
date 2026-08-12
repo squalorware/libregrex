@@ -24,12 +24,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const utf_mod = b.addModule("unicode", .{
+    const unicode_mod = b.addModule("unicode", .{
         .root_source_file = b.path("src/unicode/root.zig"),
         .target = target,
         .optimize = optimize,
     });
-    utf_mod.addImport("types", types_mod);
+    unicode_mod.addImport("types", types_mod);
 
     const engine_mod = b.addModule("engine", .{
         .root_source_file = b.path("src/engine/root.zig"),
@@ -37,14 +37,19 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     engine_mod.addImport("types", types_mod);
-    engine_mod.addImport("unicode", utf_mod);
+    engine_mod.addImport("unicode", unicode_mod);
 
     // Root module for Zig package
-    const root_mod = b.addModule("regrex", .{ .target = target, .optimize = optimize, .root_source_file = b.path("src/root.zig"), .imports = &.{
-        .{ .name = "types", .module = types_mod },
-        .{ .name = "unicode", .module = utf_mod },
-        .{ .name = "engine", .module = engine_mod },
-    } });
+    const root_mod = b.addModule("regrex", .{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/root.zig"),
+        .imports = &.{
+            .{ .name = "types", .module = types_mod },
+            .{ .name = "unicode", .module = unicode_mod },
+            .{ .name = "engine", .module = engine_mod },
+        }
+    });
 
     // Skip creating pkg-config file for Windows
     const OS = target.result.os.tag;
@@ -85,11 +90,16 @@ pub fn build(b: *std.Build) void {
         .name = "engine",
         .root_module = engine_mod,
     });
+    const unicode_unit_tests = b.addTest(.{
+        .name = "unicode",
+        .root_module = unicode_mod,
+    });
 
     const unit_test_step = b.step("test", "Run unit tests");
 
     unit_test_step.dependOn(&b.addRunArtifact(root_unit_tests).step);
     unit_test_step.dependOn(&b.addRunArtifact(types_unit_tests).step);
+    unit_test_step.dependOn(&b.addRunArtifact(unicode_unit_tests).step);
     unit_test_step.dependOn(&b.addRunArtifact(engine_unit_tests).step);
 
     // Compile library (C-compatible)
