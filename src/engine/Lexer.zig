@@ -5,7 +5,9 @@
 //! so that literals like Cyrillic or Chinese characters are emitted
 //! as single `CHAR` tokens rather than raw UTF-8 bytes
 const std = @import("std");
-const RegrexError = @import("types").Error;
+const types = @import("types");
+const RegrexError = types.Error;
+const conv = types.conv;
 const Rune = @import("unicode").Rune;
 const tokens = @import("./tokens.zig");
 const testing = std.testing;
@@ -58,11 +60,56 @@ pub fn tokenize(self: *Lexer, tlist: *TokenListBuffer) RegrexError!void {
             };
 
             self.pos += 1;
-            // Next Rune after backslash is emitted as literal
-            // even if is one of metacharacters
+
+            const literal: u21 = switch(escaped) {
+                'n' => '\n',
+                'r' => '\r',
+                't' => '\t',
+                // Process a hexadecimal digit
+                'x' => blk: {
+                    const high_char = iter.nextCodepoint() orelse {
+                        return RegrexError.InvalidEscape;
+                    };
+                    const low_char = iter.nextCodepoint() orelse {
+                        return RegrexError.InvalidEscape;
+                    };
+                    self.pos += 2;
+
+                    const high = conv.toHexDigit(high_char) orelse {
+                        return RegrexError.InvalidEscape;
+                    };
+                    const low = conv.toHexDigit(low_char) orelse {
+                        return RegrexError.InvalidEscape;
+                    };
+
+                    break :blk high * 16 + low;
+                },
+                '0'...'7' => blk: {
+                    const second_char = iter.nextCodepoint() orelse {
+                        return RegrexError.InvalidEscape;
+                    };
+                    const third_char = iter.nextCodepoint() orelse {
+                        return RegrexError.InvalidEscape;
+                    };
+
+                    self.pos += 2;
+
+                    const first = conv.toOctDigit(escaped).?;
+                    const second = conv.toOctDigit(second_char) orelse {
+                        return RegrexError.InvalidEscape;
+                    };
+                    const third = conv.toOctDigit(third_char) orelse {
+                        return RegrexError.InvalidEscape;
+                    };
+
+                    break :blk first * 64 + second * 8 + third;
+                },
+                else => escaped,
+            };
+
             try tlist.append(.{ 
                 .typ = .ESCAPED_CHAR, 
-                .val = try Rune.from(escaped), 
+                .val = try Rune.from(literal),
                 .pos = current_pos, 
             });
             continue;

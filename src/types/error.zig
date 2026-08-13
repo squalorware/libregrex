@@ -16,6 +16,8 @@ pub const Error = error {
     MemoryError,
     /// An invalid or broken UTF-8 character
     InvalidUnicode,
+    /// Malformed escape sequence
+    InvalidEscape,
     /// Trailing backslash at the pattern end
     TrailingEscape,
     /// Token invalid in current context

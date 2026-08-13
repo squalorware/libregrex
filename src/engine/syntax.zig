@@ -1,6 +1,18 @@
 //! The Abstract Syntax Tree representation 
 //! of the regular expression pattern.
+const unicode = @import("unicode");
 
+/// Pattern behaviour modifiers
+pub const Flags = packed struct(u8) {
+    /// Case-insensitive matching
+    ignore_case: bool = false,
+    /// Interpret `^` and `$` as marking start and end
+    /// of a single line instead of the whole input
+    multiline: bool = false,
+    /// Wildcards match newline characters as well
+    dot_all: bool = false,
+    _padding: u5 = 0,
+};
 /// Regular Expression AST Node.
 ///
 /// Forms a recursive tree structure with pointers to another Nodes
@@ -13,6 +25,7 @@ pub const Node = union(enum) {
     StartAnchor: StartAnchor,
     /// `$` Input end anchor
     EndAnchor: EndAnchor,
+    /// Zero-width assertions (e.g. `\A`, `\Z` etc.)
     Assertion: Assertion,
     /// Character class (e.g. `[a-z]`, `[0-9]` etc.)
     CharClass: CharClass,
@@ -41,7 +54,13 @@ pub const StartAnchor = struct {};
 pub const EndAnchor = struct {};
 
 pub const AssertionType = enum {
+    /// Absolute start of the input marked by `\A`.
+    ///
+    /// Ignored if `multiline = false`
     start_abs,
+    /// Absolute end of the input marked by `\A`.
+    ///
+    /// Ignored if `multiline = false`
     end_abs,
     word_bounds,
     non_word_bounds,
@@ -52,16 +71,9 @@ pub const Assertion = struct {
 };
 
 /// Inclusive character range used inside a character class.
-pub const CharRange = struct {
-    start: u21,
-    end: u21,
-};
+pub const CharRange = unicode.CharRange;
 
-pub const PresetClass = enum {
-    digit,
-    word,
-    whitespace,
-};
+pub const PresetClass = unicode.RuneClass;
 
 pub const PresetClassSet = packed struct (u8) {
     digit: bool = false,

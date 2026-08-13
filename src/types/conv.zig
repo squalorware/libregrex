@@ -1,3 +1,4 @@
+//! Various type casting/conversion utility functions
 const std = @import("std");
 const RegrexError = @import("./error.zig").Error;
 const matching = @import("./matching.zig");
@@ -60,6 +61,22 @@ pub fn toMatch(
     return .{
         .input = input,
         .groups = groups_buf,
+    };
+}
+
+pub fn toHexDigit(val: u21) ?u21 {
+    return switch(val) {
+        '0'...'9' => val - '0',
+        'a'...'f' => val - 'a' + 10,
+        'A'...'F' => val - 'A' + 10,
+        else => null,
+    };
+}
+
+pub fn toOctDigit(val: u21) ?u21 {
+    return switch(val) {
+        '0'...'7' => val - '0',
+        else => null,
     };
 }
 
