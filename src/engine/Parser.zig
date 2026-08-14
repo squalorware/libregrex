@@ -88,6 +88,67 @@ fn createNode(self: *Parser, node: AST.Node) RegrexError!*AST.Node {
     return ptr;
 }
 
+/// Applies a predefined Unicode character-class escape to its corresponding
+/// regular or negated class set.
+///
+/// Recognized escapes (regular, negated):
+///
+/// - `\d`, `\D` - any Unicode digit
+/// - `\w`, `\W` - any Unicode word
+/// - `\s`, `\S` - any Unicode whitespace
+///
+/// Returns `true` when `value` represents a predefined class.
+fn applyPresetEscape(
+    value: u21,
+    preset: *AST.PresetClassSet,
+    negated_preset: *AST.PresetClassSet,
+) bool {
+    switch(value) {
+        'd' => preset.insert(.digit),
+        'D' => negated_preset.insert(.digit),
+        'w' => preset.insert(.word),
+        'W' => negated_preset.insert(.word),
+        's' => preset.insert(.whitespace),
+        'S' => negated_preset.insert(.whitespace),
+        else => return false,
+    }
+    return true;
+}
+
+/// Maps an escaped character to a zero-width assertion.
+///
+/// Returns `null` when the escape is not an assertion.
+fn assertionEscape(value: u21) ?AST.AssertionType {
+    return switch(value) {
+        'A' => .start_abs,
+        'Z' => .end_abs,
+        'b' => .word_bounds,
+        'B' => .non_word_bounds,
+        else => null,
+    };
+}
+
+/// Returns the literal scalar represented by a token when that token can act
+/// as a literal character inside a bracket character class.
+///
+/// Most regex metacharacters lose their special meaning inside `[...]`.
+fn charClassLiteral(token: Token) ?u21 {
+    return switch(token.typ) {
+        .CHAR,
+        .ESCAPED_CHAR,
+        .DOT,
+        .CARET,
+        .DOLLAR,
+        .STAR,
+        .PLUS,
+        .QUESTION,
+        .PIPE,
+        .LPAREN,
+        .RPAREN,
+        .LBRACKET => token.val.?.raw(),
+    };
+}
+
 /// Parses branching.
 /// 
 /// Alteration has the lowest precedence in this grammar
@@ -182,12 +243,55 @@ fn parseQuantifier(self: *Parser) RegrexError!*AST.Node {
     return node;
 }
 
+/// Parses an escaped atom carrying regex semantics.
+///
+/// Predefined class escapes are converted to `CharClass` nodes.
+///
+/// Assertion escapes are converted to `Assertion` nodes.
+///
+/// Any other escaped value is treated as a literal. This final case primarily
+/// protects the parser from manually constructed token streams; the Lexer
+/// normally emits non-semantic escaped literals as `CHAR`.
+fn parseEscapedAtom(self: *Parser, token: Token) RegrexError!*AST.Node {
+    _ = self.advance();
+
+    const value = token.val.?.raw();
+
+    var preset: AST.PresetClassSet = .{};
+    var negated_preset: AST.PresetClassSet = .{};
+
+    if (applyPresetEscape(value, &preset, &negated_preset)) {
+        return self.createNode(.{
+            .CharClass = .{
+                .ranges = &.{},
+                .chars = &.{},
+                .preset = preset,
+                .negated_preset = negated_preset,
+            }
+        });
+    }
+
+    if (assertionEscape(value)) |assert| {
+        return self.createNode(.{
+            .Assertion = .{
+                .typ = assert,
+            },
+        });
+    }
+
+    return self.createNode(.{
+        .Literal = .{
+            .value = value,
+        },
+    });
+}
+
 /// Parses the base indivisible expression
 fn parseAtom(self: *Parser) RegrexError!*AST.Node {
     const token = self.current();
 
     switch (token.typ) {
-        .CHAR, .ESCAPED_CHAR => {
+        .CHAR => {
             _ = self.advance();
             return self.createNode(.{
                 .Literal = .{
@@ -195,6 +299,7 @@ fn parseAtom(self: *Parser) RegrexError!*AST.Node {
                 },
             });
         },
+        .ESCAPED_CHAR => self.parseEscapedAtom(token),
         .DOT => {
             _ = self.advance();
             return self.createNode(.{ .AnyChar = .{} });
@@ -272,10 +377,16 @@ fn parseGroup(self: *Parser) RegrexError!*AST.Node {
 /// Parses a character class after the opening `LBRACKET`
 /// 
 /// Supports:
-/// - explicit characters
+/// - literal characters
 /// - inclusive ranges (e.g. `a-z`, `0-9`)
-/// - escaped class members (e.g. `\*`)
+/// - preset Unicode character classes (`\d`, `\w`, `\s`)
+///  and their negated counterparts (`\D`, `\W`, `\S`)
+/// - escaped class members and literals (e.g. `\*`)
 /// - leading negation (`^`)
+///
+/// Assertions such as `\A` and `\b` do not act as assertions inside a
+/// character class. In the current feature set they are treated as escaped
+/// literal characters there.
 fn parseCharClass(self: *Parser) RegrexError!AST.CharClass {
     const negated = self.match(.CARET);
 
@@ -285,57 +396,96 @@ fn parseCharClass(self: *Parser) RegrexError!AST.CharClass {
     var chars = std.ArrayList(u21).empty;
     errdefer chars.deinit(self.alloc);
 
+    var preset: AST.PresetClassSet = &.{};
+    var negated_preset: AST.PresetClassSet = &.{};
+
     while (
         self.current().typ != .RBRACKET and 
         self.current().typ != .EOF
     ) {
         const start_token = self.current();
 
+        // A leading or otherwise standalone unescaped '-' is a literal.
+        if (start_token.typ == .DASH) {
+            _ = self.advance();
+
+            chars.append(self.alloc, '-') catch {
+                return RegrexError.MemoryError;
+            };
+            continue;
+        }
+
+        // Predefined character classes retain their regex semantics
+        // inside bracket classes.
+        if (start_token.typ == .ESCAPED_CHAR) {
+            const value = start_token.val.?.raw();
+
+            if (applyPresetEscape(
+                value,
+                &preset,
+                &negated_preset,
+            )) {
+                _ = self.advance();
+                continue;
+            }
+        }
+
+        const start = charClassLiteral(start_token) orelse {
+            return RegrexError.UnexpectedToken;
+        };
+
+        _ = self.advance();
+
+        // If no '-' follows, this is an individual literal member.
+        if (!self.match(.DASH)) {
+            chars.append(self.alloc, start) catch {
+                return RegrexError.MemoryError;
+            };
+            continue;
+        }
+
+        // A '-' immediately before ']' is a literal hyphen rather than a
+        // range separator: `[a-]` represents `a` and `-`.
+        if (self.current().typ == .RBRACKET) {
+            chars.append(self.alloc, start) catch {
+                return RegrexError.MemoryError;
+            };
+
+            chars.append(self.alloc, '-') catch {
+                return RegrexError.MemoryError;
+            };
+
+            break;
+        }
+
+        const end_token = self.current();
+
+        // Preset classes cannot be range endpoints. Expressions such as
+        // `[a-\d]` have no meaningful scalar endpoint.
         if (
-            start_token.typ != .CHAR and 
-            start_token.typ != .ESCAPED_CHAR
+            end_token.typ == .ESCAPED_CHAR and
+            Lexer.isSemanticEscapeis(end_token.val.?.raw())
         ) {
             return RegrexError.UnexpectedToken;
         }
 
+        const end = charClassLiteral(end_token) orelse {
+            return RegrexError.UnexpectedToken;
+        };
+
         _ = self.advance();
-        const start = start_token.val.?.raw();
-
-        if (self.match(.DASH)) {
-            const end_token = self.current();
-
-            if (end_token.typ == .RBRACKET) {
-                chars.append(self.alloc, start) catch {
-                    return RegrexError.MemoryError;
-                };
-                chars.append(self.alloc, '-') catch {
-                    return RegrexError.MemoryError;
-                };
-                break;
-            }
-
-            if (
-                end_token.typ != .CHAR and
-                end_token.typ != .ESCAPED_CHAR
-            ) {
-                return RegrexError.UnexpectedToken;
-            }
-            _ = self.advance();
-            ranges.append(self.alloc, .{
-                .start = start,
-                .end = end_token.val.?.raw(),
-            }) catch {
-                return RegrexError.MemoryError;
-            };
-        } else {
-            chars.append(self.alloc, start) catch {
-                return RegrexError.MemoryError;
-            };
-        }
+        ranges.append(self.alloc, .{
+            .start = start,
+            .end = end,
+        }) catch {
+            return RegrexError.MemoryError;
+        };
     }
+
     if (!self.match(.RBRACKET)) {
         return RegrexError.UnmatchedBracket;
     }
+
     return .{
         .ranges = ranges.toOwnedSlice(self.alloc) catch {
             return RegrexError.MemoryError;
@@ -343,6 +493,8 @@ fn parseCharClass(self: *Parser) RegrexError!AST.CharClass {
         .chars = chars.toOwnedSlice(self.alloc) catch {
             return RegrexError.MemoryError;
         },
+        .preset = preset,
+        .negated_preset = negated_preset,
         .negated = negated,
     };
 }
@@ -446,6 +598,297 @@ test "Should parse non-capturing group" {
                 else => try testing.expect(false),
             }
         },
+        else => try testing.expect(false),
+    }
+}
+
+test "Should parse predefined Unicode character classes" {
+    const allocator = testing.allocator;
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const alloc = arena.allocator();
+
+    var token_buffer = try tokens.TokenListBuffer.init(
+        alloc,
+        null,
+    );
+    defer token_buffer.deinit();
+
+    var lexer = Lexer.init("\\d\\D\\w\\W\\s\\S");
+    try lexer.tokenize(&token_buffer);
+
+    var parser = Parser.init(
+        alloc,
+        token_buffer.items(),
+    );
+
+    const ast = try parser.parse();
+
+    switch (ast.*) {
+        .Sequence => |seq| {
+            try testing.expectEqual(
+                @as(usize, 6),
+                seq.nodes.len,
+            );
+
+            switch (seq.nodes[0].*) {
+                .CharClass => |cls| {
+                    try testing.expect(cls.preset.contains(.digit));
+                    try testing.expect(!cls.negated_preset.contains(.digit));
+                },
+                else => try testing.expect(false),
+            }
+
+            switch (seq.nodes[1].*) {
+                .CharClass => |cls| {
+                    try testing.expect(!cls.preset.contains(.digit));
+                    try testing.expect(cls.negated_preset.contains(.digit));
+                },
+                else => try testing.expect(false),
+            }
+
+            switch (seq.nodes[2].*) {
+                .CharClass => |cls| {
+                    try testing.expect(cls.preset.contains(.word));
+                    try testing.expect(!cls.negated_preset.contains(.word));
+                },
+                else => try testing.expect(false),
+            }
+
+            switch (seq.nodes[3].*) {
+                .CharClass => |cls| {
+                    try testing.expect(!cls.preset.contains(.word));
+                    try testing.expect(cls.negated_preset.contains(.word));
+                },
+                else => try testing.expect(false),
+            }
+
+            switch (seq.nodes[4].*) {
+                .CharClass => |cls| {
+                    try testing.expect(cls.preset.contains(.whitespace));
+                    try testing.expect(!cls.negated_preset.contains(.whitespace));
+                },
+                else => try testing.expect(false),
+            }
+
+            switch (seq.nodes[5].*) {
+                .CharClass => |cls| {
+                    try testing.expect(!cls.preset.contains(.whitespace));
+                    try testing.expect(cls.negated_preset.contains(.whitespace));
+                },
+                else => try testing.expect(false),
+            }
+        },
+
+        else => try testing.expect(false),
+    }
+}
+
+test "Should parse predefined classes inside bracket character class" {
+    const allocator = testing.allocator;
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const alloc = arena.allocator();
+
+    var token_buffer = try tokens.TokenListBuffer.init(
+        alloc,
+        null,
+    );
+    defer token_buffer.deinit();
+
+    var lexer = Lexer.init("[a-z\\d_\\S]");
+    try lexer.tokenize(&token_buffer);
+
+    var parser = Parser.init(
+        alloc,
+        token_buffer.items(),
+    );
+
+    const ast = try parser.parse();
+
+    switch (ast.*) {
+        .CharClass => |cls| {
+            try testing.expectEqual(
+                @as(usize, 1),
+                cls.ranges.len,
+            );
+
+            try testing.expectEqual(
+                @as(u21, 'a'),
+                cls.ranges[0].start,
+            );
+
+            try testing.expectEqual(
+                @as(u21, 'z'),
+                cls.ranges[0].end,
+            );
+
+            try testing.expectEqual(
+                @as(usize, 1),
+                cls.chars.len,
+            );
+
+            try testing.expectEqual(
+                @as(u21, '_'),
+                cls.chars[0],
+            );
+
+            try testing.expect(
+                cls.preset.contains(.digit),
+            );
+
+            try testing.expect(
+                cls.negated_preset.contains(.whitespace),
+            );
+        },
+
+        else => try testing.expect(false),
+    }
+}
+
+test "Should parse absolute and word-boundary assertions" {
+    const allocator = testing.allocator;
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const alloc = arena.allocator();
+
+    var token_buffer = try tokens.TokenListBuffer.init(
+        alloc,
+        null,
+    );
+    defer token_buffer.deinit();
+
+    var lexer = Lexer.init("\\A\\bX\\B\\Z");
+    try lexer.tokenize(&token_buffer);
+
+    var parser = Parser.init(
+        alloc,
+        token_buffer.items(),
+    );
+
+    const ast = try parser.parse();
+
+    switch (ast.*) {
+        .Sequence => |seq| {
+            try testing.expectEqual(
+                @as(usize, 5),
+                seq.nodes.len,
+            );
+
+            switch (seq.nodes[0].*) {
+                .Assertion => |assertion| {
+                    try testing.expectEqual(
+                        AST.AssertionType.start_abs,
+                        assertion.typ,
+                    );
+                },
+                else => try testing.expect(false),
+            }
+
+            switch (seq.nodes[1].*) {
+                .Assertion => |assertion| {
+                    try testing.expectEqual(
+                        AST.AssertionType.word_bounds,
+                        assertion.typ,
+                    );
+                },
+                else => try testing.expect(false),
+            }
+
+            switch (seq.nodes[2].*) {
+                .Literal => |lit| {
+                    try testing.expectEqual(
+                        @as(u21, 'X'),
+                        lit.value,
+                    );
+                },
+                else => try testing.expect(false),
+            }
+
+            switch (seq.nodes[3].*) {
+                .Assertion => |assertion| {
+                    try testing.expectEqual(
+                        AST.AssertionType.non_word_bounds,
+                        assertion.typ,
+                    );
+                },
+                else => try testing.expect(false),
+            }
+
+            switch (seq.nodes[4].*) {
+                .Assertion => |assertion| {
+                    try testing.expectEqual(
+                        AST.AssertionType.end_abs,
+                        assertion.typ,
+                    );
+                },
+                else => try testing.expect(false),
+            }
+        },
+
+        else => try testing.expect(false),
+    }
+}
+
+test "Should preserve decoded escaped literals as literal AST nodes" {
+    const allocator = testing.allocator;
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const alloc = arena.allocator();
+
+    var token_buffer = try tokens.TokenListBuffer.init(
+        alloc,
+        null,
+    );
+    defer token_buffer.deinit();
+
+    var lexer = Lexer.init("\\n\\r\\t\\x41\\101");
+    try lexer.tokenize(&token_buffer);
+
+    var parser = Parser.init(
+        alloc,
+        token_buffer.items(),
+    );
+
+    const ast = try parser.parse();
+
+    const expected = [_]u21{
+        '\n',
+        '\r',
+        '\t',
+        'A',
+        'A',
+    };
+
+    switch (ast.*) {
+        .Sequence => |seq| {
+            try testing.expectEqual(
+                expected.len,
+                seq.nodes.len,
+            );
+
+            for (seq.nodes, expected) |node, value| {
+                switch (node.*) {
+                    .Literal => |lit| {
+                        try testing.expectEqual(
+                            value,
+                            lit.value,
+                        );
+                    },
+
+                    else => try testing.expect(false),
+                }
+            }
+        },
+
         else => try testing.expect(false),
     }
 }

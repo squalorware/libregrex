@@ -32,6 +32,16 @@ pub fn init(pattern: []const u8) Lexer {
     };
 }
 
+pub fn isSemanticEscape(char: u21) bool {
+    return switch(char) {
+        'd', 'D',
+        'w', 'W',
+        's', 'S',
+        'A', 'Z',
+        'b', 'B' => true,
+        else => false,
+    };
+}
 /// Transforms pattern into an owned slice of `Token`s.
 ///
 /// If `Rune` in pattern is a metacharacter, emits a correspondent `TokenType`.
@@ -108,7 +118,7 @@ pub fn tokenize(self: *Lexer, tlist: *TokenListBuffer) RegrexError!void {
             };
 
             try tlist.append(.{ 
-                .typ = .ESCAPED_CHAR, 
+                .typ = if (isSemanticEscape(literal)) .ESCAPED_CHAR else .CHAR, 
                 .val = try Rune.from(literal),
                 .pos = current_pos, 
             });
