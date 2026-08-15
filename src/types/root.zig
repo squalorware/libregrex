@@ -12,6 +12,18 @@ pub const MatchListBuffer = matching.MatchListBuffer;
 pub const Span = matching.Span;
 pub const DynamicStringBuffer = managed.ManagedDynamicBuffer(u8, null);
 
+/// Pattern behaviour modifiers
+pub const RegrexFlags = packed struct(u8) {
+    /// Case-insensitive matching
+    ignore_case: bool = false,
+    /// Interpret `^` and `$` as marking start and end
+    /// of a single line instead of the whole input
+    multiline: bool = false,
+    /// Wildcards match newline characters as well
+    dot_all: bool = false,
+    _padding: u5 = 0,
+};
+
 test {
     _ = @import("./matching.zig");
     _ = @import("./managed.zig");
