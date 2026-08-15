@@ -146,6 +146,7 @@ fn charClassLiteral(token: Token) ?u21 {
         .LPAREN,
         .RPAREN,
         .LBRACKET => token.val.?.raw(),
+        else => null,
     };
 }
 
@@ -290,7 +291,7 @@ fn parseEscapedAtom(self: *Parser, token: Token) RegrexError!*AST.Node {
 fn parseAtom(self: *Parser) RegrexError!*AST.Node {
     const token = self.current();
 
-    switch (token.typ) {
+     switch (token.typ) {
         .CHAR => {
             _ = self.advance();
             return self.createNode(.{
@@ -299,18 +300,20 @@ fn parseAtom(self: *Parser) RegrexError!*AST.Node {
                 },
             });
         },
-        .ESCAPED_CHAR => self.parseEscapedAtom(token),
+        .ESCAPED_CHAR => {
+            return self.parseEscapedAtom(token);
+        },
         .DOT => {
             _ = self.advance();
             return self.createNode(.{ .AnyChar = .{} });
         },
         .CARET => {
             _ = self.advance();
-            return self.createNode(.{ .StartAnchor = .{} });            
+            return self.createNode(.{ .StartAnchor = .{} });
         },
         .DOLLAR => {
             _ = self.advance();
-            return self.createNode(.{ .EndAnchor = .{} });    
+            return self.createNode(.{ .EndAnchor = .{} });
         },
         .LPAREN => {
             _ = self.advance();
@@ -396,8 +399,8 @@ fn parseCharClass(self: *Parser) RegrexError!AST.CharClass {
     var chars = std.ArrayList(u21).empty;
     errdefer chars.deinit(self.alloc);
 
-    var preset: AST.PresetClassSet = &.{};
-    var negated_preset: AST.PresetClassSet = &.{};
+    var preset: AST.PresetClassSet = .{};
+    var negated_preset: AST.PresetClassSet = .{};
 
     while (
         self.current().typ != .RBRACKET and 
@@ -464,7 +467,7 @@ fn parseCharClass(self: *Parser) RegrexError!AST.CharClass {
         // `[a-\d]` have no meaningful scalar endpoint.
         if (
             end_token.typ == .ESCAPED_CHAR and
-            Lexer.isSemanticEscapeis(end_token.val.?.raw())
+            Lexer.isSemanticEscape(end_token.val.?.raw())
         ) {
             return RegrexError.UnexpectedToken;
         }

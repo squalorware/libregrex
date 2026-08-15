@@ -12,18 +12,38 @@ pub const Split = struct {
     second: usize,
 };
 
+pub const RuneMatcher = struct {
+    value: u21,
+    ignore_case: bool = false,
+};
+
+pub const AnyMatcher = struct {
+    dot_all: bool = false,
+};
+
+pub const ClassMatcher = struct {
+    class: AST.CharClass,
+    ignore_case: bool = false,
+};
+
+pub const AnchorMatcher = struct {
+    multiline: bool = false,
+};
+
 /// A single VM instruction
 pub const Instruction = union(enum) {
     /// Match one exact Unicode code point
-    Rune: u21,
+    Rune: RuneMatcher,
     /// Match any single Unicode code point
-    Any,
+    Any: AnyMatcher,
     /// Match one code point against a character class
-    Class: AST.CharClass,
+    Class: ClassMatcher,
     /// Assert the current input position is the input start
-    AssertStart,
+    AssertStart: AnchorMatcher,
     /// Assert the current input position is the input end
-    AssertEnd,
+    AssertEnd: AnchorMatcher,
+    /// Assert `\A`, `\Z`, `\b` or `\B`
+    Assert: AST.AssertionType,
     /// Save the current input position into a capture slot.
     ///
     /// Slots are arranged as pairs:
@@ -49,10 +69,9 @@ pub const Instruction = union(enum) {
 pub fn deinitInstruction(allocator: Allocator, item: *Instruction) void {
     switch (item.*) {
         .Class => |cls| {
-            allocator.free(cls.ranges);
-            allocator.free(cls.chars);
+            allocator.free(cls.class.ranges);
+            allocator.free(cls.class.chars);
         },
-        .Hold => {},
         else => {},
     }
 }
