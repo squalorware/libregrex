@@ -1,133 +1,64 @@
 const std = @import("std");
 const Error = @import("types").Error;
-const utypes = @import("./utypes.zig");
-const table: utypes.RuneTable = @import("./rune_table.zon");
-const testing = std.testing;
-const RunePair = utypes.RunePair;
-const CompareMode = utypes.CompareMode;
-const SearchOrder = utypes.SearchOrder;
-pub const CharRange = RunePair;
-pub const CaseFold = RunePair;
-pub const RuneClass = utypes.RuneClass;
-pub const Rune = utypes.Rune;
+pub const ranges = @import("./ranges.zig");
+pub const Rune = @import("./Rune.zig");
 
-/// Compares a Unicode codepoint against the lookup table
+/// Decodes the Unicode Rune beginning at byte offset `pos`.
 ///
-/// `mode` controls whether it is compared as a range or as a case-fold mapping
-///
-/// Returns the position of the scalar relative to the specified range
-fn compare(map: RunePair, rune: u21, mode: CompareMode) SearchOrder {
-    return switch(mode) {
-        .range => RunePair.compare(map.start, map.end, rune),
-        .case_fold => RunePair.compare(map.start, map.start, rune),
+/// Returns `null` when `pos` points to the end of the input.
+pub fn decodeAt(input: []const u8, pos: usize) Error!?Rune {
+    if (pos == input.len) return null;
+
+    if (pos >= input.len) return Error.OutOfRange;
+
+    const len = Rune.byteLength(input[pos]) orelse return Error.InvalidUnicode;
+    if (pos + len > input.len) return Error.InvalidUnicode;
+
+    const view = std.unicode.Utf8View.init(input[pos .. pos + len]) catch {
+        return Error.InvalidUnicode;
     };
+    var iter = view.iterator();
+
+    const scalar = iter.nextCodepoint() orelse return Error.InvalidUnicode;
+
+    return Rune.from(scalar);
 }
 
-/// Searches the scalar codepoint in the sorted lookup table
+/// Decodes the Unicode Rune ending immediately before byte offset `pos`.
 ///
-/// If `mode` is `CompareMode.range` the key is matched against
-/// the inclusive `start..end` range of each item in `items`
+/// Returns `null` when `pos == 0`.
 ///
-/// If `mode` is `CompareMode.case_fold` uses only `item.start` as a lookup key
-fn binarySearch(items: []const RunePair, key: u21, mode: CompareMode) ?*const RunePair {
-    var low: usize = 0;
-    var high: usize = items.len;
+/// Returns `Error.InvalidUnicode` if `pos` does not lie on a valid UTF-8
+pub fn decodePrev(input: []const u8, pos: usize) Error!?Rune {
+    if (pos == 0) return null;
+    if (pos > input.len) return Error.OutOfRange;
 
-    while (low < high) {
-        const mid = low + (high - low) / 2;
-
-        switch (compare(items[mid], key, mode)) {
-            .before => high = mid,
-            .after => low = mid + 1,
-            .match => return &items[mid],
-        }
+    // Start at the byte right before input[pos]
+    var start: usize = pos - 1;
+    // Iterate backwards until reaching the leading byte of the Unicode sequence
+    while (start > 0 and (input[start] & 0xC0) == 0x80) {
+        start -= 1;
     }
-    return null;
-}
 
-/// Checks if Rune occurs within given ranges
-fn contains(ranges: []const CharRange, rune: u21) bool {
-    return binarySearch(ranges, rune, CompareMode.range) != null;
-}
-
-/// Checks if Rune belongs to one of the preset character classes
-pub fn is(cls: RuneClass, rune: u21) bool {
-    return switch(cls) {
-        .digit => contains(table.digit_ranges, rune),
-        .word => contains(table.word_ranges, rune),
-        .whitespace => contains(table.whitespace_ranges, rune),
+    const rune = try decodeAt(input, start) orelse {
+        return Error.InvalidUnicode;
     };
+
+    if (start + rune.len != pos) return Error.InvalidUnicode;
+
+    return rune;
 }
 
-/// Searches for a simple Unicode case-fold mapping for `rune` in the lookup table
+/// Advances `pos` by one complete decoded Unicode Rune.
 ///
-/// If `rune` has no correspondent mapping returns it unchanged
-pub fn simpleCaseFold(rune: u21) u21 {
-    const map = binarySearch(
-        table.case_folds[0..],
-        rune,
-        CompareMode.case_fold
-    ) orelse return rune;
-
-    return map.end;
-}
-
-/// Checks the case-folding of two characters
-/// (if mapping exists, given scalars are different cases of the same character)
-pub fn foldEqual(left: u21, right: u21) bool {
-    return simpleCaseFold(left) == simpleCaseFold(right);
+/// Returns `false` if the input has been exhausted.
+pub fn nextPos(input: []const u8, pos: *usize) Error!bool {
+    const rune = try decodeAt(input, pos.*) orelse return false;
+    pos.* += rune.len;
+    return true;
 }
 
 test {
-    _ = @import("./utypes.zig");
-}
-
-test "unicode.is should recognize Unicode numeric scalars" {
-    try testing.expect(is(.digit, '0'));
-    try testing.expect(is(.digit, '9'));
-
-    try testing.expect(!is(.digit, 'A'));
-    try testing.expect(!is(.digit, ' '));
-}
-
-test "unicode.is should recognize Unicode alphabetical scalars" {
-    try testing.expect(is(.word, 'a'));
-    try testing.expect(is(.word, 'Z'));
-    try testing.expect(is(.word, '0'));
-
-    try testing.expect(!is(.word, ' '));
-}
-
-test "unicode.is should recognize Unicode whitespace scalars" {
-    try testing.expect(is(.whitespace, ' '));
-    try testing.expect(is(.whitespace, '\t'));
-    try testing.expect(is(.whitespace, '\n'));
-
-    try testing.expect(!is(.whitespace, 'a'));
-}
-
-test "unicode.simpleCaseFold should correctly fold character case" {
-    try testing.expectEqual(
-        @as(u21, 'a'),
-        simpleCaseFold('A'),
-    );
-
-    try testing.expectEqual(
-        @as(u21, 'z'),
-        simpleCaseFold('Z'),
-    );
-}
-
-test "unicode.simpleCaseFold should preserve character with no case mapping" {
-    try testing.expectEqual(
-        @as(u21, '1'),
-        simpleCaseFold('1'),
-    );
-}
-
-test "unicode.foldEqual should correctly compare characters with simple case folding" {
-    try testing.expect(foldEqual('A', 'a'));
-    try testing.expect(foldEqual('Z', 'z'));
-
-    try testing.expect(!foldEqual('A', 'B'));
+    _ = @import("./ranges.zig");
+    _ = @import("./Rune.zig");
 }
