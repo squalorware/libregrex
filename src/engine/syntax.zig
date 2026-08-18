@@ -96,6 +96,20 @@ pub const PresetClassSet = packed struct (u8) {
             .whitespace => self.whitespace,
         };
     }
+
+    pub fn match(self: PresetClassSet, literal: u21, cls: PresetClass) bool {
+        if (self.contains(cls) and unicode.ranges.isInClass(cls, literal)) {
+            return true;
+        }
+        return false;
+    }
+
+    pub fn matchNegated(self: PresetClassSet, literal: u21, cls: PresetClass) bool {
+        if (self.contains(cls) and !unicode.ranges.isInClass(cls, literal)) {
+            return true;
+        }
+        return false;
+    }
 };
 
 /// Character-class expression.

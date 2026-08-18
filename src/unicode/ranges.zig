@@ -64,13 +64,7 @@ fn compareWithRange(rune: u21, range: RuneRange, as: RuneRangeType) LookupOrder 
     };
 }
 
-/// Searches the scalar codepoint in the sorted lookup table
-///
-/// If `mode` is `CompareMode.range` the key is matched against
-/// the inclusive `start..end` range of each item in `items`
-///
-/// If `mode` is `CompareMode.case_fold` uses only `item.start` as a lookup key
-fn binarySearch(items: []const RuneRange, key: u21, mode: RuneRangeType) ?*const RuneRange {
+fn lowerBound(items: []const RuneRange, key: u21, mode: RuneRangeType) usize {
     var low: usize = 0;
     var high: usize = items.len;
 
@@ -78,11 +72,30 @@ fn binarySearch(items: []const RuneRange, key: u21, mode: RuneRangeType) ?*const
         const mid = low + (high - low) / 2;
 
         switch (compareWithRange(key, items[mid], mode)) {
-            .before => high = mid,
+            .before, .match => high = mid,
             .after => low = mid + 1,
-            .match => return &items[mid],
         }
     }
+    return low;
+}
+
+/// Searches the scalar codepoint in the sorted lookup table
+///
+/// If `mode` is `CompareMode.range` the key is matched against
+/// the inclusive `start..end` range of each item in `items`
+///
+/// If `mode` is `CompareMode.case_fold` uses only `item.start` as a lookup key
+fn binarySearch(items: []const RuneRange, key: u21, mode: RuneRangeType) ?*const RuneRange {
+    const i = lowerBound(items, key, mode);
+
+    if (i >= items.len) {
+        return null;
+    }
+
+    if (compareWithRange(key, items[i], mode) == .match) {
+        return &items[i];
+    }
+
     return null;
 }
 
@@ -98,6 +111,31 @@ pub fn isInClass(cls: CharClassType, literal: u21) bool {
         .word => charClassContains(RuneTable.word_ranges, literal),
         .whitespace => charClassContains(RuneTable.whitespace_ranges, literal),
     };
+}
+
+pub fn isCaseFold(range: RuneRange, literal: u21) bool {
+    if (range.contains(literal)) {
+        return true;
+    }
+    const folded = simpleCaseFold(literal);
+
+    if (range.contains(folded)) {
+        return true;
+    }
+
+    var i = lowerBound(RuneTable.case_folds, range.start, .case_fold);
+    while (i < RuneTable.case_folds.len) : (i += 1) {
+        const map = RuneTable.case_folds[i];
+
+        if (map.start > range.end) {
+            break;
+        }
+
+        if (map.end == folded) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /// Searches for a simple Unicode case-fold mapping

@@ -1,6 +1,6 @@
 const std = @import("std");
 const types = @import("types");
-const advanceOneRune = @import("./utils.zig").advanceOneRune;
+const unicode = @import("unicode");
 const Match = types.Match;
 const RegrexError = types.Error;
 
@@ -50,7 +50,7 @@ pub fn deinit(self: *FindIterator) void {
 }
 
 fn advanceAfterEmptyMatch(self: *FindIterator) RegrexError!void {
-    if (!try advanceOneRune(self.input, &self.pos, null)) {
+    if (!try unicode.nextPos(self.input, &self.pos)) {
         self.done = true;
     }
 }
@@ -93,7 +93,7 @@ pub fn next(self: *FindIterator) RegrexError!?Match {
 
             return match;
         }
-        if (!try advanceOneRune(self.input, &self.pos, null)) {
+        if (!try unicode.nextPos(self.input, &self.pos)) {
             self.done = true;
             return null;
         }
@@ -109,6 +109,6 @@ pub fn next(self: *FindIterator) RegrexError!?Match {
 /// - for a non-empty match, this equals the match end;
 /// - for an empty match, this points after the code point skipped for progress;
 /// - for an empty match at end-of-input, this equals `input.len`.
-pub fn nextPos(self: *const FindIterator) usize {
+pub fn newPos(self: *const FindIterator) usize {
     return self.pos;
 }

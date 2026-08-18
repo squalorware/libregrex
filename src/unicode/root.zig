@@ -49,9 +49,16 @@ pub fn decodePrev(input: []const u8, pos: usize) Error!?Rune {
     return rune;
 }
 
-/// Advances `pos` by one complete decoded Unicode Rune.
+/// Advances `pos` by one Rune byte length.
 ///
-/// Returns `false` if the input has been exhausted.
+/// If succeeds, updates position to point
+/// at the next Unicode character in `input` and returns `true`.
+///
+/// Returns `false` without changing position if the `input` is exhausted
+///
+/// Returns:
+/// - `Error.InvalidUnicode` if encounters broken UTF-8
+/// - `Error.OutOfRange` if `pos` is greater than `input.len`
 pub fn nextPos(input: []const u8, pos: *usize) Error!bool {
     const rune = try decodeAt(input, pos.*) orelse return false;
     pos.* += rune.len;
