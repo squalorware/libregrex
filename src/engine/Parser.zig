@@ -393,7 +393,7 @@ fn parseGroup(self: *Parser) RegrexError!*AST.Node {
 fn parseCharClass(self: *Parser) RegrexError!AST.CharClass {
     const negated = self.match(.CARET);
 
-    var ranges = std.ArrayList(AST.CharRange).empty;
+    var ranges = std.ArrayList(AST.RuneRange).empty;
     errdefer ranges.deinit(self.alloc);
 
     var chars = std.ArrayList(u21).empty;

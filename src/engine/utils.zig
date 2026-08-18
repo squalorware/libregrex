@@ -1,15 +1,16 @@
 const RegrexError = @import("types").Error;
 const Rune = @import("unicode").Rune;
 const AST = @import("./syntax.zig");
+const bytecode = @import("./bytecode.zig");
 
 /// Represents a rule by which a Rune-consuming Instruction should test it.
 /// 
 /// This lets `.Rune`, `.Any`, and `.Class` share the same consume/decode path
 /// while preserving their distinct matching semantics.
-pub const RuneMatcher = union(enum) {
-    any,
-    literal: u21,
-    char_class: AST.CharClass,
+pub const CurrentRuneMatcher = union(enum) {
+    any: bytecode.AnyMatcher,
+    literal: bytecode.RuneMatcher,
+    char_class: bytecode.ClassMatcher,
 };
 
 /// Checks whether a Rune is accepted by a CharClass
@@ -40,7 +41,7 @@ fn isInClass(rune: u21, cls: AST.CharClass) bool {
 }
 
 /// Checks whether a Rune satisfies the provided matcher
-pub fn matchRune(rune: u21, matcher: RuneMatcher) bool {
+pub fn matchRune(rune: u21, matcher: CurrentRuneMatcher) bool {
     switch (matcher) {
         .any => return true,
         .literal => |lit| return rune == lit,

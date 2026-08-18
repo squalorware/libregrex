@@ -9,7 +9,7 @@ const Instruction = bytecode.Instruction;
 const RegrexError = types.Error;
 const Match = types.Match;
 const toMatch = types.conv.toMatch;
-const RuneMatcher = utils.RuneMatcher;
+const CurrentRuneMatcher = utils.CurrentRuneMatcher;
 const matchRune = utils.matchRune;
 
 /// A saved alternative execution state used by the backtracking VM.
@@ -125,7 +125,7 @@ pub fn execAt(
         const inst = instructions[pc];
         switch (inst) {
             .Rune => |expected| {
-                const matcher = RuneMatcher{ .literal = expected };
+                const matcher = CurrentRuneMatcher{ .literal = expected };
                 const fail_condition = !matchRune(expected, matcher);
 
                 if (try utils.advanceOneRune(input, &pos, fail_condition)) {
@@ -137,7 +137,7 @@ pub fn execAt(
                 }
             },
             .Any => {
-                const matcher = RuneMatcher{ .any = {} };
+                const matcher = CurrentRuneMatcher{ .any = {} };
                 const fail_condition = (pos >= input.len) or !matchRune(input[pos], matcher);
 
                 if (try utils.advanceOneRune(input, &pos, fail_condition)) {
@@ -149,7 +149,7 @@ pub fn execAt(
                 }
             },
             .Class => |cls| {
-                const matcher = RuneMatcher{ .char_class = cls };
+                const matcher = CurrentRuneMatcher{ .char_class = cls };
                 const fail_condition = (pos >= input.len) or !matchRune(input[pos], matcher);
 
                 if (try utils.advanceOneRune(input, &pos, fail_condition)) {
@@ -284,7 +284,7 @@ test "execAt() should handle capture slots" {
 
 test "execAt() should correctly handle an anchored lowercase character class repeat" {
     const allocator = testing.allocator;
-    const ranges = [_]AST.CharRange {
+    const ranges = [_]AST.RuneRange {
         .{ .start = 'a', .end = 'z' },
     };
     const chars = [_]u21 {};

@@ -71,9 +71,9 @@ pub const Assertion = struct {
 };
 
 /// Inclusive character range used inside a character class.
-pub const CharRange = unicode.CharRange;
+pub const RuneRange = unicode.ranges.RuneRange;
 
-pub const PresetClass = unicode.RuneClass;
+pub const PresetClass = unicode.ranges.CharClassType;
 
 pub const PresetClassSet = packed struct (u8) {
     digit: bool = false,
@@ -106,7 +106,7 @@ pub const PresetClassSet = packed struct (u8) {
 /// 
 /// `negated`: classes beginning with `^`, such as `[^0-9]`.
 pub const CharClass = struct {
-    ranges: []const CharRange,
+    ranges: []const RuneRange,
     chars: []const u21,
     preset: PresetClassSet = .{},
     negated_preset: PresetClassSet = .{},

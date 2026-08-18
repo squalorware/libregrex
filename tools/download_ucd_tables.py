@@ -16,9 +16,9 @@ ROOT_DIR = SCRIPT_DIR.parent
 
 # Allow setting own default values via environment variables
 DEFAULT_UNICODE_VERSION = os.getenv("UTF_VERSION", "17.0.0")
-DEFAULT_OUTPUT_PATH = os.getenv("OUT_PATH", ROOT_DIR / "src/unicode/rune_table.zon")
+DEFAULT_OUTPUT_PATH = os.getenv("OUT_PATH", ROOT_DIR / "src/unicode/data/ucd_tables.zon")
 DEFAULT_CACHE_DIR = os.getenv("CACHE_DIR", ROOT_DIR / ".unicode-cache")
-DEFAULT_TEMPLATE_PATH = os.getenv("TEMPLATE_PATH", ROOT_DIR / "tools/rune_table.tpl")
+DEFAULT_TEMPLATE_PATH = os.getenv("TEMPLATE_PATH", ROOT_DIR / "tools/ucd_tables.tpl")
 
 MAX_UNICODE = 0x10FFFF
 SURROGATE_START = 0xD800

@@ -21,7 +21,7 @@ fn cloneCharClass(
     alloc: std.mem.Allocator, 
     cls: AST.CharClass
 ) RegrexError!AST.CharClass {
-    const ranges = alloc.dupe(AST.CharRange, cls.ranges) catch {
+    const ranges = alloc.dupe(AST.RuneRange, cls.ranges) catch {
         return RegrexError.MemoryError;
     };
     errdefer alloc.free(ranges);
@@ -329,7 +329,7 @@ test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
     const start = try ast_alloc.create(AST.Node);
     start.* = .{ .StartAnchor = .{} };
 
-    const ranges = try ast_alloc.alloc(AST.CharRange, 1);
+    const ranges = try ast_alloc.alloc(AST.RuneRange, 1);
     ranges[0] = .{
         .start = 'a',
         .end = 'z',
