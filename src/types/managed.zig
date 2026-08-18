@@ -9,8 +9,7 @@ fn hasDeinit(comptime T: type) bool {
         .@"struct",
         .@"union",
         .@"enum",
-        .@"opaque",
-        => @hasDecl(T, "deinit"),
+        .@"opaque" => @hasDecl(T, "deinit"),
         else => false,
     };
 }
@@ -51,7 +50,6 @@ pub fn ManagedDynamicBuffer(
         /// initialization.
         pub fn init(alloc: std.mem.Allocator, buffer: ?[]const T) Error!Self {
             var inner: std.ArrayList(T) = .empty;
-            // errdefer inner.deinit(alloc);
 
             if (buffer) |buf| {
                 inner.appendSlice(alloc, buf) catch {

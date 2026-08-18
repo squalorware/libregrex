@@ -37,9 +37,7 @@ def ucd_url(version: str, filename: str) -> str:
 def fetch_file(url: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
 
-    req = Request(url, headers={
-        "User-Agent": "regrex-ucd-downloader/1.0"
-    })
+    req = Request(url, headers={"User-Agent": "regrex-ucd-downloader/1.0"})
     temp_path: Path | None = None
 
     try:
@@ -112,10 +110,7 @@ def validate_pair(start: int,end: int) -> None:
         raise ValueError(f"Invalid code-point range: U+{start:04X}..U+{end:04X}")
 
     if start < 0 or end > MAX_UNICODE:
-        raise ValueError(
-            f"Code-point range outside Unicode: "
-            f"U+{start:04X}..U+{end:04X}"
-        )
+        raise ValueError(f"Code-point range outside Unicode: U+{start:04X}..U+{end:04X}")
 
     overlaps_surrogates = (
         start <= SURROGATE_END
@@ -123,10 +118,7 @@ def validate_pair(start: int,end: int) -> None:
     )
 
     if overlaps_surrogates:
-        raise ValueError(
-            f"Code-point range includes UTF-16 surrogates: "
-            f"U+{start:04X}..U+{end:04X}"
-        )
+        raise ValueError(f"Codepoint range includes UTF-16 surrogates: U+{start:04X}..U+{end:04X}")
 
 
 def merge_pairs(pairs: Iterable[CodepointPair]) -> list[CodepointPair]:
@@ -188,7 +180,7 @@ def parse_unicode_data(path: Path) -> tuple[
             w_ranges.append((rstart, rend))
 
     with path.open("r", encoding="utf-8") as src:
-        for line_number, raw_line in enumerate(src, start=1):
+        for ln, raw_line in enumerate(src, start=1):
             line = raw_line.rstrip("\r\n")
 
             if not line:
@@ -197,7 +189,7 @@ def parse_unicode_data(path: Path) -> tuple[
             fields = line.split(";")
 
             if len(fields) != 15:
-                raise ValueError(f"{path}:{line_number}: expected 15 fields, got {len(fields)}")
+                raise ValueError(f"{path}:{ln}: expected 15 fields, got {len(fields)}")
 
             codepoint = int(fields[0], 16)
             name = fields[1]
@@ -205,14 +197,14 @@ def parse_unicode_data(path: Path) -> tuple[
 
             if name.endswith(", First>"):
                 if pending_range is not None:
-                    raise ValueError(f"{path}:{line_number}: nested First range record")
+                    raise ValueError(f"{path}:{ln}: nested First range record")
 
                 pending_range = (codepoint, name, category)
                 continue
 
             if name.endswith(", Last>"):
                 if pending_range is None:
-                    raise ValueError(f"{path}:{line_number}: Last record without First record")
+                    raise ValueError(f"{path}:{ln}: Last record without First record")
 
                 start, first_name, first_category = pending_range
 
@@ -221,11 +213,8 @@ def parse_unicode_data(path: Path) -> tuple[
                     ", Last>",
                 )
 
-                if (
-                    name != expected_last_name
-                    or category != first_category
-                ):
-                    raise ValueError(f"{path}:{line_number}: mismatched First/Last records")
+                if name != expected_last_name or category != first_category:
+                    raise ValueError(f"{path}:{ln}: mismatched First/Last records")
 
                 add_category_range(start, codepoint, category)
 
@@ -233,7 +222,7 @@ def parse_unicode_data(path: Path) -> tuple[
                 continue
 
             if pending_range is not None:
-                raise ValueError(f"{path}:{line_number}: missing Last record for {pending_range[1]}")
+                raise ValueError(f"{path}:{ln}: missing Last record for {pending_range[1]}")
 
             if not is_valid_scalar(codepoint):
                 # UnicodeData.txt contains surrogate records.
@@ -257,10 +246,7 @@ def parse_codepoint_range(
     value = value.strip()
 
     if ".." in value:
-        start_text, end_text = value.split(
-            "..",
-            maxsplit=1,
-        )
+        start_text, end_text = value.split("..", maxsplit=1)
 
         start = int(start_text, 16)
         end = int(end_text, 16)
@@ -294,13 +280,10 @@ def parse_property_ranges(path: Path, property_name: str) -> list[CodepointPair]
             if current_property != property_name:
                 continue
 
-            ranges.append(
-                parse_codepoint_range(range_text)
-            )
+            ranges.append(parse_codepoint_range(range_text))
 
     if not ranges:
-        raise ValueError(f"{path}: property {property_name!r} was not found"
-        )
+        raise ValueError(f"{path}: property {property_name!r} was not found")
 
     return merge_pairs(ranges)
 
@@ -321,22 +304,18 @@ def parse_simple_case_folding(path: Path) -> list[CodepointPair]:
     mappings: dict[int, int] = {}
 
     with path.open("r", encoding="utf-8") as src:
-        for line_number, raw_line in enumerate(src, start=1):
+        for ln, raw_line in enumerate(src, start=1):
             cont = raw_line.split("#", maxsplit=1)[0].strip()
 
             if not cont:
                 continue
 
-            fields = [
-                field.strip()
-                for field in cont.split(";")
-            ]
+            fields = [field.strip() for field in cont.split(";")]
 
             if len(fields) < 3:
-                raise ValueError(f"{path}:{line_number}: malformed case-fold record")
+                raise ValueError(f"{path}:{ln}: malformed case-fold record")
 
             source_codepoint = int(fields[0], 16)
-
             status = fields[1]
 
             if status not in {"C", "S"}:
@@ -345,15 +324,15 @@ def parse_simple_case_folding(path: Path) -> list[CodepointPair]:
             mapping_values = fields[2].split()
 
             if len(mapping_values) != 1:
-                raise ValueError(f"{path}:{line_number}: simple case fold is not one-to-one")
+                raise ValueError(f"{path}:{ln}: simple case fold is not one-to-one")
 
             target_codepoint = int(mapping_values[0], 16)
 
             if not is_valid_scalar(source_codepoint):
-                raise ValueError(f"{path}:{line_number}: invalid source Unicode scalar")
+                raise ValueError(f"{path}:{ln}: invalid source Unicode scalar")
 
             if not is_valid_scalar(target_codepoint):
-                raise ValueError(f"{path}:{line_number}: invalid target Unicode scalar")
+                raise ValueError(f"{path}:{ln}: invalid target Unicode scalar")
 
             previous = mappings.get(source_codepoint)
 
@@ -361,7 +340,9 @@ def parse_simple_case_folding(path: Path) -> list[CodepointPair]:
                 previous is not None
                 and previous != target_codepoint
             ):
-                raise ValueError(f"{path}:{line_number}: conflicting simple case folds for qU+{source_codepoint:04X}")
+                raise ValueError(
+                    f"{path}:{ln}: conflicting simple case folds for qU+{source_codepoint:04X}"
+                )
 
             mappings[source_codepoint] = (
                 target_codepoint
@@ -395,30 +376,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-v", "--unicode-version",
         default=DEFAULT_UNICODE_VERSION,
-        help=(
-            "Unicode Character Database version "
-            f"(default: {DEFAULT_UNICODE_VERSION})"
-        ),
+        help=f"Unicode Character Database version (default: {DEFAULT_UNICODE_VERSION})",
     )
 
     parser.add_argument(
         "-o", "--output",
         type=Path,
         default=DEFAULT_OUTPUT_PATH,
-        help=(
-            "Path to write the output .zon file to "
-            f"(default: {DEFAULT_OUTPUT_PATH})"
-        ),
+        help=f"Path to write the output .zon file to (default: {DEFAULT_OUTPUT_PATH})",
     )
 
     parser.add_argument(
         "-c", "--cache-dir",
         type=Path,
         default=DEFAULT_CACHE_DIR,
-        help=(
-            "Path to store the downloaded UCD files "
-            f"(default: {DEFAULT_CACHE_DIR})"
-        ),
+        help=f"Path to store the downloaded UCD files (default: {DEFAULT_CACHE_DIR})",
     )
 
     parser.add_argument(
