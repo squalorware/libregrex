@@ -22,7 +22,7 @@ fn rangeMatches(literal: u21, range: unicode.ranges.RuneRange, ignore_case: bool
     }
 }
 
-fn matchRanges(literal: u21, ranges: []const AST.CharClass, ignore_case: bool) bool {
+fn matchRanges(literal: u21, ranges: []const unicode.ranges.RuneRange, ignore_case: bool) bool {
     for (ranges) |range| {
         if (rangeMatches(literal, range, ignore_case)) return true;
     }
@@ -64,15 +64,14 @@ fn matchCharClasses(rune: Rune, matcher: bytecode.ClassMatcher) bool {
         matchRanges(rune.raw(), cls.ranges, matcher.ignore_case ) or
         matchChars(rune, cls.chars, matcher.ignore_case) or
         matchPreset(rune.raw(), cls.preset) or
-        matchNegatedPreset(rune.raw(), cls.preset)
+        matchNegatedPreset(rune.raw(), cls.negated_preset)
     );
 
     return if (cls.negated) !matched else matched;
 }
 
 /// Checks whether a Rune satisfies the provided matcher
-pub fn matchRune(char: u21, matcher: CurrentRuneMatcher) RegrexError!bool {
-    const rune = try Rune.from(char);
+pub fn matchRune(rune: Rune, matcher: CurrentRuneMatcher) RegrexError!bool {
     switch (matcher) {
         .any => |m| {
             return m.dot_all or !rune.isLineBreak();
@@ -82,4 +81,69 @@ pub fn matchRune(char: u21, matcher: CurrentRuneMatcher) RegrexError!bool {
         },
         .char_class => |m| return matchCharClasses(rune, m),
     }
+}
+
+pub fn runeMatched(input: []const u8, pos: *usize, matcher: CurrentRuneMatcher) RegrexError!bool {
+    const rune = try unicode.decodeAt(input, pos.*) orelse return false;
+    if (!try matchRune(rune, matcher)) return false;
+
+    unicode.stepRune(pos, rune);
+    return true;
+}
+
+pub fn isLineStart(input: []const u8, pos: usize) RegrexError!bool {
+    if (pos == 0) return true;
+
+    const prev = try unicode.decodePrev(input, pos) orelse return false;
+    if (prev.raw() == '\r') {
+        const current = try unicode.decodeAt(input, pos);
+        return current == null or current.?.raw() != '\n';
+    }
+    return prev.isLineBreak();
+}
+
+pub fn isLineEnd(input: []const u8, pos: usize) RegrexError!bool {
+    if (pos == input.len) return true;
+
+    const current = try unicode.decodeAt(input, pos) orelse return true;
+    if (current.raw() == '\n') {
+        const prev = try unicode.decodePrev(input, pos);
+        return prev == null or prev.?.raw() != '\r';
+    }
+    return current.isLineBreak();
+}
+
+pub fn anchorMatched(
+    inst: bytecode.Instruction,
+    input: []const u8,
+    pos: usize,
+    multiline: bool
+) RegrexError!bool {
+    switch (inst) {
+        .AssertStart => {
+            if (multiline) return try isLineStart(input, pos);
+            return pos == 0;
+        },
+        .AssertEnd => {
+            if (multiline) return try isLineEnd(input, pos);
+            return pos == input.len;
+        },
+        else => return false,
+    }
+}
+
+pub fn isWordBoundary(input: []const u8, pos: usize) RegrexError!bool {
+    const prev = try unicode.decodePrev(input, pos);
+    const current = try unicode.decodeAt(input, pos);
+
+    return unicode.ranges.isWord(prev) == unicode.ranges.isWord(current);
+}
+
+pub fn assertMatched(input: []const u8, pos: usize, assert: AST.AssertionType) RegrexError!bool {
+    return switch(assert) {
+        .start_abs => pos == 0,
+        .end_abs => pos == input.len,
+        .word_bounds => try isWordBoundary(input, pos),
+        .non_word_bounds => !try isWordBoundary(input, pos),
+    };
 }

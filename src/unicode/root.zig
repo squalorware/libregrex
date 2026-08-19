@@ -8,10 +8,11 @@ pub const Rune = @import("./Rune.zig");
 /// Returns `null` when `pos` points to the end of the input.
 pub fn decodeAt(input: []const u8, pos: usize) Error!?Rune {
     if (pos == input.len) return null;
-
     if (pos >= input.len) return Error.OutOfRange;
 
-    const len = Rune.byteLength(input[pos]) orelse return Error.InvalidUnicode;
+    const len = std.unicode.utf8ByteSequenceLength(input[pos]) catch {
+        return Error.InvalidUnicode;
+    };
     if (pos + len > input.len) return Error.InvalidUnicode;
 
     const view = std.unicode.Utf8View.init(input[pos .. pos + len]) catch {
@@ -21,7 +22,7 @@ pub fn decodeAt(input: []const u8, pos: usize) Error!?Rune {
 
     const scalar = iter.nextCodepoint() orelse return Error.InvalidUnicode;
 
-    return Rune.from(scalar);
+    return try Rune.from(scalar);
 }
 
 /// Decodes the Unicode Rune ending immediately before byte offset `pos`.
@@ -49,6 +50,14 @@ pub fn decodePrev(input: []const u8, pos: usize) Error!?Rune {
     return rune;
 }
 
+/// Advances `pos` past an already decoded Rune.
+///
+/// The caller is responsible for ensuring that `rune` was decoded from
+/// the input at the current position.
+pub fn stepRune(pos: *usize, rune: Rune) void {
+    pos.* += rune.len;
+}
+
 /// Advances `pos` by one Rune byte length.
 ///
 /// If succeeds, updates position to point
@@ -59,9 +68,9 @@ pub fn decodePrev(input: []const u8, pos: usize) Error!?Rune {
 /// Returns:
 /// - `Error.InvalidUnicode` if encounters broken UTF-8
 /// - `Error.OutOfRange` if `pos` is greater than `input.len`
-pub fn nextPos(input: []const u8, pos: *usize) Error!bool {
+pub fn advancePos(input: []const u8, pos: *usize) Error!bool {
     const rune = try decodeAt(input, pos.*) orelse return false;
-    pos.* += rune.len;
+    stepRune(pos, rune);
     return true;
 }
 

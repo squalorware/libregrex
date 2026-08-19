@@ -1,10 +1,13 @@
 const std = @import("std");
 const types = @import("types");
-const Rune = @import("unicode").Rune;
+const unicode = @import("unicode");
+
 const AST = @import("./syntax.zig");
 const bytecode = @import("./bytecode.zig");
 const utils = @import("./utils.zig");
+
 const testing = std.testing;
+
 const Instruction = bytecode.Instruction;
 const RegrexError = types.Error;
 const Match = types.Match;
@@ -35,10 +38,14 @@ const Frame = struct {
 /// Backtracking VM execution stack for saving alternative execution states.
 const Stack = types.ManagedDynamicBuffer(Frame, null);
 
-/// Clones a capture-slot buffer for a saved backtracking frame.
+/// Clones the current capture-slot state for a saved backtracking Frame.
 ///
-/// Capture slots store byte offsets. Slot `0` and slot `1` represent the whole
-/// match start/end. Capturing group `N` uses slots `N * 2` and `N * 2 + 1`.
+/// Capture slots contain input byte offsets:
+///
+/// - slots 0/1: whole match start/end
+/// - slots 2/3: capture group 1 start/end
+/// - slots 4/5: capture group 2 start/end
+/// - etc.
 fn cloneCaptures(alloc: std.mem.Allocator, captures: []const ?usize) RegrexError![]?usize {
     const clone = alloc.dupe(?usize, captures) catch {
         return RegrexError.MemoryError;
@@ -100,7 +107,7 @@ pub fn execAt(
     instructions: []const Instruction,
 ) RegrexError!?Match {
     const capture_slots = (group_count + 1) * 2;
-    var captures = allocator.alloc(?usize, capture_slots) catch {
+    var captures = allocator.alloc(? usize, capture_slots) catch {
         return RegrexError.MemoryError;
     };
     errdefer allocator.free(captures);
@@ -124,44 +131,8 @@ pub fn execAt(
 
         const inst = instructions[pc];
         switch (inst) {
-            .Rune => |expected| {
-                const matcher = CurrentRuneMatcher{ .literal = expected };
-                const fail_condition = !matchRune(expected, matcher);
-
-                if (try utils.advanceOneRune(input, &pos, fail_condition)) {
-                    pc += 1;
-                } else if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) {
-                    continue;
-                } else {
-                    return null;
-                }
-            },
-            .Any => {
-                const matcher = CurrentRuneMatcher{ .any = {} };
-                const fail_condition = (pos >= input.len) or !matchRune(input[pos], matcher);
-
-                if (try utils.advanceOneRune(input, &pos, fail_condition)) {
-                    pc += 1;
-                } else if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) {
-                    continue;
-                } else {
-                    return null;
-                }
-            },
-            .Class => |cls| {
-                const matcher = CurrentRuneMatcher{ .char_class = cls };
-                const fail_condition = (pos >= input.len) or !matchRune(input[pos], matcher);
-
-                if (try utils.advanceOneRune(input, &pos, fail_condition)) {
-                    pc += 1;
-                } else if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) {
-                    continue;
-                } else {
-                    return null;
-                }
-            },
-            .AssertStart => {
-                if (pos == 0) {
+            .Rune => |matcher| {
+                if (try utils.runeMatched(input, &pos, .{.literal = matcher})) {
                     pc += 1;
                     continue;
                 }
@@ -170,8 +141,48 @@ pub fn execAt(
                 }
                 return null;
             },
-            .AssertEnd => {
-                if (pos == input.len) {
+            .Any => |matcher| {
+                if (try utils.runeMatched(input, &pos, .{.any = matcher})) {
+                    pc += 1;
+                    continue;
+                }
+                if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) {
+                    continue;
+                }
+                return null;
+            },
+            .Class => |matcher| {
+                if (try utils.runeMatched(input, &pos, .{.char_class = matcher})) {
+                    pc += 1;
+                    continue;
+                }
+                if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) {
+                    continue;
+                }
+                return null;
+            },
+            .AssertStart => |matcher| {
+                if (try utils.anchorMatched(inst, input, pos, matcher.multiline)) {
+                    pc += 1;
+                    continue;
+                }
+                if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) {
+                    continue;
+                }
+                return null;
+            },
+            .AssertEnd => |matcher| {
+                if (try utils.anchorMatched(inst, input, pos, matcher.multiline)) {
+                    pc += 1;
+                    continue;
+                }
+                if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) {
+                    continue;
+                }
+                return null;
+            },
+            .Assert => |assert| {
+                if (try utils.assertMatched(input, pos, assert)) {
                     pc += 1;
                     continue;
                 }
@@ -225,11 +236,11 @@ pub fn execAt(
 
 test "execAt() should produce a Match from given position" {
     const allocator = testing.allocator;
-    const inst_list = [_]Instruction {
+    const inst_list = [_]Instruction{
         .{ .Save = 0 },
-        .{ .Rune = '4' },
-        .{ .Rune = '2' },
-        .{ .Rune = '0' },
+        .{ .Rune = .{ .value = '4' } },
+        .{ .Rune = .{ .value = '2' } },
+        .{ .Rune = .{ .value = '0' } },
         .{ .Save = 1 },
         .Match,
     };
@@ -253,12 +264,12 @@ test "execAt() should produce a Match from given position" {
 
 test "execAt() should handle capture slots" {
     const allocator = testing.allocator;
-    const inst_list = [_]Instruction {
+    const inst_list = [_]Instruction{
         .{ .Save = 0 },
         .{ .Save = 2 },
-        .{ .Rune = '4' },
-        .{ .Rune = '2' },
-        .{ .Rune = '0' },
+        .{ .Rune = .{ .value = '4' } },
+        .{ .Rune = .{ .value = '2' } },
+        .{ .Rune = .{ .value = '0' } },
         .{ .Save = 3 },
         .{ .Save = 1 },
         .Match,
@@ -282,6 +293,39 @@ test "execAt() should handle capture slots" {
     try testing.expectEqualStrings("420", expected_group);
 }
 
+test "execAt() should consume a complete multibyte Unicode Rune" {
+    const allocator = testing.allocator;
+
+    const inst_list = [_]Instruction{
+        .{ .Save = 0 },
+        .{ .Rune = .{ .value = 'Ї' } },
+        .{ .Save = 1 },
+        .Match,
+    };
+
+    var result = (try execAt(
+        allocator,
+        "abcЇdef",
+        3,
+        0,
+        inst_list[0..],
+    )) orelse {
+        try testing.expect(false);
+        return;
+    };
+    defer result.deinit(allocator);
+
+    try testing.expectEqual(
+        @as(usize, 3),
+        try result.start(0),
+    );
+
+    try testing.expectEqual(
+        @as(usize, 5),
+        try result.end(0),
+    );
+}
+
 test "execAt() should correctly handle an anchored lowercase character class repeat" {
     const allocator = testing.allocator;
     const ranges = [_]AST.RuneRange {
@@ -291,15 +335,23 @@ test "execAt() should correctly handle an anchored lowercase character class rep
     const lowercase_class: AST.CharClass = .{
         .ranges = ranges[0..],
         .chars = chars[0..],
-        .negated = false,
     };
-    const inst_list = [_]Instruction {
+    const inst_list = [_]Instruction{
         .{ .Save = 0 },
-        .AssertStart,
-        .{ .Split = .{ .first = 3, .second = 5 } },
-        .{ .Class = lowercase_class },
+        .{ .AssertStart = .{} },
+        .{
+            .Split = .{
+                .first = 3,
+                .second = 5,
+            },
+        },
+        .{
+            .Class = .{
+                .class = lowercase_class,
+            },
+        },
         .{ .Jump = 2 },
-        .AssertEnd,
+        .{ .AssertEnd = .{} },
         .{ .Save = 1 },
         .Match,
     };

@@ -1,5 +1,6 @@
 const testing = @import("std").testing;
 const Error = @import("types").Error;
+const Rune = @import("./Rune.zig");
 
 const LookupOrder = enum {
     before,
@@ -134,6 +135,13 @@ pub fn isCaseFold(range: RuneRange, literal: u21) bool {
         if (map.end == folded) {
             return true;
         }
+    }
+    return false;
+}
+
+pub fn isWord(rune: ?Rune) bool {
+    if (rune) |r| {
+        return isInClass(.word, r.raw());
     }
     return false;
 }

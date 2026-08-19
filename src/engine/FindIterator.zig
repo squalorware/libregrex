@@ -109,6 +109,6 @@ pub fn next(self: *FindIterator) RegrexError!?Match {
 /// - for a non-empty match, this equals the match end;
 /// - for an empty match, this points after the code point skipped for progress;
 /// - for an empty match at end-of-input, this equals `input.len`.
-pub fn newPos(self: *const FindIterator) usize {
+pub fn resumePos(self: *const FindIterator) usize {
     return self.pos;
 }
