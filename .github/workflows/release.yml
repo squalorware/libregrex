@@ -17,19 +17,23 @@ jobs:
           - target: x86_64-linux-gnu
             runner: ubuntu-latest
             os_arch: linux-x86_64
+            strip_cmd: strip --strip-unneeded
           - target: aarch64-linux-gnu
             runner: ubuntu-latest
             os_arch: linux-aarch64
+            strip_cmd: aarch64-linux-gnu-strip --strip-unneeded
           - target: riscv64-linux-gnu
             runner: ubuntu-latest
             os_arch: linux-riscv64
-            binary: libregrex.so
+            strip_cmd: riscv64-linux-gnu-strip --strip-unneeded
           - target: x86_64-macos
             runner: macos-15-intel
+            strip_cmd: strip -x
             os_arch: macos-x86_64
           - target: aarch64-macos
             runner: macos-latest
             os_arch: macos-aarch64
+            strip_cmd: strip -x
           - target: x86_64-windows-gnu
             runner: windows-latest
             os_arch: windows-x86_64
@@ -40,27 +44,61 @@ jobs:
     steps:
         - uses: actions/checkout@v4
 
-        - name: Extract version
+        - name: Extract version (POSIX)
+          if: ${{ !contains(matrix.target, 'windows') }}
           id: pre_version
           run: |
             TAG=${{ github.ref_name }}
             VERSION=${TAG#v}
             echo "VERSION=$VERSION" >> $GITHUB_ENV
 
+        - name: Extract version (Windows)
+          if: ${{ contains(matrix.target, 'windows') }}
+          id: pre_version_win
+          run: |
+            $tag = "${{ github.ref_name }}"
+            $version = $tag.Substring(1, $tag.Length - 1)
+            "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+        - name: Install build dependencies (Linux)
+          if: ${{ contains(matrix.target, 'linux') && !contains(matrix.target, 'x86_64') }}
+          run: |
+            sudo apt update
+            sudo apt install -y binutils-${{ matrix.target }} gcc-${{ matrix.target }}
+
         - name: Install Zig
           uses: mlugg/setup-zig@v2
           with:
             version: ${{ env.ZIG_VERSION }}
 
-        - name: Build (POSIX)
-          if: ${{ !contains(matrix.target, 'windows') }}
+        - name: Build (Linux)
+          if: ${{ contains(matrix.target, 'linux') }}
           run: |
             zig build --prefix dist \
               -Dtarget=${{ matrix.target }} \
               -Doptimize=ReleaseSafe
+            ${{ matrix.strip_cmd }} dist/lib/libregrex.so.${{ env.VERSION }}
             cp LICENSE README.md dist/
 
-        - name: Package (POSIX)
+        - name: Build (macOS)
+          if: ${{ contains(matrix.target, 'macos') }}
+          run: |
+            zig build --prefix dist \
+              -Dtarget=${{ matrix.target }} \
+              -Doptimize=ReleaseSafe
+            ${{ matrix.strip_cmd }} dist/lib/libregrex.${{ env.VERSION }}.dylib
+            cp LICENSE README.md dist/
+
+        - name: Build (Windows)
+          if: ${{ contains(matrix.target, 'windows') }}
+          run: |
+            zig build --prefix dist `
+              -Dtarget=${{ matrix.target }} `
+              -Doptimize=ReleaseSafe
+            Remove-Item -Path "dist\bin\regrex.pdb"
+            Copy-Item -Path "LICENSE", "README.md" -Destination "dist" -Force
+
+        - name: Package (Linux & macOS)
           if: ${{ !contains(matrix.target, 'windows') }}
           run: |
             OUT=libregrex${{ env.VERSION }}-${{ matrix.os_arch }}
@@ -71,14 +109,6 @@ jobs:
               share \
               LICENSE README.md
             echo "OUT_FILE=$OUT" >> $GITHUB_ENV
-
-        - name: Build (Windows)
-          if: ${{ contains(matrix.target, 'windows') }}
-          run: |
-            zig build --prefix dist `
-              -Dtarget=${{ matrix.target }} `
-              -Doptimize=ReleaseSafe
-            Copy-Item -Path "LICENSE", "README.md" -Destination "dist" -Force
 
         - name: Package (Windows)
           if: ${{ contains(matrix.target, 'windows') }}

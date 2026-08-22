@@ -50,13 +50,13 @@ This project does not aim to be a proper and serious production-grade implementa
 ### Install
 Fetch and save to `build.zig.zon` in one step
 ```bash
-zig fetch --save https://github.com/squalorware/libregrex/archive/refs/tags/v0.1.0.tar.gz
+zig fetch --save https://github.com/squalorware/libregrex/archive/refs/tags/v0.1.1.tar.gz
 ```
 
 Alternatively, you can fetch it via `git ref`
 
 ```bash
-zig fetch --save git+https://github.com/squalorware/libregrex#v0.1.0
+zig fetch --save git+https://github.com/squalorware/libregrex#v0.1.1
 ```
 
 This will automatically add the dependency and its hash to your `build.zig.zon`.
@@ -157,7 +157,7 @@ while(iter.next()) |m| {
 }
 ```
 And of course, you can replace the matches (the original input is never mutated - `sub` copies the non-matching bits and inserts the string stored inside `repl_buf` parameter at the byte offsets of the matches)
-```
+```zig
 const replaced = try pattern.sub("<pair>", "foo=123 bar=456", .{ .count = 0 });
 defer allocator.free(replaced);
 
@@ -172,7 +172,9 @@ The provided C-compatible API is expected to expose all the same functionality a
 - `regx_pattern_t` and `regx_match_t` are opaque types wrapping the underlying Zig `Pattern`and `Match` types.
 - `regx_match_arr_t` respectively encapsulates the `MatchArray` type
 - `regx_buffer_t` represents a convenience type that holds the string (byte buffer) and its length. 
-- `REGX_BUF` is a helper macro that allows converting string literals and C strings to `regx_buffer_t`
+- `REGX_BUFFER` is a helper macro that allows converting string literals and C strings to `regx_buffer_t`
+
+**A simple example program:**
 ```c
 #include <stdio.h>
 #include "regrex.h"
@@ -207,12 +209,16 @@ int main(void)
     }
     // Don't forget about the destructors!
     regx_pattern_destroy(pattern);
-    return (int) rc;
+    return  rc;
 }
 ```
+
+Also, one can take a look at this list (might be expanded) containing:
+- A more [in-depth example](https://github.com/squalorware/regrex_c) of using `regrex` with the C programming language;
+
 ## Building
 
-Minimal required version for a successful build is 0.16.0
+Minimal required version for a successful build is 0.16.0. Also, your system needs to have `glibc` installed.
 
 ### Testing
 
