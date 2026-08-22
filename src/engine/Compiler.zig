@@ -10,7 +10,6 @@ const testing = std.testing;
 const Instruction = bytecode.Instruction;
 const BytecodeBuffer = bytecode.BytecodeBuffer;
 const RegrexError = types.Error;
-const RegrexFlags = types.RegrexFlags;
 
 /// Deep-copies a character class into bytecode memory.
 /// 
@@ -40,14 +39,26 @@ fn cloneCharClass(
     };
 }
 
+/// Pattern behaviour modifiers
+pub const Flags = packed struct(u8) {
+    /// Case-insensitive matching
+    ignore_case: bool = false,
+    /// Interpret `^` and `$` as marking start and end
+    /// of a single line instead of the whole input
+    multiline: bool = false,
+    /// Wildcards match newline characters as well
+    dot_all: bool = false,
+    _padding: u5 = 0,
+};
+
 pub const Compiler = @This();
 
 instructions: *BytecodeBuffer,
-flags: RegrexFlags,
+flags: Flags,
 
 /// Initializes a compiler state and 
 /// allocates bytecode dynamic buffer
-pub fn init(inst_list: *BytecodeBuffer, flags: RegrexFlags) Compiler {
+pub fn init(inst_list: *BytecodeBuffer, flags: Flags) Compiler {
     return .{ .instructions = inst_list, .flags = flags };
 }
 

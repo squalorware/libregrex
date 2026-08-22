@@ -2,17 +2,6 @@
 //! of the regular expression pattern.
 const unicode = @import("unicode");
 
-/// Pattern behaviour modifiers
-pub const Flags = packed struct(u8) {
-    /// Case-insensitive matching
-    ignore_case: bool = false,
-    /// Interpret `^` and `$` as marking start and end
-    /// of a single line instead of the whole input
-    multiline: bool = false,
-    /// Wildcards match newline characters as well
-    dot_all: bool = false,
-    _padding: u5 = 0,
-};
 /// Regular Expression AST Node.
 ///
 /// Forms a recursive tree structure with pointers to another Nodes

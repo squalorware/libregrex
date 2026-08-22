@@ -71,7 +71,7 @@ fn matchCharClasses(rune: Rune, matcher: bytecode.ClassMatcher) bool {
 }
 
 /// Checks whether a Rune satisfies the provided matcher
-pub fn matchRune(rune: Rune, matcher: CurrentRuneMatcher) RegrexError!bool {
+fn matchRune(rune: Rune, matcher: CurrentRuneMatcher) RegrexError!bool {
     switch (matcher) {
         .any => |m| {
             return m.dot_all or !rune.isLineBreak();
@@ -91,7 +91,7 @@ pub fn runeMatched(input: []const u8, pos: *usize, matcher: CurrentRuneMatcher) 
     return true;
 }
 
-pub fn isLineStart(input: []const u8, pos: usize) RegrexError!bool {
+fn isLineStart(input: []const u8, pos: usize) RegrexError!bool {
     if (pos == 0) return true;
 
     const prev = try unicode.decodePrev(input, pos) orelse return false;
@@ -102,7 +102,7 @@ pub fn isLineStart(input: []const u8, pos: usize) RegrexError!bool {
     return prev.isLineBreak();
 }
 
-pub fn isLineEnd(input: []const u8, pos: usize) RegrexError!bool {
+fn isLineEnd(input: []const u8, pos: usize) RegrexError!bool {
     if (pos == input.len) return true;
 
     const current = try unicode.decodeAt(input, pos) orelse return true;
@@ -132,7 +132,7 @@ pub fn anchorMatched(
     }
 }
 
-pub fn isWordBoundary(input: []const u8, pos: usize) RegrexError!bool {
+fn isWordBoundary(input: []const u8, pos: usize) RegrexError!bool {
     const prev = try unicode.decodePrev(input, pos);
     const current = try unicode.decodeAt(input, pos);
 

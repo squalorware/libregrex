@@ -94,6 +94,7 @@ pub fn tokenize(self: *Lexer, tlist: *TokenListBuffer) RegrexError!void {
 
                     break :blk high * 16 + low;
                 },
+                // Process an octal digit
                 '0'...'7' => blk: {
                     const second_char = iter.nextCodepoint() orelse {
                         return RegrexError.InvalidEscape;
@@ -118,7 +119,7 @@ pub fn tokenize(self: *Lexer, tlist: *TokenListBuffer) RegrexError!void {
             };
 
             try tlist.append(.{ 
-                .typ = if (isSemanticEscape(literal)) .ESCAPED_CHAR else .CHAR, 
+                .typ = if (isSemanticEscape(escaped)) .ESCAPED_CHAR else .CHAR,
                 .val = try Rune.from(literal),
                 .pos = current_pos, 
             });
@@ -152,7 +153,7 @@ test "Should break up a pattern into a valid token stream" {
 
     const expected = [_]Token{
         .{ .typ = .CHAR, .val = try Rune.from('a'), .pos = 0 },
-        .{ .typ = .ESCAPED_CHAR, .val = try Rune.from('.'), .pos = 1 },
+        .{ .typ = .CHAR, .val = try Rune.from('.'), .pos = 1 },
         .{ .typ = .CHAR, .val = try Rune.from('b'), .pos = 3 },
         .{ .typ = .STAR, .val = try Rune.from('*'), .pos = 4 },
         .{ .typ = .CHAR, .val = try Rune.from('c'), .pos = 5 },

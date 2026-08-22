@@ -24,13 +24,6 @@ input: []const u8,
 pos: usize = 0,
 done: bool = false,
 
-// alloc: std.mem.Allocator,
-// input: []const u8,
-// ctx: *const anyopaque,
-// func: ExecContextFn,
-// pos: usize = 0,
-// done: bool = false,
-
 pub fn init(
     alloc: std.mem.Allocator,
     ctx: *const anyopaque,

@@ -1,21 +1,22 @@
 const std = @import("std");
-const engine = @import("engine");
 const types = @import("types");
 const unicode = @import("unicode");
-const FindIterator = engine.FindIterator;
-const bytecode = engine.bytecode;
-const vm = engine.VM;
+const bytecode = @import("./bytecode.zig");
+const tokens = @import("./tokens.zig");
+const Compiler = @import("./Compiler.zig");
+const FindIterator = @import("./FindIterator.zig");
+const Lexer = @import("./Lexer.zig");
+const Parser = @import("./Parser.zig");
+const vm = @import("./VM.zig");
 const RegrexError = types.Error;
 const DynamicStringBuffer = types.DynamicStringBuffer;
 const Match = types.Match;
 const MatchListBuffer = types.MatchListBuffer;
-const SubOptions = types.opt_args.SubOptions;
-const Rune = unicode.Rune;
 
 /// Internal representation of a compiled regular expression pattern.
-/// 
-/// It is deliberatly unavailable from outside to prevent any malicious access.
-/// Users can interact with it only through opaque top-level `Pattern` type. 
+///
+/// It is deliberately unavailable from outside to prevent any malicious access.
+/// Users can interact with it only through opaque top-level `Pattern` type.
 const CompiledPattern = struct {
     alloc: std.mem.Allocator,
     pattern: []const u8,
@@ -23,8 +24,16 @@ const CompiledPattern = struct {
     group_count: usize,
 };
 
+/// Optional set of arguments accepted by `regrex.Pattern.sub`, providing default values
+pub const PatternSubOptions = struct {
+    /// Maximum number of occurrences to replace
+    ///
+    /// `0` means replacing all occurrences (default)
+    count: usize = 0,
+};
+
 /// Opaque type to secure the internal CompiledPattern representation.
-/// 
+///
 /// Ensures full encapsulation and exposes outside only a specific set of operations
 /// without giving access to the compiled bytecode buffer itself
 pub const Pattern = opaque {
@@ -69,36 +78,36 @@ pub const Pattern = opaque {
         alloc.destroy(self);
     }
 
-    /// Executes the bytecode-compiled pattern to return the first match 
+    /// Executes the bytecode-compiled pattern to return the first match
     /// found starting from byte offset `0` (i.e. start of `input` string)
-    /// 
+    ///
     /// Returns `Match` if the compiled pattern succeeds at the start of `input`
-    /// 
+    ///
     /// Returns `null` if no `Match` can be produced from start of `input`
-    /// 
-    /// Returns 
+    ///
+    /// Returns
     /// - `RegrexError.MemoryError` if allocation failed
     /// - `RegrexError.InvalidUnicode` if a broken UTF-8 code point encountered
     pub fn match(ptr: *Pattern, input: []const u8) RegrexError!?Match {
         const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
 
         return try vm.execAt(
-            self.alloc, 
-            input, 
-            0, 
-            self.group_count, 
+            self.alloc,
+            input,
+            0,
+            self.group_count,
             self.instructions
         );
     }
 
-    /// Executes the bytecode-compiled pattern to search for the first position 
+    /// Executes the bytecode-compiled pattern to search for the first position
     /// in the `input` where a `Match` can be produced.
-    /// 
-    /// Returns the first `Match` produced at any position 
-    /// 
+    ///
+    /// Returns the first `Match` produced at any position
+    ///
     /// Returns `null` if no `Match` can be produced anywhere in `input`
-    /// 
-    /// Returns 
+    ///
+    /// Returns
     /// - `RegrexError.MemoryError` if allocation failed
     /// - `RegrexError.InvalidUnicode` if a broken UTF-8 code point encountered
     pub fn search(ptr: *Pattern, input: []const u8) RegrexError!?Match {
@@ -107,15 +116,14 @@ pub const Pattern = opaque {
 
         while (pos <= input.len) {
             if (try vm.execAt(
-                self.alloc, 
-                input, 
-                pos, 
-                self.group_count, 
+                self.alloc,
+                input,
+                pos,
+                self.group_count,
                 self.instructions
             )) |m| return m;
 
-            const rune = Rune.from(input[pos]) catch break;
-            pos += rune.len;
+            _ = unicode.advancePos(input, &pos) catch break;
         }
         return null;
     }
@@ -130,19 +138,19 @@ pub const Pattern = opaque {
         const self: *const CompiledPattern = @ptrCast(@alignCast(ctx));
 
         return try vm.execAt(
-            self.alloc, 
-            input, 
-            pos, 
-            self.group_count, 
+            self.alloc,
+            input,
+            pos,
+            self.group_count,
             self.instructions,
         );
     }
 
     /// Creates a lazy iterator over all non-overlapping matches in `input` string.
-    /// 
+    ///
     /// Does not scan the input immediately - initializes a `FindIterator` instead.
     /// Matching is performed one item at a time when `FindIterator.next` is called.
-    /// 
+    ///
     /// Returns `FindIterator`
     pub fn findIter(ptr: *Pattern, input: []const u8) RegrexError!FindIterator {
         const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
@@ -155,20 +163,20 @@ pub const Pattern = opaque {
         );
     }
 
-    /// Executes the bytecode-compiled pattern to search for 
+    /// Executes the bytecode-compiled pattern to search for
     /// all non-overlapping matches in `input` string.
-    /// 
+    ///
     /// An 'eager' counterpart to `findIter`. Consumes a `FindIterator`
     /// until it is exhausted and stores every returned match
-    /// 
+    ///
     /// Returns a managed wrapper over `ArrayList(Match)`. The caller must release it
-    /// 
-    /// Returns 
+    ///
+    /// Returns
     /// - `RegrexError.MemoryError` if failed allocating or manipulating the copy buffer
     /// - `RegrexError.InvalidUnicode` if a broken UTF-8 code point encountered
     pub fn findAll(ptr: *Pattern, input: []const u8) RegrexError!MatchListBuffer {
         const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
-    
+
         var iter = try findIter(ptr, input);
         defer iter.deinit();
 
@@ -180,23 +188,28 @@ pub const Pattern = opaque {
         return matches;
     }
 
-    /// Executes the bytecode-compiled pattern to retrieve all of the matches 
+    /// Executes the bytecode-compiled pattern to retrieve all of the matches
     /// in the `input` string and return its copy with matches  replaced by `repl`.
-    /// 
-    /// The replacement is literal. Current implementation does not support 
-    /// expanding capture group references like `\1` or `$1` and flags like 'ignore case'.
-    /// 
-    /// `count` argument controls the number of occurences to replace. 
+    ///
+    /// The replacement is literal. Current implementation does not support
+    /// expanding capture group references like `\1` or `$1`
+    ///
+    /// `count` argument controls the number of occurences to replace.
     /// - If `count = 0`, replaces all of the occurences;
     /// - If `count > 0` replaces number of the occurences specified
     /// - If `count` is bigger than the actual occurences count, replaces all and safely ignores rest
-    /// 
+    ///
     /// Returns an allocator-owned copy of the input string (must be freed manually with `alloc.free`).
-    /// 
-    /// Returns 
+    ///
+    /// Returns
     /// - `RegrexError.MemoryError` if failed allocating or manipulating the copy buffer
     /// - `RegrexError.InvalidUnicode` (propagated by `VM.execAt` or encountered during lookup)
-    pub fn sub(ptr: *Pattern, input: []const u8, repl: []const u8, opts: SubOptions) RegrexError![]u8 {
+    pub fn sub(
+        ptr: *Pattern,
+        input: []const u8,
+        repl: []const u8,
+        opts: PatternSubOptions,
+    ) RegrexError![]u8 {
         const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
 
         var out_buf = try DynamicStringBuffer.init(self.alloc, null);
@@ -216,7 +229,7 @@ pub const Pattern = opaque {
 
             const start = try matched.start(0);
             const end = try matched.end(0);
-            const next_pos = iter.nextPos();
+            const next_pos = iter.resumePos();
 
             try out_buf.appendSlice(input[copy_pos..start]);
             try out_buf.appendSlice(repl);
