@@ -30,19 +30,14 @@ pub const Span = struct {
         return self.start == Sentinel and self.end == Sentinel;
     }
 };
-    
-test "Span.none() should return an empty Span" {
-    const g = Span.none();
 
-    try testing.expect(g.isNone());
-}
-
-test "Span.isNone() should return false for non-empty Span" {
-    const g = Span{ .start = 1, .end = 3 };
-
-    try testing.expect(!g.isNone());
-}
-
+/// Match result representation for the regex engine.
+///
+/// Stores capture groups as substrings/byte spans of the input string.
+///
+/// Follows the conventional regex indexing model:
+/// group 0 represents the whole match;
+/// groups 1..n represent the captured subgroups.
 pub const Match = struct {
     /// Borrowed input buffer against which the regex was executed.
     ///
@@ -125,6 +120,21 @@ pub const Match = struct {
         return self.groups[1..];
     }
 };
+
+/// A resizable dynamic buffer to store Match entries
+pub const MatchListBuffer = ManagedDynamicBuffer(Match, null);
+
+test "Span.none() should return an empty Span" {
+    const g = Span.none();
+
+    try testing.expect(g.isNone());
+}
+
+test "Span.isNone() should return false for non-empty Span" {
+    const g = Span{ .start = 1, .end = 3 };
+
+    try testing.expect(!g.isNone());
+}
 
 const test_input = "lol 420 kek";
 
@@ -300,10 +310,7 @@ test "Match.subgroups() should return captures excluding full match" {
     try testing.expect(result[2].isNone());
 }
 
-/// A resizable dynamic buffer to store Match entries
-pub const MatchListBuffer = ManagedDynamicBuffer(Match, null);
-
-test "MatchArray.init() should create an empty array" {
+test "MatchListBuffer.init() should create an empty array" {
     const allocator = testing.allocator;
 
     var matches = try MatchListBuffer.init(allocator, null);
@@ -312,7 +319,7 @@ test "MatchArray.init() should create an empty array" {
     try testing.expectEqual(@as(usize, 0), matches.len());
 }
 
-test "MatchArray.append() should store owned matches" {
+test "MatchListBuffer.append() should store owned matches" {
     const allocator = testing.allocator;
 
     var matches = try MatchListBuffer.init(allocator, null);

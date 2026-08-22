@@ -12,20 +12,24 @@ pub const Split = struct {
     second: usize,
 };
 
+/// Matcher for an exact Unicode code point.
 pub const RuneMatcher = struct {
     value: u21,
     ignore_case: bool = false,
 };
 
+/// Matcher for the `.` wildcard.
 pub const AnyMatcher = struct {
     dot_all: bool = false,
 };
 
+/// Matcher for a character class.
 pub const ClassMatcher = struct {
     class: AST.CharClass,
     ignore_case: bool = false,
 };
 
+/// Matcher for `^` and `$` anchors.
 pub const AnchorMatcher = struct {
     multiline: bool = false,
 };
@@ -76,4 +80,5 @@ pub fn deinitInstruction(allocator: Allocator, item: *Instruction) void {
     }
 }
 
+/// Managed buffer containing compiled VM instructions.
 pub const BytecodeBuffer = ManagedDynamicBuffer(Instruction, deinitInstruction);

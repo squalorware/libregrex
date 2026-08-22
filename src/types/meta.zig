@@ -30,12 +30,18 @@ pub fn MergedInt(comptime First: type, comptime Second: type) type {
     const second = @typeInfo(Second).int;
 
     const bits: u16 = first.bits + second.bits;
+    // The sign is determined by whichever of the two has
+    // a wider bit range to hold positive values
+    // e.g. if First is u16, and Second is i8, the result will be u24
     const sign = if (first.bits > second.bits)
         first.signedness
+    // First: u8, Second: i16 - result i24
     else if (second.bits > first.bits)
             second.signedness
+    // If bits are equal but any of the pair is unsigned, then result is unsigned
         else if (first.signedness == .unsigned or second.signedness == .unsigned)
                 std.builtin.Signedness.unsigned
+    // Exhausted all options; both integers must be signed so result is signed
             else
                 std.builtin.Signedness.signed;
 
@@ -92,16 +98,20 @@ pub fn MergedStruct(comptime Foo: type, comptime Bar: type) type {
             const is_dup = !uniq(foo_struct.fields, field.name);
             const is_padding = std.mem.eql(u8, field.name, "_padding");
 
+            // Padding is present in both types; layout of both must be packed
+            // Merge Bar._padding with copied from Foo
             if (is_dup and is_padding) {
+                // Get index of ._padding in Foo
                 if (fieldIndex(foo_struct.fields, "_padding")) |foo_i| {
                     const foo_pad = foo_struct.fields[foo_i];
-                    const PaddingType = MergedInt(foo_pad.type, field.type);
-                    // Padding is present in both types; extend copied from base
-                    types[foo_i] = PaddingType;
+                    const PaddingInt = MergedInt(foo_pad.type, field.type);
+                    // Foo was base for the copy, so the index is the same
+                    // i.e. typeInfo(Foo).@"struct".fields[foo_i] == types[foo_i]
+                    types[foo_i] = PaddingInt;
                     attrs[foo_i] = .{
                         .@"comptime" = field.is_comptime,
                         .@"align" = null,
-                        .default_value_ptr = &@as(PaddingType, 0),
+                        .default_value_ptr = &@as(PaddingInt, 0),
                     };
                 }
                 continue;

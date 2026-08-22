@@ -38,23 +38,29 @@ pub const Literal = struct {
 /// `.` Wildcard
 pub const AnyChar = struct {};
 
+/// `^` Input start anchor.
+///
+/// If flag `multiline == true` then acts as the line start anchor
 pub const StartAnchor = struct {};
 
+/// `$` Input end anchor.
+///
+/// If flag `multiline == true` then acts as the line end anchor
 pub const EndAnchor = struct {};
 
+/// Zero-width assertion type.
 pub const AssertionType = enum {
     /// Absolute start of the input marked by `\A`.
-    ///
-    /// Ignored if `multiline = false`
     start_abs,
     /// Absolute end of the input marked by `\A`.
-    ///
-    /// Ignored if `multiline = false`
     end_abs,
+    /// Word boundary marked by `\b`.
     word_bounds,
+    /// Non-word boundary marked by `\B`.
     non_word_bounds,
 };
 
+/// Zero-width assertion expression.
 pub const Assertion = struct {
     typ: AssertionType,
 };
@@ -62,14 +68,17 @@ pub const Assertion = struct {
 /// Inclusive character range used inside a character class.
 pub const RuneRange = unicode.ranges.RuneRange;
 
+/// Predefined Unicode character class.
 pub const PresetClass = unicode.ranges.CharClassType;
 
+/// Set of predefined Unicode character classes.
 pub const PresetClassSet = packed struct (u8) {
     digit: bool = false,
     word: bool = false,
     whitespace: bool = false,
     _padding: u5 = 0,
 
+    /// Adds a preset character class to the set.
     pub fn insert(self: *PresetClassSet, cls: PresetClass) void {
         switch (cls) {
             .digit => self.digit = true,
@@ -78,6 +87,7 @@ pub const PresetClassSet = packed struct (u8) {
         }
     }
 
+    /// Checks whether a preset character class is enabled.
     pub fn contains(self: PresetClassSet, cls: PresetClass) bool {
         return switch (cls) {
             .digit => self.digit,
@@ -86,6 +96,7 @@ pub const PresetClassSet = packed struct (u8) {
         };
     }
 
+    /// Checks whether a scalar matches an enabled preset character class.
     pub fn match(self: PresetClassSet, literal: u21, cls: PresetClass) bool {
         if (self.contains(cls) and unicode.ranges.isInClass(cls, literal)) {
             return true;
@@ -93,6 +104,7 @@ pub const PresetClassSet = packed struct (u8) {
         return false;
     }
 
+    /// Checks whether a scalar matches an enabled negated preset character class.
     pub fn matchNegated(self: PresetClassSet, literal: u21, cls: PresetClass) bool {
         if (self.contains(cls) and !unicode.ranges.isInClass(cls, literal)) {
             return true;
@@ -121,6 +133,7 @@ pub const Sequence = struct {
     nodes: []const *Node,
 };
 
+/// Alternation between left and right child Nodes.
 pub const Branch = struct {
     left: *Node,
     right: *Node,
@@ -143,6 +156,7 @@ pub const CaptureGroup = struct {
     node: *Node,
 };
 
+/// Non-capturing group.
 pub const NonCaptureGroup = struct {
     node: *Node,
 };

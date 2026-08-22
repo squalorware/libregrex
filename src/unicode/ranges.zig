@@ -2,23 +2,27 @@ const testing = @import("std").testing;
 const Error = @import("types").Error;
 const Rune = @import("./Rune.zig");
 
+/// Position of a scalar relative to a lookup range.
 const LookupOrder = enum {
     before,
     match,
     after,
 };
 
+/// Predefined Unicode character class type.
 pub const CharClassType = enum {
     digit,
     word,
     whitespace,
 };
 
+/// Determines how a RuneRange is interpreted during lookup.
 pub const RuneRangeType = enum {
     char_class,
     case_fold,
 };
 
+/// Inclusive Unicode scalar range or case-fold mapping.
 pub const RuneRange = struct {
     start: u21,
     end: u21,
@@ -65,6 +69,7 @@ fn compareWithRange(rune: u21, range: RuneRange, as: RuneRangeType) LookupOrder 
     };
 }
 
+/// Finds the first lookup item that is not ordered before `key`.
 fn lowerBound(items: []const RuneRange, key: u21, mode: RuneRangeType) usize {
     var low: usize = 0;
     var high: usize = items.len;
@@ -114,6 +119,7 @@ pub fn isInClass(cls: CharClassType, literal: u21) bool {
     };
 }
 
+/// Checks whether a scalar belongs to the simple case-fold closure of a range.
 pub fn isCaseFold(range: RuneRange, literal: u21) bool {
     if (range.contains(literal)) {
         return true;
@@ -139,6 +145,7 @@ pub fn isCaseFold(range: RuneRange, literal: u21) bool {
     return false;
 }
 
+/// Checks whether an optional Rune belongs to the Unicode word class.
 pub fn isWord(rune: ?Rune) bool {
     if (rune) |r| {
         return isInClass(.word, r.raw());

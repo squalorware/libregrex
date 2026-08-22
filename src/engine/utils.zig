@@ -14,6 +14,7 @@ pub const CurrentRuneMatcher = union(enum) {
     char_class: bytecode.ClassMatcher,
 };
 
+/// Checks whether a scalar matches an explicit Rune range.
 fn rangeMatches(literal: u21, range: unicode.ranges.RuneRange, ignore_case: bool) bool {
     if (ignore_case) {
         return unicode.ranges.isCaseFold(range, literal);
@@ -22,6 +23,7 @@ fn rangeMatches(literal: u21, range: unicode.ranges.RuneRange, ignore_case: bool
     }
 }
 
+/// Checks whether a scalar matches any explicit Rune range.
 fn matchRanges(literal: u21, ranges: []const unicode.ranges.RuneRange, ignore_case: bool) bool {
     for (ranges) |range| {
         if (rangeMatches(literal, range, ignore_case)) return true;
@@ -29,6 +31,7 @@ fn matchRanges(literal: u21, ranges: []const unicode.ranges.RuneRange, ignore_ca
     return false;
 }
 
+/// Checks whether a Rune matches any explicit character.
 fn matchChars(rune: Rune, chars: []const u21, ignore_case: bool) bool {
     for (chars) |char| {
         if (rune.equals(char, ignore_case)) return true;
@@ -36,6 +39,7 @@ fn matchChars(rune: Rune, chars: []const u21, ignore_case: bool) bool {
     return false;
 }
 
+/// Checks whether a scalar matches any enabled preset character class.
 fn matchPreset(literal: u21, preset: AST.PresetClassSet) bool {
     return (
         preset.match(literal, .digit) or
@@ -44,6 +48,7 @@ fn matchPreset(literal: u21, preset: AST.PresetClassSet) bool {
     );
 }
 
+/// Checks whether a scalar matches any enabled negated preset character class.
 fn matchNegatedPreset(literal: u21, preset: AST.PresetClassSet) bool {
     return (
         preset.matchNegated(literal, .digit) or
@@ -83,6 +88,7 @@ fn matchRune(rune: Rune, matcher: CurrentRuneMatcher) RegrexError!bool {
     }
 }
 
+/// Checks the Rune at the current position in input and then advances it by Rune byte length
 pub fn runeMatched(input: []const u8, pos: *usize, matcher: CurrentRuneMatcher) RegrexError!bool {
     const rune = try unicode.decodeAt(input, pos.*) orelse return false;
     if (!try matchRune(rune, matcher)) return false;
@@ -91,6 +97,7 @@ pub fn runeMatched(input: []const u8, pos: *usize, matcher: CurrentRuneMatcher) 
     return true;
 }
 
+/// Checks whether current input position is a line start.
 fn isLineStart(input: []const u8, pos: usize) RegrexError!bool {
     if (pos == 0) return true;
 
@@ -102,6 +109,7 @@ fn isLineStart(input: []const u8, pos: usize) RegrexError!bool {
     return prev.isLineBreak();
 }
 
+/// Checks whether current input position is a line end.
 fn isLineEnd(input: []const u8, pos: usize) RegrexError!bool {
     if (pos == input.len) return true;
 
@@ -113,6 +121,7 @@ fn isLineEnd(input: []const u8, pos: usize) RegrexError!bool {
     return current.isLineBreak();
 }
 
+/// Checks whether a start or end anchor matches current input position.
 pub fn anchorMatched(
     inst: bytecode.Instruction,
     input: []const u8,
@@ -132,6 +141,7 @@ pub fn anchorMatched(
     }
 }
 
+/// Checks whether current input position is a Unicode word boundary.
 fn isWordBoundary(input: []const u8, pos: usize) RegrexError!bool {
     const prev = try unicode.decodePrev(input, pos);
     const current = try unicode.decodeAt(input, pos);
@@ -139,6 +149,7 @@ fn isWordBoundary(input: []const u8, pos: usize) RegrexError!bool {
     return unicode.ranges.isWord(prev) == unicode.ranges.isWord(current);
 }
 
+/// Checks whether a zero-width assertion matches current input position.
 pub fn assertMatched(input: []const u8, pos: usize, assert: AST.AssertionType) RegrexError!bool {
     return switch(assert) {
         .start_abs => pos == 0,
