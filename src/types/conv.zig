@@ -64,6 +64,7 @@ pub fn toMatch(
     };
 }
 
+/// Converts a Unicode codepoint into a hexadecimal digit
 pub fn toHexDigit(val: u21) ?u21 {
     return switch(val) {
         '0'...'9' => val - '0',
@@ -73,6 +74,7 @@ pub fn toHexDigit(val: u21) ?u21 {
     };
 }
 
+/// Converts a Unicode codepoint into an octal digit
 pub fn toOctDigit(val: u21) ?u21 {
     return switch(val) {
         '0'...'7' => val - '0',
