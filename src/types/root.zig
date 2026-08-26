@@ -3,8 +3,9 @@ const managed = @import("./managed.zig");
 const matching = @import("./matching.zig");
 
 pub const conv = @import("./conv.zig");
+pub const ext = @import("./ext.zig");
 pub const meta = @import("./meta.zig");
-pub const Error = @import("./error.zig").Error;
+pub const errors = @import("./error.zig");
 pub const ManagedDynamicBuffer = managed.ManagedDynamicBuffer;
 pub const ManagedOpaqueWrapper = managed.ManagedOpaqueWrapper;
 pub const Match = matching.Match;

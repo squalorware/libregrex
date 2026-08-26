@@ -2,7 +2,7 @@ const std = @import("std");
 const types = @import("types");
 const unicode = @import("unicode");
 const Match = types.Match;
-const RegrexError = types.Error;
+const RegrexError = types.errors.ErrorSet;
 
 pub const ExecContextFn = *const fn(
     ctx: *const anyopaque,

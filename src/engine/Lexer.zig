@@ -6,7 +6,7 @@
 //! as single `CHAR` tokens rather than raw UTF-8 bytes
 const std = @import("std");
 const types = @import("types");
-const RegrexError = types.Error;
+const RegrexError = types.errors.ErrorSet;
 const conv = types.conv;
 const Rune = @import("unicode").Rune;
 const tokens = @import("./tokens.zig");

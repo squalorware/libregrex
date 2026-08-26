@@ -1,6 +1,6 @@
-/* 
+/*
     regrex.h - Public C ABI declarations for the regrex library.
-    regrex is a simple PCRE/Python inspired regular expression engine 
+    regrex is a simple PCRE/Python inspired regular expression engine
     implemented in the Zig programming language.
     Copyright (C) 2026 oniko94
 
@@ -18,15 +18,13 @@
 */
 
 #ifndef REGREX_H
-#define REGREX_H
+#define REGREX_H 1
 
 #include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#define REGX_BUFFER(s) regx_buffer_from_cstr((s))
 
 #ifndef REGX_MAX_BUFFER_SIZE
 #define REGX_MAX_BUFFER_SIZE 1024
@@ -35,52 +33,59 @@ extern "C" {
 /*
     Stable return code type used by the C ABI.
 */
-typedef enum 
+typedef int regx_errcode_t;
+enum
 {
-    REGREX_OK = 0,           /* Success */
+    ENOSYS = -1,             /* Shouldn't ever return; invalid syscall or not implemented */
+    OK = 0,                  /* Success */
+    ERR = 1,                 /* Generic error (unknown) */
     REGREX_EARG,             /* Invalid argument */
     REGREX_ENOMATCH,         /* No matching group */
     REGREX_ENOSPACE,         /* Memory allocation error */
-    REGREX_EBADGRP,          /* Group index is out of range */
+    REGREX_ERANGE,           /* Index is out of range */
     REGREX_EMAXGRP,          /* Exceeded maximum group count limit */
     REGREX_EBADUTF8,         /* Invalid or malformed UTF-8  */
     REGREX_ETOKEN,           /* Unexpected Token */
     REGREX_EEND,             /* Unexpected end of pattern */
     REGREX_EEXPR,            /* Expected expression */
-    REGREX_EBADESC,          /* Trailing backslash */
+    REGREX_EBADESC,          /* Malformed or trailing backslash */
     REGREX_EBADREP,          /* Invalid repetition operator */
     REGREX_ERPAREN,          /* Closing parenthesis missing */
     REGREX_ERBRACK,          /* Closing bracket missing */
-    REGREX_EINTERNAL = 255   /* Generic error (unknown) */
-} regx_errcode_t;
-
+    REGREX_EINSTERR          /* Unexpected bytecode instruction */
+};
 /*
-    Byte span of a match inside the original input.
-
-    `start` is inclusive. `end` is exclusive. 
-    Both values are byte offsets, not UTF-8 scalar indices.
-*/
-typedef struct 
-{
-    size_t start;
-    size_t end;
-} regx_group_t;
-
-/*
-    A convenience type to wrap a string as a byte buffer with a known length.
-
-    Can be a borrowed read-only buffer which doesn't own the memory
-    or owned (i.e. allocated) in which case it must be released.
-
-    A buffer with `NULL` pointer `ptr` and zero length is an empty buffer.
-    A buffer with `NULL` `ptr` and non-zero length is invalid
+    Generic buffer type. Points to raw memory
 */
 typedef struct
 {
-    const unsigned char *ptr;
-    size_t len;
+    void *ptr;         /* Raw pointer to a block of memory */
+    size_t item_size;  /* Byte size of a single element */
+    size_t item_align; /* Byte alignment of a single element */
+    size_t capacity;   /* Maximum number of items the buffer can contain */
+    size_t head;       /* Index where next item is written at */
+    size_t tail;       /* Index where next item is read from */
+    size_t len;        /* Current item count */
 } regx_buffer_t;
 
+void regx_buffer_destroy(regx_buffer_t* buf);
+
+regx_errcode_t regx_buffer_init(regx_buffer_t* buf, size_t capacity, size_t item_size, size_t item_align);
+
+regx_errcode_t regx_buffer_push(regx_buffer_t* buf, const void* item);
+
+regx_errcode_t regx_buffer_pop(regx_buffer_t* buf, void* out_item);
+/*
+    Start and end indices of a capture group inside the input string
+
+    `start` is inclusive. `end` is exclusive.
+    Both values are byte offsets, not UTF-8 scalar indices.
+*/
+typedef struct
+{
+    size_t start;
+    size_t end;
+} regx_span_t;
 /*
     Opaque handler for result type produced by matching operations.
 
@@ -88,20 +93,15 @@ typedef struct
 */
 typedef struct regx_match_t regx_match_t;
 
-/*
-    Opaque handler for a list of matches.
+void regx_match_destroy(regx_match_t* match);
 
-    It is allocated on the heap and must be released.
-*/
-typedef struct regx_match_arr_t regx_match_arr_t;
+regx_errcode_t regx_match_span(regx_match_t* match, size_t i, regx_span_t* out_obj);
 
-/*
-    Opaque handler for compiled reusable regex pattern.
+regx_errcode_t regx_match_group(regx_match_t* match, size_t i, char* out);
 
-    It is allocated on the heap and must be released
-*/
-typedef struct regx_pattern_t regx_pattern_t;
+regx_errcode_t regx_match_full(regx_match_t* match, size_t i, char* out);
 
+regx_errcode_t regx_match_subgroups(regx_match_t* match, regx_buffer_t* out_buf);
 /*
     Opaque handler for a lazy iterator created by the compiled pattern.
 
@@ -111,320 +111,430 @@ typedef struct regx_pattern_t regx_pattern_t;
 */
 typedef struct regx_iter_t regx_iter_t;
 
+void regx_iter_destroy(regx_iter_t* iter);
+/* Get the next match and store it in `out_obj` or get .REGREX_ENOMATCH */
+regx_errcode_t regx_iter_next(regx_iter_t* iter, regx_match_t** out_obj);
 /*
-    `regx_match_t` destructor.
+    Opaque handler for compiled reusable regex pattern.
 
-    Passing `NULL` is valid and has no effect.
+    It is allocated on the heap and must be released
 */
-void regx_match_destroy(regx_match_t *match);
+typedef struct regx_pattern_t regx_pattern_t;
 
-/*
-    Writes the number of captured groups in match to `out_i`.
+void regx_pattern_destroy(regx_pattern_t* pattern);
 
-    Excludes group 0, which is the full match.
-*/
-regx_errcode_t regx_match_groups_len(
-    const regx_match_t *match,
-    size_t *out_i
-);
-
-/*
-    Write the byte span of group `i` to `out_obj`.
-
-    Group 0 is the full match. Capturing groups start at index 1.
-*/
-regx_errcode_t regx_match_span(
-    const regx_match_t *match,
-    size_t i,
-    regx_group_t *out_obj
-);
-
-/*
-    Copies substring of input at byte span `i` 
-    to a `out_obj` buffer wrapper.
-
-    The buffer should be released with `regx_buffer_destroy()`.
-*/
-regx_errcode_t regx_match_group(
-    const regx_match_t *match,
-    size_t i,
-    regx_buffer_t *out_obj
-);
-
-/* 
-    Copies the full matching string (group 0) 
-    to a `out_obj` buffer wrapper.
-
-    The buffer should be released with `regx_buffer_destroy()`.
-*/
-regx_errcode_t regx_match_full(
-    const regx_match_t *match,
-    regx_buffer_t *out_obj
-);
-
-/*
-    `regx_match_arr_t` destructor.
-
-    Passing `NULL` is valid and has no effect.
-*/
-void regx_match_arr_destroy(regx_match_arr_t *list);
-
-/* Writes the number of matches in list to `out_i`. */
-regx_errcode_t regx_match_arr_len(
-    const regx_match_arr_t *list,
-    size_t *out_i
-);
-
-/*
-    Retrieves a byte span of group `group_idx` 
-    found in match located at `match_idx` in `list`.
-
-    Group 0 is the full match.
-*/
-regx_errcode_t regx_match_arr_span(
-    const regx_match_arr_t *list,
-    size_t match_idx,
-    size_t group_idx,
-    regx_group_t *out_obj
-);
-
-/* 
-    Copies substring of input at byte span `group_idx`
-    found in match located at `match_idx` in `list`
-    to the `out_obj` buffer wrapper.
-
-    The buffer should be released with `regx_buffer_destroy()`.
-*/
-regx_errcode_t regx_match_arr_group(
-    const regx_match_arr_t *list,
-    size_t match_idx,
-    size_t group_idx,
-    regx_buffer_t *out_obj
-);
-
-/*
-    Copies the full matching string (group 0)
-    of a match located at `match_idx` in `list`
-    to the `out_obj` buffer wrapper.
-
-    The buffer should be released with `regx_buffer_destroy()`.
-*/
-regx_errcode_t regx_match_arr_full(
-    const regx_match_arr_t *list,
-    size_t match_idx,
-    regx_buffer_t *out_obj
-);
-
-/* 
-    `regx_pattern_t` compiled pattern handler's destructor.
-
-    Passing `NULL` is valid and has no effect.
-*/
-void regx_pattern_destroy(regx_pattern_t *pattern);
-
-/*
-    Searches input with the compiled pattern.
-
-    The returned match is stored to the `out_obj` 
-    and must be released with `regx_match_destroy()`.
-
-    Returns .REGX_ENOMATCH if no match found; 
-    `out_obj` is set to `NULL`
-*/
-regx_errcode_t regx_pattern_search(
-    const regx_pattern_t *pattern,
-    regx_buffer_t input_buf,
-    regx_match_t **out_obj
-);
-
-/*
-    Matches input against the compiled pattern 
-    starting from the beginning of the input.
-
-    The returned match is stored to the `out_obj` 
-    and must be released with `regx_match_destroy()`.
-
-    Returns .REGX_ENOMATCH if no match found; 
-    `out_obj` is set to `NULL`
-*/
 regx_errcode_t regx_pattern_match(
-    const regx_pattern_t *pattern,
-    regx_buffer_t input_buf,
-    regx_match_t **out_obj
+    const regx_pattern_t* pattern,
+    const char* input,
+    regx_match_t** out_obj
 );
 
-/*
-    Creates a lazy iterator over non-overlapping matches
-    from the compiled pattern.
-
-    Stores the iterator to `out_obj`. The iterator must be released
-    with `regx_iter_destroy()`. The pattern and the input must outlive it.
-*/
+regx_errcode_t regx_pattern_search(
+    const regx_pattern_t* pattern,
+    const char* input,
+    regx_match_t** out_obj
+);
+/* Initialize the lazy iterator */
 regx_errcode_t regx_pattern_find_iter(
-    const regx_pattern_t *pattern,
-    regx_buffer_t input_buf,
-    regx_iter_t **out_obj
+    const regx_pattern_t* pattern,
+    const char* input,
+    regx_iter_t** out_obj
 );
-
-/*
-    Finds all non-overlapping matches for a compiled pattern.
-
-    Stores resulting `regx_match_arr_t` to `out_obj`.
-    It must be released with `regx_match_arr_destroy()`.
-*/
+/* Stores all non-overlapping matches for a compiled pattern into a buffer object */
 regx_errcode_t regx_pattern_find_all(
-    const regx_pattern_t *pattern,
-    regx_buffer_t input_buf,
-    regx_match_arr_t **out_obj
+    const regx_pattern_t* pattern,
+    const char* input,
+    regx_buffer_t* out_buf
 );
-
-/*
-    Replaces all matches found by the compiled pattern.
-
-    Stores a new string buffer to `out_buf` where matches
-    are replaced with `repl_buf`. Does NOT modify the original input. 
-    Controls number of replacements with `count` 
-    (`count == 0` means replacing all matches).
-
-    Output buffer must be released with `regx_buffer_destroy()`.
-*/
-regx_errcode_t regx_pattern_sub(
-    const regx_pattern_t *pattern,
-    regx_buffer_t repl_buf,
-    regx_buffer_t input_buf,
-    size_t count,
-    regx_buffer_t *out_buf
-);
-
-/*
-    Calls the lazy iterator to produce the next match.
-
-    Stores produced match to `out_obj`. It must be released
-    with `regx_match_destroy()`. Returns .REGX_ENOMATCH and sets
-    `out_obj` to `NULL` when the iterator is exhausted.
-*/
-regx_errcode_t regx_iter_next(
-    regx_iter_t *iter,
-    regx_match_t **out_obj
-);
-
-/*
-    `regx_iter_t` destructor.
-
-    Passing `NULL` is valid and has no effect.
-
-    Matches already produced by the iterator are not destroyed
-    and must be released separately.
-*/
-void regx_iter_destroy(regx_iter_t *iter);
-
-/*
-    Creates a borrowed buffer of the `str`
-
-    Points directly to `str` without allocating, copying or taking ownership.
-    Returned length excludes the trailing `\0` byte.
-
-    If `str` is `NULL`, returns an empty buffer.
-*/
-regx_buffer_t regx_buffer_from_cstr(const unsigned char *str);
-
-/*
-    Releases memory held by an owned buffer.
-
-    Should only be used for `buffer` which was allocated,
-    e.g. by `regrex_sub()` or `regx_pattern_sub()`.
-
-    Passing an empty buffer or a buffer with a `NULL` pointer is allowed
-    and has no effect.
-*/
-void regx_buffer_destroy(regx_buffer_t buffer);
-
-/* 
-    Maps return code to a static string message.
-
-    The returned pointer has static storage duration and must not be freed.
-*/
-const char *regrex_error(regx_errcode_t code);
-
-/*
-    Compiles a regex pattern.
-
-    Stores the result to `out_obj` as a reusable pattern type
-    which does not require to be recompiled for each operation.
-    Must be released with `regx_pattern_destroy()`
-*/
-regx_errcode_t regrex_compile(
-    regx_buffer_t pattern_buf,
-    regx_pattern_t **out_obj
-);
-
-/*
-    Compiles the string pattern and searches for the first match.
-    Compiled pattern is automatically destroyed at the end of the execution.
-
-    The returned match is stored to the `out_obj` 
-    and must be released with `regx_match_destroy()`.
-
-    Returns .REGX_ENOMATCH if no match found; 
-    `out_obj` is set to `NULL`
-*/
-regx_errcode_t regrex_search(
-    regx_buffer_t pattern_buf,
-    regx_buffer_t input_buf,
-    regx_match_t **out_obj
-);
-
-/*
-    Compiles the string pattern and looks for matches
-    at the beginning of the input.
-    Compiled pattern is automatically destroyed at the end of the execution.
-
-    The returned match is stored to the `out_obj` 
-    and must be released with `regx_match_destroy()`.
-
-    Returns .REGX_ENOMATCH if no match found; 
-    `out_obj` is set to `NULL`
-*/
-regx_errcode_t regrex_match(
-    regx_buffer_t pattern_buf,
-    regx_buffer_t input_buf,
-    regx_match_t **out_obj
-);
-
-/*
-    Compiles the string pattern and collects all non-overlapping matches.
-    Compiled pattern is automatically destroyed at the end of the execution.
-
-    The returned match list is stored to the `out_obj` 
-    and must be released with `regx_match_arr_destroy()`.
-
-    Returns .REGX_ENOMATCH if no match found; 
-    `out_obj` is set to `NULL`
-*/
-regx_errcode_t regrex_find_all(
-    regx_buffer_t pattern_buf,
-    regx_buffer_t input_buf,
-    regx_match_arr_t **out_obj
-);
-
-/*
-    Compiles the string pattern and replaces all matches.
-    Compiled pattern is automatically destroyed at the end of the execution.
-
-    Stores a new string buffer to `out_buf` where matches
-    are replaced with `repl_buf`. Does NOT modify the original input. 
-    Controls number of replacements with `count` 
-    (`count == 0` means replacing all matches).
-
-    Output buffer must be released with `regx_buffer_destroy()`.
-*/
-regx_errcode_t regrex_sub(
-    regx_buffer_t pattern_buf,
-    regx_buffer_t repl_buf,
-    regx_buffer_t input_buf,
-    size_t count,
-    regx_buffer_t *out_buf
-);
+// /*
+//     Replaces all matches found by the compiled pattern.
+//
+//     Stores a new string buffer to `out_buf` where matches
+//     are replaced with `repl_buf`. Does NOT modify the original input.
+//     Controls number of replacements with `count`
+//     (`count == 0` means replacing all matches).
+//
+//     Output buffer must be released with `regx_buffer_destroy()`.
+// */
+// regx_errcode_t regx_pattern_sub(
+//     const regx_pattern_t *pattern,
+//     regx_buffer_t repl_buf,
+//     regx_buffer_t input_buf,
+//     size_t count,
+//     regx_buffer_t *out_buf
+// );
+// =================================================================================================
+// /*
+//     Byte span of a match inside the original input.
+//
+//     `start` is inclusive. `end` is exclusive.
+//     Both values are byte offsets, not UTF-8 scalar indices.
+// */
+// typedef struct
+// {
+//     size_t start;
+//     size_t end;
+// } regx_span_t;
+//
+// /*
+//     A convenience type to wrap a string as a byte buffer with a known length.
+//
+//     Can be a borrowed read-only buffer which doesn't own the memory
+//     or owned (i.e. allocated) in which case it must be released.
+//
+//     A buffer with `NULL` pointer `ptr` and zero length is an empty buffer.
+//     A buffer with `NULL` `ptr` and non-zero length is invalid
+// */
+// typedef struct
+// {
+//     const unsigned char *ptr;
+//     size_t len;
+// } regx_buffer_t;
+//
+// /*
+//     Opaque handler for result type produced by matching operations.
+//
+//     It is allocated on the heap and must be released.
+// */
+// typedef struct regx_match_t regx_match_t;
+//
+// /*
+//     Opaque handler for a list of matches.
+//
+//     It is allocated on the heap and must be released.
+// */
+// typedef struct regx_match_arr_t regx_match_arr_t;
+//
+// /*
+//     Opaque handler for compiled reusable regex pattern.
+//
+//     It is allocated on the heap and must be released
+// */
+// typedef struct regx_pattern_t regx_pattern_t;
+//
+// /*
+//     Opaque handler for a lazy iterator created by the compiled pattern.
+//
+//     The parent pattern and input buffer must outlive the iterator.
+//
+//     It is allocated on the heap and must be released
+// */
+// typedef struct regx_iter_t regx_iter_t;
+//
+// /*
+//     `regx_match_t` destructor.
+//
+//     Passing `NULL` is valid and has no effect.
+// */
+// void regx_match_destroy(regx_match_t *match);
+//
+// /*
+//     Writes the number of captured groups in match to `out_i`.
+//
+//     Excludes group 0, which is the full match.
+// */
+// regx_errcode_t regx_match_groups_len(
+//     const regx_match_t *match,
+//     size_t *out_i
+// );
+//
+// /*
+//     Write the byte span of group `i` to `out_obj`.
+//
+//     Group 0 is the full match. Capturing groups start at index 1.
+// */
+// regx_errcode_t regx_match_span(
+//     const regx_match_t *match,
+//     size_t i,
+//     regx_group_t *out_obj
+// );
+//
+// /*
+//     Copies substring of input at byte span `i`
+//     to a `out_obj` buffer wrapper.
+//
+//     The buffer should be released with `regx_buffer_destroy()`.
+// */
+// regx_errcode_t regx_match_group(
+//     const regx_match_t *match,
+//     size_t i,
+//     regx_buffer_t *out_obj
+// );
+//
+// /*
+//     Copies the full matching string (group 0)
+//     to a `out_obj` buffer wrapper.
+//
+//     The buffer should be released with `regx_buffer_destroy()`.
+// */
+// regx_errcode_t regx_match_full(
+//     const regx_match_t *match,
+//     regx_buffer_t *out_obj
+// );
+//
+// /*
+//     `regx_match_arr_t` destructor.
+//
+//     Passing `NULL` is valid and has no effect.
+// */
+// void regx_match_arr_destroy(regx_match_arr_t *list);
+//
+// /* Writes the number of matches in list to `out_i`. */
+// regx_errcode_t regx_match_arr_len(
+//     const regx_match_arr_t *list,
+//     size_t *out_i
+// );
+//
+// /*
+//     Retrieves a byte span of group `group_idx`
+//     found in match located at `match_idx` in `list`.
+//
+//     Group 0 is the full match.
+// */
+// regx_errcode_t regx_match_arr_span(
+//     const regx_match_arr_t *list,
+//     size_t match_idx,
+//     size_t group_idx,
+//     regx_group_t *out_obj
+// );
+//
+// /*
+//     Copies substring of input at byte span `group_idx`
+//     found in match located at `match_idx` in `list`
+//     to the `out_obj` buffer wrapper.
+//
+//     The buffer should be released with `regx_buffer_destroy()`.
+// */
+// regx_errcode_t regx_match_arr_group(
+//     const regx_match_arr_t *list,
+//     size_t match_idx,
+//     size_t group_idx,
+//     regx_buffer_t *out_obj
+// );
+//
+// /*
+//     Copies the full matching string (group 0)
+//     of a match located at `match_idx` in `list`
+//     to the `out_obj` buffer wrapper.
+//
+//     The buffer should be released with `regx_buffer_destroy()`.
+// */
+// regx_errcode_t regx_match_arr_full(
+//     const regx_match_arr_t *list,
+//     size_t match_idx,
+//     regx_buffer_t *out_obj
+// );
+//
+// /*
+//     `regx_pattern_t` compiled pattern handler's destructor.
+//
+//     Passing `NULL` is valid and has no effect.
+// */
+// void regx_pattern_destroy(regx_pattern_t *pattern);
+//
+// /*
+//     Searches input with the compiled pattern.
+//
+//     The returned match is stored to the `out_obj`
+//     and must be released with `regx_match_destroy()`.
+//
+//     Returns .REGX_ENOMATCH if no match found;
+//     `out_obj` is set to `NULL`
+// */
+// regx_errcode_t regx_pattern_search(
+//     const regx_pattern_t *pattern,
+//     regx_buffer_t input_buf,
+//     regx_match_t **out_obj
+// );
+//
+// /*
+//     Matches input against the compiled pattern
+//     starting from the beginning of the input.
+//
+//     The returned match is stored to the `out_obj`
+//     and must be released with `regx_match_destroy()`.
+//
+//     Returns .REGX_ENOMATCH if no match found;
+//     `out_obj` is set to `NULL`
+// */можно
+// regx_errcode_t regx_pattern_match(
+//     const regx_pattern_t *pattern,
+//     regx_buffer_t input_buf,
+//     regx_match_t **out_obj
+// );
+//
+// /*
+//     Creates a lazy iterator over non-overlapping matches
+//     from the compiled pattern.
+//
+//     Stores the iterator to `out_obj`. The iterator must be released
+//     with `regx_iter_destroy()`. The pattern and the input must outlive it.
+// */
+// regx_errcode_t regx_pattern_find_iter(
+//     const regx_pattern_t *pattern,
+//     regx_buffer_t input_buf,
+//     regx_iter_t **out_obj
+// );
+//
+// /*
+//     Finds all non-overlapping matches for a compiled pattern.
+//
+//     Stores resulting `regx_match_arr_t` to `out_obj`.
+//     It must be released with `regx_match_arr_destroy()`.
+// */
+// regx_errcode_t regx_pattern_find_all(
+//     const regx_pattern_t *pattern,
+//     regx_buffer_t input_buf,
+//     regx_match_arr_t **out_obj
+// );
+//
+// /*
+//     Replaces all matches found by the compiled pattern.
+//
+//     Stores a new string buffer to `out_buf` where matches
+//     are replaced with `repl_buf`. Does NOT modify the original input.
+//     Controls number of replacements with `count`
+//     (`count == 0` means replacing all matches).
+//
+//     Output buffer must be released with `regx_buffer_destroy()`.
+// */
+// regx_errcode_t regx_pattern_sub(
+//     const regx_pattern_t *pattern,
+//     regx_buffer_t repl_buf,
+//     regx_buffer_t input_buf,
+//     size_t count,
+//     regx_buffer_t *out_buf
+// );
+//
+// /*
+//     Calls the lazy iterator to produce the next match.
+//
+//     Stores produced match to `out_obj`. It must be released
+//     with `regx_match_destroy()`. Returns .REGX_ENOMATCH and sets
+//     `out_obj` to `NULL` when the iterator is exhausted.
+// */
+// regx_errcode_t regx_iter_next(
+//     regx_iter_t *iter,
+//     regx_match_t **out_obj
+// );
+//
+// /*
+//     `regx_iter_t` destructor.
+//
+//     Passing `NULL` is valid and has no effect.
+//
+//     Matches already produced by the iterator are not destroyed
+//     and must be released separately.
+// */
+// void regx_iter_destroy(regx_iter_t *iter);
+//
+// /*
+//     Creates a borrowed buffer of the `str`
+//
+//     Points directly to `str` without allocating, copying or taking ownership.
+//     Returned length excludes the trailing `\0` byte.
+//
+//     If `str` is `NULL`, returns an empty buffer.
+// */
+// regx_buffer_t regx_buffer_from_cstr(const unsigned char *str);
+//
+// /*
+//     Releases memory held by an owned buffer.
+//
+//     Should only be used for `buffer` which was allocated,
+//     e.g. by `regrex_sub()` or `regx_pattern_sub()`.
+//
+//     Passing an empty buffer or a buffer with a `NULL` pointer is allowed
+//     and has no effect.
+// */
+// void regx_buffer_destroy(regx_buffer_t buffer);
+//
+// /*
+//     Maps return code to a static string message.
+//
+//     The returned pointer has static storage duration and must not be freed.
+// */
+// const char *regrex_error(regx_errcode_t code);
+//
+// /*
+//     Compiles a regex pattern.
+//
+//     Stores the result to `out_obj` as a reusable pattern type
+//     which does not require to be recompiled for each operation.
+//     Must be released with `regx_pattern_destroy()`
+// */
+// regx_errcode_t regrex_compile(
+//     regx_buffer_t pattern_buf,
+//     regx_pattern_t **out_obj
+// );
+//
+// /*
+//     Compiles the string pattern and searches for the first match.
+//     Compiled pattern is automatically destroyed at the end of the execution.
+//
+//     The returned match is stored to the `out_obj`
+//     and must be released with `regx_match_destroy()`.
+//
+//     Returns .REGX_ENOMATCH if no match found;
+//     `out_obj` is set to `NULL`
+// */
+// regx_errcode_t regrex_search(
+//     regx_buffer_t pattern_buf,
+//     regx_buffer_t input_buf,
+//     regx_match_t **out_obj
+// );
+//
+// /*
+//     Compiles the string pattern and looks for matches
+//     at the beginning of the input.
+//     Compiled pattern is automatically destroyed at the end of the execution.
+//
+//     The returned match is stored to the `out_obj`
+//     and must be released with `regx_match_destroy()`.
+//
+//     Returns .REGX_ENOMATCH if no match found;
+//     `out_obj` is set to `NULL`
+// */
+// regx_errcode_t regrex_match(
+//     regx_buffer_t pattern_buf,
+//     regx_buffer_t input_buf,
+//     regx_match_t **out_obj
+// );
+//
+// /*
+//     Compiles the string pattern and collects all non-overlapping matches.
+//     Compiled pattern is automatically destroyed at the end of the execution.
+//
+//     The returned match list is stored to the `out_obj`
+//     and must be released with `regx_match_arr_destroy()`.
+//
+//     Returns .REGX_ENOMATCH if no match found;
+//     `out_obj` is set to `NULL`
+// */
+// regx_errcode_t regrex_find_all(
+//     regx_buffer_t pattern_buf,
+//     regx_buffer_t input_buf,
+//     regx_match_arr_t **out_obj
+// );
+//
+// /*
+//     Compiles the string pattern and replaces all matches.
+//     Compiled pattern is automatically destroyed at the end of the execution.
+//
+//     Stores a new string buffer to `out_buf` where matches
+//     are replaced with `repl_buf`. Does NOT modify the original input.
+//     Controls number of replacements with `count`
+//     (`count == 0` means replacing all matches).
+//
+//     Output buffer must be released with `regx_buffer_destroy()`.
+// */
+// regx_errcode_t regrex_sub(
+//     regx_buffer_t pattern_buf,
+//     regx_buffer_t repl_buf,
+//     regx_buffer_t input_buf,
+//     size_t count,
+//     regx_buffer_t *out_buf
+// );
 
 #ifdef __cplusplus
 }

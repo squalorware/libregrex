@@ -1,7 +1,7 @@
 //! Convenience generic types that wrap over given complex types to simplify managing memory
 
 const std = @import("std");
-const Error = @import("./error.zig").Error;
+const ErrorSet = @import("./error.zig").ErrorSet;
 const testing = std.testing;
 
 fn hasDeinit(comptime T: type) bool {
@@ -48,12 +48,12 @@ pub fn ManagedDynamicBuffer(
         /// The caller retains ownership of the `buffer` storage itself, but
         /// must not separately deinitialize its `T` values after successful
         /// initialization.
-        pub fn init(alloc: std.mem.Allocator, buffer: ?[]const T) Error!Self {
+        pub fn init(alloc: std.mem.Allocator, buffer: ?[]const T) ErrorSet!Self {
             var inner: std.ArrayList(T) = .empty;
 
             if (buffer) |buf| {
                 inner.appendSlice(alloc, buf) catch {
-                    return Error.MemoryError;
+                    return ErrorSet.MemoryError;
                 };
             }
 
@@ -88,12 +88,12 @@ pub fn ManagedDynamicBuffer(
         ///
         /// If allocation fails, `item` is deinitialized before
         /// `Error.MemoryError` is returned.
-        pub fn append(self: *Self, item: T) Error!void {
+        pub fn append(self: *Self, item: T) ErrorSet!void {
             var owned = item;
 
             self.inner.append(self.allocator, owned) catch {
                 self.deinitItem(&owned);
-                return Error.MemoryError;
+                return ErrorSet.MemoryError;
             };
         }
 
@@ -105,9 +105,9 @@ pub fn ManagedDynamicBuffer(
         /// the caller must not separately deinitialize the original values.
         ///
         /// On failure, ownership remains entirely with the caller.
-        pub fn appendSlice(self: *Self, slice: []const T) Error!void {
+        pub fn appendSlice(self: *Self, slice: []const T) ErrorSet!void {
             self.inner.appendSlice(self.allocator, slice) catch {
-                return Error.MemoryError;
+                return ErrorSet.MemoryError;
             };
         }
 
@@ -122,9 +122,9 @@ pub fn ManagedDynamicBuffer(
         /// Returns a borrowed pointer to the value at `i`.
         ///
         /// Returns `Error.InvalidArgument` if `i` is outside the list.
-        pub fn get(self: *const Self, i: usize) Error!*const T {
+        pub fn get(self: *const Self, i: usize) ErrorSet!*const T {
             if (i >= self.inner.items.len) {
-                return Error.OutOfRange;
+                return ErrorSet.OutOfRange;
             }
 
             return &self.inner.items[i];
@@ -136,9 +136,9 @@ pub fn ManagedDynamicBuffer(
         /// to the list on success.
         ///
         /// If `i` is invalid, ownership of `val` remains with the caller.
-        pub fn set(self: *Self, i: usize, val: T) Error!void {
+        pub fn set(self: *Self, i: usize, val: T) ErrorSet!void {
             if (i >= self.inner.items.len) {
-                return Error.OutOfRange;
+                return ErrorSet.OutOfRange;
             }
 
             self.deinitItem(&self.inner.items[i]);
@@ -157,9 +157,9 @@ pub fn ManagedDynamicBuffer(
         /// The caller is responsible for deinitializing every returned `T`
         /// according to the same destruction policy and freeing the slice with
         /// this list's allocator.
-        pub fn toOwnedSlice(self: *Self) Error![]T {
+        pub fn toOwnedSlice(self: *Self) ErrorSet![]T {
             return self.inner.toOwnedSlice(self.allocator) catch {
-                return Error.MemoryError;
+                return ErrorSet.MemoryError;
             };
         }
     };
@@ -341,7 +341,7 @@ test "ManagedDynamicBuffer set error" {
 
         try testing.expectEqual(@as(usize, 0), list.len());
 
-        try testing.expectError(Error.OutOfRange, list.set(1, item));
+        try testing.expectError(ErrorSet.OutOfRange, list.set(1, item));
         item.deinit(allocator);
     }
     try testing.expectEqual(@as(usize, 1), deinit_count);    
@@ -438,9 +438,6 @@ pub fn ManagedOpaqueWrapper(
     comptime free_cb: fn(std.mem.Allocator, *Payload) void,
 ) type {
     return struct {
-        const Self = @This();
-        value: Payload,
-
         /// Allocates memory for the new opaque wrapper handler and moves `val` into it.
         ///
         /// Returns newly created handler on success.
@@ -451,12 +448,12 @@ pub fn ManagedOpaqueWrapper(
         pub fn init(
             alloc: std.mem.Allocator,
             val: Payload
-        ) Error!*Opaque {
-            const wrapped = alloc.create(Self) catch {
-                return Error.MemoryError;
+        ) ErrorSet!*Opaque {
+            const ptr = alloc.create(Payload) catch {
+                return ErrorSet.MemoryError;
             };
-            wrapped.* = .{ .value = val };
-            return @ptrCast(wrapped);
+            ptr.* = val;
+            return @ptrCast(ptr);
         }
 
         /// Releases the memory used by the handler.
@@ -468,19 +465,17 @@ pub fn ManagedOpaqueWrapper(
             wrapped: ?*Opaque,
         ) void {
             const ptr = wrapped orelse return;
-            const owned = unwrap(ptr);
+            const payload = unwrap(ptr);
 
-            free_cb(alloc, &owned.value);
-
-            owned.* = undefined;
-            alloc.destroy(owned);
+            free_cb(alloc, payload);
+            alloc.destroy(payload);
         }
 
         /// Converts opaque handler into internal mutable wrapper type.
         ///
         /// The pointer must be created with `create()` for this exact wrapper type.
         /// Passing wrong pointer results in undefined behaviour.
-        pub fn unwrap(ptr: *Opaque) *Self {
+        pub fn unwrap(ptr: *Opaque) *Payload {
             return @ptrCast(@alignCast(ptr));
         }
 
@@ -488,7 +483,7 @@ pub fn ManagedOpaqueWrapper(
         ///
         /// The pointer must be created with `create()` for this exact wrapper type.
         /// Passing wrong pointer results in undefined behaviour.
-        pub fn unwrapConst(ptr: *const Opaque) *const Self {
+        pub fn unwrapConst(ptr: *const Opaque) *const Payload {
             return @ptrCast(@alignCast(ptr));
         }
     };
@@ -500,36 +495,35 @@ const TestPayload = struct {
     freed: *bool,
 };
 
-fn freeTestPayloadCb(alloc: std.mem.Allocator,payload: *TestPayload) void {
+fn freeTestPayloadCb(alloc: std.mem.Allocator, payload: *TestPayload) void {
     _ = alloc;
     payload.freed.* = true;
 }
 
 test "ManagedOpaqueWrapper should create, unwrap and destroy an opaque handler" {
     const allocator = testing.allocator;
-    const WrappedTest = ManagedOpaqueWrapper(TestOpaque, TestPayload, freeTestPayloadCb);
+    const ManagedTest = ManagedOpaqueWrapper(TestOpaque, TestPayload, freeTestPayloadCb);
 
     var freed = false;
 
-    const wrapped = try WrappedTest.init(allocator, .{
+    const wrapped = try ManagedTest.init(allocator, .{
         .value = 42,
         .freed = &freed,
     });
 
-    const owned_mut = WrappedTest.unwrap(wrapped);
-    try testing.expectEqual(@as(usize, 42), owned_mut.value.value);
+    const payload_mut = ManagedTest.unwrap(wrapped);
+    try testing.expectEqual(@as(usize, 42), payload_mut.value);
 
-    const owned_const = WrappedTest.unwrapConst(wrapped);
-    try testing.expectEqual(@as(usize, 42), owned_const.value.value);
+    const payload_const = ManagedTest.unwrapConst(wrapped);
+    try testing.expectEqual(@as(usize, 42), payload_const.value);
 
-    WrappedTest.deinit(allocator, wrapped);
-
+    ManagedTest.deinit(allocator, wrapped);
     try testing.expect(freed);
 }
 
-test "ManagedOpaqueWrapepr.destroy should not fail when passed null value" {
+test "ManagedOpaque.deinit should not fail when passed null value" {
     const allocator = testing.allocator;
-    const WrappedTest = ManagedOpaqueWrapper(TestOpaque, TestPayload, freeTestPayloadCb);
+    const ManagedTest = ManagedOpaqueWrapper(TestOpaque, TestPayload, freeTestPayloadCb);
 
-    WrappedTest.deinit(allocator, @as(?*TestOpaque, null));
+    ManagedTest.deinit(allocator, @as(?*TestOpaque, null));
 }

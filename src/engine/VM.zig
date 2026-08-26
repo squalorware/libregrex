@@ -9,7 +9,7 @@ const utils = @import("./utils.zig");
 const testing = std.testing;
 
 const Instruction = bytecode.Instruction;
-const RegrexError = types.Error;
+const RegrexError = types.errors.ErrorSet;
 const Match = types.Match;
 const toMatch = types.conv.toMatch;
 const CurrentRuneMatcher = utils.CurrentRuneMatcher;

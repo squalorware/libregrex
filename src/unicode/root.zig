@@ -1,5 +1,5 @@
 const std = @import("std");
-const Error = @import("types").Error;
+const Error = @import("types").errors.ErrorSet;
 pub const ranges = @import("./ranges.zig");
 pub const Rune = @import("./Rune.zig");
 

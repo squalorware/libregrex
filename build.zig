@@ -113,6 +113,7 @@ pub fn build(b: *std.Build) void {
             optimize,
             .static,
             root_mod,
+            types_mod,
         );
         b.installArtifact(static_lib);
     }
@@ -124,6 +125,7 @@ pub fn build(b: *std.Build) void {
             optimize,
             .dynamic,
             root_mod,
+            types_mod,
         );
         b.installArtifact(dynamic_lib);
     }
@@ -138,6 +140,7 @@ fn buildLibrary(
     optimize: std.builtin.OptimizeMode,
     linkage: std.builtin.LinkMode,
     root_mod: *std.Build.Module,
+    types_mod: *std.Build.Module,
 ) *Step.Compile {
     const zon = @import("./build.zig.zon");
     const version = std.SemanticVersion.parse(zon.version) catch {
@@ -145,12 +148,13 @@ fn buildLibrary(
     };
 
     const mod = b.createModule(.{
-        .root_source_file = b.path("src/clib.zig"),
+        .root_source_file = b.path("src/regrex.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
     mod.addImport("regrex", root_mod);
+    mod.addImport("types", types_mod);
 
     const lib = b.addLibrary(.{
         .name = "regrex",

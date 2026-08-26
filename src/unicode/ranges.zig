@@ -1,13 +1,8 @@
 const testing = @import("std").testing;
-const Error = @import("types").Error;
+const types = @import("types");
 const Rune = @import("./Rune.zig");
-
-/// Position of a scalar relative to a lookup range.
-const LookupOrder = enum {
-    before,
-    match,
-    after,
-};
+const Error = types.errors.ErrorSet;
+const meta = types.meta;
 
 /// Predefined Unicode character class type.
 pub const CharClassType = enum {
@@ -23,23 +18,7 @@ pub const RuneRangeType = enum {
 };
 
 /// Inclusive Unicode scalar range or case-fold mapping.
-pub const RuneRange = struct {
-    start: u21,
-    end: u21,
-
-    /// Compares given scalar against an inclusive range `[low..high]`
-    pub fn compare(low: u21, high: u21, literal: u21) LookupOrder {
-        if (literal < low) return .before;
-        if (literal > high) return .after;
-
-        return .match;
-    }
-
-    /// Checks whether `literal` occurs within this inclusive range.
-    pub fn contains(self: RuneRange, literal: u21) bool {
-        return compare(self.start, self.end, literal) == .match;
-    }
-};
+pub const RuneRange = meta.Range(u21);
 
 /// The lookup table representation
 ///
@@ -62,7 +41,7 @@ pub const RuneTable: struct {
 ///  or as a case-fold mapping
 ///
 /// Returns the position of the scalar relative to the specified range
-fn compareWithRange(rune: u21, range: RuneRange, as: RuneRangeType) LookupOrder {
+fn compareWithRange(rune: u21, range: RuneRange, as: RuneRangeType) meta.LookupOrder {
     return switch(as) {
         .char_class => RuneRange.compare(range.start, range.end, rune),
         .case_fold => RuneRange.compare(range.start, range.start, rune),
@@ -175,27 +154,27 @@ pub fn foldEqual(left: u21, right: u21) bool {
 
 test "RuneRange.compare should compare Rune against an inclusive range" {
     try testing.expectEqual(
-        LookupOrder.before,
+        meta.LookupOrder.before,
         RuneRange.compare(10, 20, 9),
     );
 
     try testing.expectEqual(
-        LookupOrder.match,
+        meta.LookupOrder.match,
         RuneRange.compare(10, 20, 10),
     );
 
     try testing.expectEqual(
-        LookupOrder.match,
+        meta.LookupOrder.match,
         RuneRange.compare(10, 20, 15),
     );
 
     try testing.expectEqual(
-        LookupOrder.match,
+        meta.LookupOrder.match,
         RuneRange.compare(10, 20, 20),
     );
 
     try testing.expectEqual(
-        LookupOrder.after,
+        meta.LookupOrder.after,
         RuneRange.compare(10, 20, 21),
     );
 }

@@ -1,7 +1,7 @@
 //! Shared error set for the regex frontend and compiler.
 
 /// Common parsing and compilation errors
-pub const Error = error {
+pub const ErrorSet = error {
     InvalidArgument,
     NoMatch,
     /// Index is out of range

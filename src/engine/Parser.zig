@@ -5,7 +5,7 @@ const AST = @import("./syntax.zig");
 const Lexer = @import("./Lexer.zig");
 const tokens = @import("./tokens.zig");
 const testing = std.testing;
-const RegrexError = types.Error;
+const RegrexError = types.errors.ErrorSet;
 const Token = tokens.Token;
 const TokenType = tokens.TokenType;
 

@@ -1,10 +1,13 @@
 //! Various type casting/conversion utility functions
 const std = @import("std");
-const RegrexError = @import("./error.zig").Error;
+const errors = @import("./error.zig");
+const ext = @import("./ext.zig");
 const matching = @import("./matching.zig");
 const testing = std.testing;
 const Match = matching.Match;
 const Span = matching.Span;
+const EmptySpan = matching.EmptySpan;
+const isEmpty = matching.isEmpty;
 
 /// Creates a `Match` instance from capture slots.
 /// 
@@ -24,17 +27,17 @@ pub fn toMatch(
     input: []const u8,
     captures_len: usize,
     slots: []const ?usize,
-) RegrexError!Match {
+) errors.ErrorSet!Match {
     const full_start = slots[0] orelse 0;
     const full_end = slots[1] orelse full_start;
     const groups_len = captures_len + 1;
 
     if (groups_len > matching.MAX_GROUPS_LEN) {
-        return RegrexError.GroupBufferOverflow;
+        return errors.ErrorSet.GroupBufferOverflow;
     }
 
     var groups_buf = allocator.alloc(Span, groups_len) catch {
-        return RegrexError.MemoryError;
+        return errors.ErrorSet.MemoryError;
     };
     errdefer allocator.free(groups_buf);
 
@@ -43,7 +46,7 @@ pub fn toMatch(
         .end = full_end,
     };
     // Fill buffer with sentinel (no-match) groups
-    @memset(groups_buf[1..], Span.none());
+    @memset(groups_buf[1..], EmptySpan());
 
     var subgroup_idx: usize = 1;
     while (subgroup_idx < groups_len) : (subgroup_idx += 1) {
@@ -79,6 +82,36 @@ pub fn toOctDigit(val: u21) ?u21 {
     return switch(val) {
         '0'...'7' => val - '0',
         else => null,
+    };
+}
+
+/// Converts Zig error set to C-compatible error code
+pub fn toErrorCode(err: anyerror) ext.ReturnCode {
+    return switch(err) {
+        errors.ErrorSet.InvalidArgument => .REGREX_EARG,
+        errors.ErrorSet.NoMatch => .REGREX_ENOMATCH,
+        errors.ErrorSet.MemoryError => .REGREX_ENOSPACE,
+        errors.ErrorSet.OutOfRange => .REGREX_EBADGRP,
+        errors.ErrorSet.GroupBufferOverflow => .REGREX_EMAXGRP,
+        errors.ErrorSet.InvalidUnicode => .REGREX_EBADUTF8,
+        errors.ErrorSet.UnexpectedToken => .REGREX_ETOKEN,
+        errors.ErrorSet.UnexpectedEnd => .REGREX_EEND,
+        errors.ErrorSet.ExpressionExpected => .REGREX_EEXPR,
+        errors.ErrorSet.InvalidEscape,
+        errors.ErrorSet.TrailingEscape => .REGREX_EBADESC,
+        errors.ErrorSet.InvalidRepeat => .REGREX_EBADREP,
+        errors.ErrorSet.UnmatchedParen => .REGREX_ERPAREN,
+        errors.ErrorSet.UnmatchedBracket => .REGREX_ERBRACK,
+        errors.ErrorSet.UnexpectedInstruction => .REGREX_EINSTERR,
+        else => .ERR,
+    };
+}
+
+/// Converts a Range(usize) into a C-compatible structure
+pub fn toExtSpan(span: Span) ext.ExtSpan {
+    return .{
+        .start = span.start,
+        .end = span.end,
     };
 }
 
@@ -128,7 +161,7 @@ test "toMatch() should create a Match with unmatched subgroups as sentinel group
     try testing.expectEqualStrings("420", try m.full());
 
     const no_match_sent = m.subgroups()[0];
-    try testing.expect(no_match_sent.isNone());
+    try testing.expect(isEmpty(no_match_sent));
 }
 
 test "toMatch() should create a Match with partially captured groups as sentinel groups" {
@@ -143,7 +176,7 @@ test "toMatch() should create a Match with partially captured groups as sentinel
     try testing.expectEqualStrings("420", try m.full());
 
     const no_match_sent = m.subgroups()[0];
-    try testing.expect(no_match_sent.isNone());
+    try testing.expect(isEmpty(no_match_sent));
 }
 
 test "toMatch() should create a Match with multiple capture groups" {

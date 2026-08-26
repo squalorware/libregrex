@@ -139,6 +139,41 @@ pub fn MergedStruct(comptime Foo: type, comptime Bar: type) type {
     }
 }
 
+/// Position of an item to a lookup range.
+pub const LookupOrder = enum {
+    before,
+    match,
+    after,
+};
+
+/// Generic Range type.
+///
+/// Holds start and end offsets into any sequence or subsequence of given type
+///
+/// Accepts any scalar type (usually integers).
+/// Exposes basic functionality for comparison and existence checking.
+pub fn Range(comptime T: type) type {
+    return struct {
+        start: T,
+        end: T,
+
+        const Self = @This();
+
+        /// Compares a scalar item against an inclusive range `[tail..head]`
+        pub fn compare(tail: T, head: T,item: T) LookupOrder {
+            if (item < tail) return .before;
+            if (item > head) return .after;
+
+            return .match;
+        }
+
+        /// Checks if given item exists within this range
+        pub fn contains(self: Self, item: T) bool {
+            return compare(self.start, self.end, item) == .match;
+        }
+    };
+}
+
 test "MergedStruct merges two regular structs" {
     const Foo = struct {
         foo: u8 = 1,

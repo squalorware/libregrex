@@ -1,4 +1,4 @@
-const RegrexError = @import("types").Error;
+const RegrexError = @import("types").errors.ErrorSet;
 const unicode = @import("unicode");
 const Rune = unicode.Rune;
 const AST = @import("./syntax.zig");

@@ -1,35 +1,34 @@
 const std = @import("std");
-const Error = @import("./error.zig").Error;
+const ErrorSet = @import("./error.zig").ErrorSet;
 const ManagedDynamicBuffer = @import("./managed.zig").ManagedDynamicBuffer;
+const Range = @import("./meta.zig").Range;
 const Sentinel = std.math.maxInt(usize);
 const testing = std.testing;
 
 pub const MAX_GROUPS_LEN = 1024;
 
-/// Holds starting and ending indices of a byte range inside a string
+/// Represents an inclusive byte range containing
+/// starting and ending offsets into the input string
 ///
 /// Follows slice semantics - `start` is inclusive, `end` is exclusive
-pub const Span = struct {
-    start: usize,
-    end: usize,
+pub const Span = Range(usize);
 
-    /// Creates a span where start and end are set to sentinel values
-    ///
-    /// Used when a capture group did not participate in the match.
-    ///
-    /// Sentinel values are explicitly out of range for any possible string
-    pub fn none() Span {
-        return .{
-            .start = Sentinel,
-            .end = Sentinel,
-        };
-    }
+/// Creates a span where start and end are set to sentinel values
+///
+/// Used when a capture group did not participate in the match.
+///
+/// Sentinel values are explicitly out of range for any possible string
+pub fn EmptySpan() Span {
+    return .{
+        .start = Sentinel,
+        .end = Sentinel,
+    };
+}
 
-    /// Checks if this span is empty (represents no match)
-    pub fn isNone(self: Span) bool {
-        return self.start == Sentinel and self.end == Sentinel;
-    }
-};
+/// Checks if this span is empty (represents no match)
+pub fn isEmpty(span: Span) bool {
+    return span.start == Sentinel and span.end == Sentinel;
+}
 
 /// Match result representation for the regex engine.
 ///
@@ -67,11 +66,11 @@ pub const Match = struct {
     /// Returns:
     /// - `Error.OutOfRange` if `i` is outside the available group range;
     /// - `Error.NoMatch` if the group exists but did not participate in the match.
-    pub fn span(self: Match, i: usize) Error!Span {
-        if (i >= self.groups.len) return Error.OutOfRange;
+    pub fn span(self: Match, i: usize) ErrorSet!Span {
+        if (i >= self.groups.len) return ErrorSet.OutOfRange;
 
         const g = self.groups[i];
-        if (g.isNone()) return Error.NoMatch;
+        if (isEmpty(g)) return ErrorSet.NoMatch;
 
         return g;
     }
@@ -81,7 +80,7 @@ pub const Match = struct {
     /// Returns:
     /// - `Error.OutOfRange` if `i` is outside the available group range;
     /// - `Error.NoMatch` if the group exists but did not participate in the match.
-    pub fn start(self: Match, i: usize) Error!usize {
+    pub fn start(self: Match, i: usize) ErrorSet!usize {
         const g = try self.span(i);
 
         return g.start;
@@ -92,7 +91,7 @@ pub const Match = struct {
     /// Returns:
     /// - `Error.OutOfRange` if `i` is outside the available group range;
     /// - `Error.NoMatch` if the group exists but did not participate in the match.
-    pub fn end(self: Match, i: usize) Error!usize {
+    pub fn end(self: Match, i: usize) ErrorSet!usize {
         const g = try self.span(i);
 
         return g.end;
@@ -105,13 +104,13 @@ pub const Match = struct {
     /// Returns:
     /// - `Error.OutOfRange` if `i` is outside the available group range;
     /// - `Error.NoMatch` if the group exists but did not participate in the match.
-    pub fn group(self: Match, i: usize) Error![]const u8 {
+    pub fn group(self: Match, i: usize) ErrorSet![]const u8 {
         const g = try self.span(i);
         return self.input[g.start..g.end];
     }
 
     /// Returns slice of `input` which corresponds to full match
-    pub fn full(self: Match) Error![]const u8 {
+    pub fn full(self: Match) ErrorSet![]const u8 {
         return try self.group(0);
     }
 
@@ -124,16 +123,16 @@ pub const Match = struct {
 /// A resizable dynamic buffer to store Match entries
 pub const MatchListBuffer = ManagedDynamicBuffer(Match, null);
 
-test "Span.none() should return an empty Span" {
-    const g = Span.none();
+test "EmptySpan should return an empty Span" {
+    const g = EmptySpan();
 
-    try testing.expect(g.isNone());
+    try testing.expect(isEmpty(g));
 }
 
-test "Span.isNone() should return false for non-empty Span" {
+test "isEmpty should return false for non-empty Span" {
     const g = Span{ .start = 1, .end = 3 };
 
-    try testing.expect(!g.isNone());
+    try testing.expect(!isEmpty(g));
 }
 
 const test_input = "lol 420 kek";
@@ -247,9 +246,7 @@ test "Match.span(i) should return subgroup byte span" {
 
 test "Match.group(i), Match.span(i) should return `Error.NoMatch` for an unmatched capture group" {
     const allocator = testing.allocator;
-    const unmatched = [_]Span { 
-        Span.none() 
-    };
+    const unmatched = [_]Span { EmptySpan() };
 
     var fix = try MatchFixture.init(
         allocator,
@@ -259,8 +256,8 @@ test "Match.group(i), Match.span(i) should return `Error.NoMatch` for an unmatch
     );
     defer fix.deinit(allocator);
 
-    try testing.expectError(Error.NoMatch, fix.match.group(1));
-    try testing.expectError(Error.NoMatch, fix.match.span(1)); 
+    try testing.expectError(ErrorSet.NoMatch, fix.match.group(1));
+    try testing.expectError(ErrorSet.NoMatch, fix.match.span(1));
 }
 
 test "Match.group(i), Match.span(i) should return `Error.OutOfRange` for a group out of range" {
@@ -280,8 +277,8 @@ test "Match.group(i), Match.span(i) should return `Error.OutOfRange` for a group
     );
     defer fix.deinit(allocator);
 
-    try testing.expectError(Error.OutOfRange, fix.match.group(2));
-    try testing.expectError(Error.OutOfRange, fix.match.span(2));
+    try testing.expectError(ErrorSet.OutOfRange, fix.match.group(2));
+    try testing.expectError(ErrorSet.OutOfRange, fix.match.span(2));
 }
 
 test "Match.subgroups() should return captures excluding full match" {
@@ -289,7 +286,7 @@ test "Match.subgroups() should return captures excluding full match" {
     const captures = [_]Span {
         .{ .start = 0, .end = 3 },
         .{ .start = 4, .end = 7 },
-        Span.none(),
+        EmptySpan(),
     };
 
     var fix = try MatchFixture.init(
@@ -307,7 +304,7 @@ test "Match.subgroups() should return captures excluding full match" {
     try testing.expectEqual(@as(usize, 3), result[0].end);
     try testing.expectEqual(@as(usize, 4), result[1].start);
     try testing.expectEqual(@as(usize, 7), result[1].end);
-    try testing.expect(result[2].isNone());
+    try testing.expect(isEmpty(result[2]));
 }
 
 test "MatchListBuffer.init() should create an empty array" {

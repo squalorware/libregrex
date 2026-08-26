@@ -9,7 +9,7 @@ const bytecode = @import("./bytecode.zig");
 const testing = std.testing;
 const Instruction = bytecode.Instruction;
 const BytecodeBuffer = bytecode.BytecodeBuffer;
-const RegrexError = types.Error;
+const RegrexError = types.errors.ErrorSet;
 
 /// Deep-copies a character class into bytecode memory.
 /// 

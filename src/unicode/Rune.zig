@@ -1,6 +1,6 @@
 //! A decoded Unicode scalar value together with its byte length
 const testing = @import("std").testing;
-const Error = @import("types").Error;
+const Error = @import("types").errors.ErrorSet;
 const foldEqual = @import("./ranges.zig").foldEqual;
 
 pub const Rune = @This();
