@@ -21,7 +21,7 @@ const ManagedMatch = ManagedOpaqueWrapper(regx_match_t, regrex.Match, freeMatchC
 const ManagedIterator = ManagedOpaqueWrapper(regx_iter_t, regrex.FindIterator, freeIteratorCallback);
 
 /// Stable return code type used by the C ABI.
-pub const regx_errcode_t = regrex.RegrexErrorCode;
+pub const regx_errcode_t = ext.ReturnCode;
 
 /// Generic buffer type. Points to raw memory
 pub const regx_buffer_t = extern struct {

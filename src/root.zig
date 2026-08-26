@@ -3,14 +3,19 @@ const types = @import("types");
 const engine = @import("engine");
 const bytecode = engine.bytecode;
 const tokens = engine.tokens;
+const errors = types.errors;
 const MergedStruct = types.meta.MergedStruct;
 
+pub const FindIterator = engine.FindIterator;
 pub const Flags = engine.Compiler.Flags;
 pub const Match = types.Match;
 pub const MatchList = types.MatchListBuffer;
 pub const Pattern = engine.Pattern;
 pub const PatternSubOptions = engine.PatternSubOptions;
-pub const RegrexError = types.Error;
+pub const RegrexError = errors.ErrorSet;
+pub const ReturnCode = types.ext.ReturnCode;
+pub const Span = types.Span;
+
 /// `Flags` and `PatternSubOptions` types merged into a single structure
 pub const SubOptions = MergedStruct(Flags, PatternSubOptions);
 
