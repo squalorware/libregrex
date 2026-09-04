@@ -1,10 +1,29 @@
+//! Generic types and utility functions
 const std = @import("std");
 const Type = std.builtin.Type;
 const StructField = Type.StructField;
 const Attributes = Type.StructField.Attributes;
 
+pub fn hasDeinit(comptime T: type) bool {
+    return switch(@typeInfo(T)) {
+        .@"struct",
+        .@"union",
+        .@"enum",
+        .@"opaque" => @hasDecl(T, "deinit"),
+        else => false,
+    };
+}
+
+pub fn hasLength(comptime T: type) bool {
+    return switch(@typeInfo(T)) {
+        .array => true,
+        .pointer => @hasDecl(T, "len"),
+        else => false,
+    };
+}
+
 /// Checks if `name` is unique as `field.name for field in fields`
-fn uniq(comptime fields: []const StructField, name: []const u8) bool {
+pub fn uniq(comptime fields: []const StructField, name: []const u8) bool {
     for (fields) |field| {
         if (std.mem.eql(u8, field.name, name)) return false;
     }
@@ -12,7 +31,7 @@ fn uniq(comptime fields: []const StructField, name: []const u8) bool {
 }
 
 /// Retrieves the index of a field by its name from the array of struct fields
-fn fieldIndex(comptime fields: []const StructField, name: []const u8) ?usize {
+pub fn fieldIndex(comptime fields: []const StructField, name: []const u8) ?usize {
     for (fields, 0..) |field, i| {
         if (std.mem.eql(u8, field.name, name)) {
             return i;
@@ -153,7 +172,7 @@ pub const LookupOrder = enum {
 /// Accepts any scalar type (usually integers).
 /// Exposes basic functionality for comparison and existence checking.
 pub fn Range(comptime T: type) type {
-    return struct {
+    return extern struct {
         start: T,
         end: T,
 

@@ -86,11 +86,11 @@ pub fn toOctDigit(val: u21) ?u21 {
 }
 
 /// Converts Zig error set to C-compatible error code
-pub fn toErrorCode(err: anyerror) ext.ReturnCode {
+pub fn toErrorCode(err: anyerror) ext.C_ReturnCode {
     return switch(err) {
         errors.ErrorSet.InvalidArgument => .REGREX_EARG,
         errors.ErrorSet.NoMatch => .REGREX_ENOMATCH,
-        errors.ErrorSet.MemoryError => .REGREX_ENOSPACE,
+        errors.ErrorSet.MemoryError => .REGREX_EMALLOC,
         errors.ErrorSet.OutOfRange => .REGREX_EBADGRP,
         errors.ErrorSet.GroupBufferOverflow => .REGREX_EMAXGRP,
         errors.ErrorSet.InvalidUnicode => .REGREX_EBADUTF8,
@@ -107,12 +107,35 @@ pub fn toErrorCode(err: anyerror) ext.ReturnCode {
     };
 }
 
-/// Converts a Range(usize) into a C-compatible structure
-pub fn toExtSpan(span: Span) ext.ExtSpan {
-    return .{
-        .start = span.start,
-        .end = span.end,
-    };
+/// Initializes a C-compatible buffer and copies all items from `sequence` (slice of `T`s).
+///
+/// Items are shallow-copied into the buffer.
+pub fn initCBufferFromSlice(
+    comptime T: type,
+    alloc: std.mem.Allocator,
+    buffer: *ext.C_GenericBuffer,
+    destroy_cb: *const fn(*anyopaque) callconv(.c) void,
+    sequence: []const T,
+) ext.C_ReturnCode {
+    const init_rc: ext.C_ReturnCode = ext.C_GenericBuffer.init(
+        alloc,
+        sequence.len,
+        destroy_cb,
+        @alignOf(T),
+        @sizeOf(T),
+        buffer,
+    );
+    if (init_rc != .OK) return init_rc;
+
+    for (sequence) |item| {
+        const push_rc = ext.C_GenericBuffer.push(buffer, &item);
+
+        if (push_rc != .OK) {
+            ext.C_GenericBuffer.deinit(alloc, buffer);
+            return push_rc;
+        }
+    }
+    return .OK;
 }
 
 test "toMatch() should return a Match with valid full match and no capture groups" {

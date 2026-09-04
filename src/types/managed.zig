@@ -2,17 +2,8 @@
 
 const std = @import("std");
 const ErrorSet = @import("./error.zig").ErrorSet;
+const hasDeinit = @import("./meta.zig").hasDeinit;
 const testing = std.testing;
-
-fn hasDeinit(comptime T: type) bool {
-    return switch(@typeInfo(T)) {
-        .@"struct",
-        .@"union",
-        .@"enum",
-        .@"opaque" => @hasDecl(T, "deinit"),
-        else => false,
-    };
-}
 
 /// Heap-allocated dynamic array that owns its stored `T` values.
 ///

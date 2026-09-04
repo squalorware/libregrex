@@ -26,14 +26,10 @@
 extern "C" {
 #endif
 
-#ifndef REGX_MAX_BUFFER_SIZE
-#define REGX_MAX_BUFFER_SIZE 1024
-#endif
-
 /*
     Stable return code type used by the C ABI.
 */
-typedef int regx_errcode_t;
+typedef int regx_rcode_t;
 enum
 {
     ENOSYS = -1,             /* Shouldn't ever return; invalid syscall or not implemented */
@@ -41,7 +37,7 @@ enum
     ERR = 1,                 /* Generic error (unknown) */
     REGREX_EARG,             /* Invalid argument */
     REGREX_ENOMATCH,         /* No matching group */
-    REGREX_ENOSPACE,         /* Memory allocation error */
+    REGREX_EMALLOC,          /* Memory allocation error */
     REGREX_ERANGE,           /* Index is out of range */
     REGREX_EMAXGRP,          /* Exceeded maximum group count limit */
     REGREX_EBADUTF8,         /* Invalid or malformed UTF-8  */
@@ -54,27 +50,7 @@ enum
     REGREX_ERBRACK,          /* Closing bracket missing */
     REGREX_EINSTERR          /* Unexpected bytecode instruction */
 };
-/*
-    Generic buffer type. Points to raw memory
-*/
-typedef struct
-{
-    void *ptr;         /* Raw pointer to a block of memory */
-    size_t item_size;  /* Byte size of a single element */
-    size_t item_align; /* Byte alignment of a single element */
-    size_t capacity;   /* Maximum number of items the buffer can contain */
-    size_t head;       /* Index where next item is written at */
-    size_t tail;       /* Index where next item is read from */
-    size_t len;        /* Current item count */
-} regx_buffer_t;
 
-void regx_buffer_destroy(regx_buffer_t* buf);
-
-regx_errcode_t regx_buffer_init(regx_buffer_t* buf, size_t capacity, size_t item_size, size_t item_align);
-
-regx_errcode_t regx_buffer_push(regx_buffer_t* buf, const void* item);
-
-regx_errcode_t regx_buffer_pop(regx_buffer_t* buf, void* out_item);
 /*
     Start and end indices of a capture group inside the input string
 
@@ -86,6 +62,34 @@ typedef struct
     size_t start;
     size_t end;
 } regx_span_t;
+
+/* Callback function to free memory of item in buffer. */
+typedef void (*regx_t_destructor)(void* item);
+
+/* Generic buffer storing fixed-size elements in raw memory */
+typedef struct
+{
+    void* ptr;                           /* Raw pointer to a block of memory */
+    size_t t_size;                       /* Byte size of a single element */
+    size_t t_align;                      /* Byte alignment of a single element */
+    size_t capacity;                     /* Maximum number of items the buffer can contain */
+    size_t head;                         /* Index where next item is written at */
+    size_t tail;                         /* Index where next item is read from */
+    size_t len;                          /* Current items count */
+    regx_t_destructor destroy_cb;        /* Destructor callback */
+} regx_buffer_t;
+
+/* Deinitializes the items within the buffer and then dereferences the buffer itself */
+void regx_buffer_free(regx_buffer_t* buffer);
+
+regx_rcode_t regx_buffer_alloc(regx_t_destructor destructor_cb,
+                            size_t capacity, size_t item_align,
+                            size_t item_size, regx_buffer_t* buffer);
+
+regx_rcode_t regx_buffer_push(regx_buffer_t* buffer, const void* item);
+
+regx_rcode_t regx_buffer_pop(regx_buffer_t* buffer, void* item);
+
 /*
     Opaque handler for result type produced by matching operations.
 
@@ -95,13 +99,14 @@ typedef struct regx_match_t regx_match_t;
 
 void regx_match_destroy(regx_match_t* match);
 
-regx_errcode_t regx_match_span(regx_match_t* match, size_t i, regx_span_t* out_obj);
+regx_rcode_t regx_match_span(regx_match_t* match, size_t i, regx_span_t* out_obj);
+/* Copies the bytes matched by capture group `i` into a byte buffer */
+regx_rcode_t regx_match_group(regx_match_t* match, size_t i, regx_buffer_t* out);
+/* Copies the bytes of the full match into a byte buffer */
+regx_rcode_t regx_match_full(regx_match_t* match, size_t i, regx_buffer_t* out);
+/* Copies all groups (byte offsets) except the first one into a buffer */
+regx_rcode_t regx_match_subgroups(regx_match_t* match, regx_buffer_t* out_buf);
 
-regx_errcode_t regx_match_group(regx_match_t* match, size_t i, char* out);
-
-regx_errcode_t regx_match_full(regx_match_t* match, size_t i, char* out);
-
-regx_errcode_t regx_match_subgroups(regx_match_t* match, regx_buffer_t* out_buf);
 /*
     Opaque handler for a lazy iterator created by the compiled pattern.
 
@@ -112,8 +117,10 @@ regx_errcode_t regx_match_subgroups(regx_match_t* match, regx_buffer_t* out_buf)
 typedef struct regx_iter_t regx_iter_t;
 
 void regx_iter_destroy(regx_iter_t* iter);
+
 /* Get the next match and store it in `out_obj` or get .REGREX_ENOMATCH */
-regx_errcode_t regx_iter_next(regx_iter_t* iter, regx_match_t** out_obj);
+regx_rcode_t regx_iter_next(regx_iter_t* iter, regx_match_t** out_obj);
+
 /*
     Opaque handler for compiled reusable regex pattern.
 
@@ -123,29 +130,18 @@ typedef struct regx_pattern_t regx_pattern_t;
 
 void regx_pattern_destroy(regx_pattern_t* pattern);
 
-regx_errcode_t regx_pattern_match(
-    const regx_pattern_t* pattern,
-    const char* input,
-    regx_match_t** out_obj
-);
+regx_rcode_t regx_pattern_match(const regx_pattern_t* pattern,
+                                const char* input, regx_match_t** out_obj);
 
-regx_errcode_t regx_pattern_search(
-    const regx_pattern_t* pattern,
-    const char* input,
-    regx_match_t** out_obj
-);
+regx_rcode_t regx_pattern_search(const regx_pattern_t* pattern,
+                                const char* input, regx_match_t** out_obj);
 /* Initialize the lazy iterator */
-regx_errcode_t regx_pattern_find_iter(
-    const regx_pattern_t* pattern,
-    const char* input,
-    regx_iter_t** out_obj
-);
+regx_rcode_t regx_pattern_find_iter(const regx_pattern_t* pattern,
+                                    const char* input, regx_iter_t** out_obj);
+
 /* Stores all non-overlapping matches for a compiled pattern into a buffer object */
-regx_errcode_t regx_pattern_find_all(
-    const regx_pattern_t* pattern,
-    const char* input,
-    regx_buffer_t* out_buf
-);
+regx_rcode_t regx_pattern_find_all(const regx_pattern_t* pattern,
+                                const char* input, regx_buffer_t* out_buf);
 // /*
 //     Replaces all matches found by the compiled pattern.
 //
@@ -156,7 +152,7 @@ regx_errcode_t regx_pattern_find_all(
 //
 //     Output buffer must be released with `regx_buffer_destroy()`.
 // */
-// regx_errcode_t regx_pattern_sub(
+// regx_rcode_t regx_pattern_sub(
 //     const regx_pattern_t *pattern,
 //     regx_buffer_t repl_buf,
 //     regx_buffer_t input_buf,
@@ -233,7 +229,7 @@ regx_errcode_t regx_pattern_find_all(
 //
 //     Excludes group 0, which is the full match.
 // */
-// regx_errcode_t regx_match_groups_len(
+// regx_rcode_t regx_match_groups_len(
 //     const regx_match_t *match,
 //     size_t *out_i
 // );
@@ -243,7 +239,7 @@ regx_errcode_t regx_pattern_find_all(
 //
 //     Group 0 is the full match. Capturing groups start at index 1.
 // */
-// regx_errcode_t regx_match_span(
+// regx_rcode_t regx_match_span(
 //     const regx_match_t *match,
 //     size_t i,
 //     regx_group_t *out_obj
@@ -255,7 +251,7 @@ regx_errcode_t regx_pattern_find_all(
 //
 //     The buffer should be released with `regx_buffer_destroy()`.
 // */
-// regx_errcode_t regx_match_group(
+// regx_rcode_t regx_match_group(
 //     const regx_match_t *match,
 //     size_t i,
 //     regx_buffer_t *out_obj
@@ -267,7 +263,7 @@ regx_errcode_t regx_pattern_find_all(
 //
 //     The buffer should be released with `regx_buffer_destroy()`.
 // */
-// regx_errcode_t regx_match_full(
+// regx_rcode_t regx_match_full(
 //     const regx_match_t *match,
 //     regx_buffer_t *out_obj
 // );
@@ -280,7 +276,7 @@ regx_errcode_t regx_pattern_find_all(
 // void regx_match_arr_destroy(regx_match_arr_t *list);
 //
 // /* Writes the number of matches in list to `out_i`. */
-// regx_errcode_t regx_match_arr_len(
+// regx_rcode_t regx_match_arr_len(
 //     const regx_match_arr_t *list,
 //     size_t *out_i
 // );
@@ -291,7 +287,7 @@ regx_errcode_t regx_pattern_find_all(
 //
 //     Group 0 is the full match.
 // */
-// regx_errcode_t regx_match_arr_span(
+// regx_rcode_t regx_match_arr_span(
 //     const regx_match_arr_t *list,
 //     size_t match_idx,
 //     size_t group_idx,
@@ -305,7 +301,7 @@ regx_errcode_t regx_pattern_find_all(
 //
 //     The buffer should be released with `regx_buffer_destroy()`.
 // */
-// regx_errcode_t regx_match_arr_group(
+// regx_rcode_t regx_match_arr_group(
 //     const regx_match_arr_t *list,
 //     size_t match_idx,
 //     size_t group_idx,
@@ -319,7 +315,7 @@ regx_errcode_t regx_pattern_find_all(
 //
 //     The buffer should be released with `regx_buffer_destroy()`.
 // */
-// regx_errcode_t regx_match_arr_full(
+// regx_rcode_t regx_match_arr_full(
 //     const regx_match_arr_t *list,
 //     size_t match_idx,
 //     regx_buffer_t *out_obj
@@ -341,7 +337,7 @@ regx_errcode_t regx_pattern_find_all(
 //     Returns .REGX_ENOMATCH if no match found;
 //     `out_obj` is set to `NULL`
 // */
-// regx_errcode_t regx_pattern_search(
+// regx_rcode_t regx_pattern_search(
 //     const regx_pattern_t *pattern,
 //     regx_buffer_t input_buf,
 //     regx_match_t **out_obj
@@ -357,7 +353,7 @@ regx_errcode_t regx_pattern_find_all(
 //     Returns .REGX_ENOMATCH if no match found;
 //     `out_obj` is set to `NULL`
 // */можно
-// regx_errcode_t regx_pattern_match(
+// regx_rcode_t regx_pattern_match(
 //     const regx_pattern_t *pattern,
 //     regx_buffer_t input_buf,
 //     regx_match_t **out_obj
@@ -370,7 +366,7 @@ regx_errcode_t regx_pattern_find_all(
 //     Stores the iterator to `out_obj`. The iterator must be released
 //     with `regx_iter_destroy()`. The pattern and the input must outlive it.
 // */
-// regx_errcode_t regx_pattern_find_iter(
+// regx_rcode_t regx_pattern_find_iter(
 //     const regx_pattern_t *pattern,
 //     regx_buffer_t input_buf,
 //     regx_iter_t **out_obj
@@ -382,7 +378,7 @@ regx_errcode_t regx_pattern_find_all(
 //     Stores resulting `regx_match_arr_t` to `out_obj`.
 //     It must be released with `regx_match_arr_destroy()`.
 // */
-// regx_errcode_t regx_pattern_find_all(
+// regx_rcode_t regx_pattern_find_all(
 //     const regx_pattern_t *pattern,
 //     regx_buffer_t input_buf,
 //     regx_match_arr_t **out_obj
@@ -398,7 +394,7 @@ regx_errcode_t regx_pattern_find_all(
 //
 //     Output buffer must be released with `regx_buffer_destroy()`.
 // */
-// regx_errcode_t regx_pattern_sub(
+// regx_rcode_t regx_pattern_sub(
 //     const regx_pattern_t *pattern,
 //     regx_buffer_t repl_buf,
 //     regx_buffer_t input_buf,
@@ -413,7 +409,7 @@ regx_errcode_t regx_pattern_find_all(
 //     with `regx_match_destroy()`. Returns .REGX_ENOMATCH and sets
 //     `out_obj` to `NULL` when the iterator is exhausted.
 // */
-// regx_errcode_t regx_iter_next(
+// regx_rcode_t regx_iter_next(
 //     regx_iter_t *iter,
 //     regx_match_t **out_obj
 // );
@@ -454,7 +450,7 @@ regx_errcode_t regx_pattern_find_all(
 //
 //     The returned pointer has static storage duration and must not be freed.
 // */
-// const char *regrex_error(regx_errcode_t code);
+// const char *regrex_error(regx_rcode_t code);
 //
 // /*
 //     Compiles a regex pattern.
@@ -463,7 +459,7 @@ regx_errcode_t regx_pattern_find_all(
 //     which does not require to be recompiled for each operation.
 //     Must be released with `regx_pattern_destroy()`
 // */
-// regx_errcode_t regrex_compile(
+// regx_rcode_t regrex_compile(
 //     regx_buffer_t pattern_buf,
 //     regx_pattern_t **out_obj
 // );
@@ -478,7 +474,7 @@ regx_errcode_t regx_pattern_find_all(
 //     Returns .REGX_ENOMATCH if no match found;
 //     `out_obj` is set to `NULL`
 // */
-// regx_errcode_t regrex_search(
+// regx_rcode_t regrex_search(
 //     regx_buffer_t pattern_buf,
 //     regx_buffer_t input_buf,
 //     regx_match_t **out_obj
@@ -495,7 +491,7 @@ regx_errcode_t regx_pattern_find_all(
 //     Returns .REGX_ENOMATCH if no match found;
 //     `out_obj` is set to `NULL`
 // */
-// regx_errcode_t regrex_match(
+// regx_rcode_t regrex_match(
 //     regx_buffer_t pattern_buf,
 //     regx_buffer_t input_buf,
 //     regx_match_t **out_obj
@@ -511,7 +507,7 @@ regx_errcode_t regx_pattern_find_all(
 //     Returns .REGX_ENOMATCH if no match found;
 //     `out_obj` is set to `NULL`
 // */
-// regx_errcode_t regrex_find_all(
+// regx_rcode_t regrex_find_all(
 //     regx_buffer_t pattern_buf,
 //     regx_buffer_t input_buf,
 //     regx_match_arr_t **out_obj
@@ -528,7 +524,7 @@ regx_errcode_t regx_pattern_find_all(
 //
 //     Output buffer must be released with `regx_buffer_destroy()`.
 // */
-// regx_errcode_t regrex_sub(
+// regx_rcode_t regrex_sub(
 //     regx_buffer_t pattern_buf,
 //     regx_buffer_t repl_buf,
 //     regx_buffer_t input_buf,
