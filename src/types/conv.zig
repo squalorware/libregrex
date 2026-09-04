@@ -3,6 +3,7 @@ const std = @import("std");
 const errors = @import("./error.zig");
 const ext = @import("./ext.zig");
 const matching = @import("./matching.zig");
+const Flags = @import("./meta.zig").Flags;
 const testing = std.testing;
 const Match = matching.Match;
 const Span = matching.Span;
@@ -136,6 +137,14 @@ pub fn initCBufferFromSlice(
         }
     }
     return .OK;
+}
+
+pub fn bitmaskToFlags(mask: u8) Flags {
+    return .{
+        .ignore_case = mask & (1 << 0) != 0,
+        .multiline = mask & (1 << 1) != 0,
+        .dot_all = mask & (1 << 2) != 0,
+    };
 }
 
 test "toMatch() should return a Match with valid full match and no capture groups" {

@@ -7,6 +7,7 @@ const types = @import("types");
 const AST = @import("./syntax.zig");
 const bytecode = @import("./bytecode.zig");
 const testing = std.testing;
+const Flags = types.meta.Flags;
 const Instruction = bytecode.Instruction;
 const BytecodeBuffer = bytecode.BytecodeBuffer;
 const RegrexError = types.errors.ErrorSet;
@@ -38,18 +39,6 @@ fn cloneCharClass(
         .negated = cls.negated,
     };
 }
-
-/// Pattern behaviour modifiers
-pub const Flags = packed struct(u8) {
-    /// Case-insensitive matching
-    ignore_case: bool = false,
-    /// Interpret `^` and `$` as marking start and end
-    /// of a single line instead of the whole input
-    multiline: bool = false,
-    /// Wildcards match newline characters as well
-    dot_all: bool = false,
-    _padding: u5 = 0,
-};
 
 pub const Compiler = @This();
 

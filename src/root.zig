@@ -7,7 +7,7 @@ const errors = types.errors;
 const MergedStruct = types.meta.MergedStruct;
 
 pub const FindIterator = engine.FindIterator;
-pub const Flags = engine.Compiler.Flags;
+pub const Flags = types.meta.Flags;
 pub const Match = types.Match;
 pub const MatchList = types.MatchListBuffer;
 pub const Pattern = engine.Pattern;

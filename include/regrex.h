@@ -21,6 +21,7 @@
 #define REGREX_H 1
 
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -142,6 +143,12 @@ regx_rcode_t regx_pattern_find_iter(const regx_pattern_t* pattern,
 /* Stores all non-overlapping matches for a compiled pattern into a buffer object */
 regx_rcode_t regx_pattern_find_all(const regx_pattern_t* pattern,
                                 const char* input, regx_buffer_t* out_buf);
+
+typedef uint8_t regx_flags_t;
+
+#define REGX_IGNORE_CASE ((regx_flags_t)(1u << 0))
+#define REGX_MULTILINE ((regx_flags_t)(1u << 1))
+#define REGX_DOT_ALL ((regx_flags_t)(1u << 2))
 // /*
 //     Replaces all matches found by the compiled pattern.
 //

@@ -22,8 +22,54 @@ fn freeIteratorCallback(alloc: std.mem.Allocator, value: *regrex.FindIterator) v
 const ManagedMatch = ManagedOpaqueWrapper(regx_match_t, regrex.Match, freeMatchCallback);
 const ManagedIterator = ManagedOpaqueWrapper(regx_iter_t, regrex.FindIterator, freeIteratorCallback);
 
+/// Helps to avoid duplicating code
+const PatternMatchMode = enum { match, search };
+
+fn patternMatchImpl(
+    // optimization trick: the mode is known statically at each call site;
+    // so resolve the mode switch and specialize the function at compile time
+    comptime mode: PatternMatchMode,
+    alloc: std.mem.Allocator,
+    pattern: ?*const regx_pattern_t,
+    in_cstr: [*:0]const u8,
+    in_buf: ?*regx_buffer_t,
+    out_obj: ?*?*regx_match_t,
+// convention: use actual Zig types for non-exported functions
+) ext.C_ReturnCode {
+    const p = pattern orelse return .REGREX_EARG;
+    const out = out_obj orelse return .REGREX_EARG;
+    const buffer = in_buf orelse return .REGREX_EARG;
+
+    // Ensure that output pointer is null if function fails before finding matches
+    out_obj.* = null;
+
+    const buf_init_rc = conv.initCBufferFromSlice(
+        u8,
+        alloc,
+        buffer,
+        &idleDestructor,
+        std.mem.span(in_cstr),
+    );
+    if (buf_init_rc != .OK) return buf_init_rc;
+
+    const input = buffer.ptr[0..buffer.len];
+
+    const match = switch(mode) {
+        .match => p.match(input),
+        .search => p.search(input),
+    } catch |err| {
+        return conv.toErrorCode(err);
+    } orelse return .REGREX_ENOMATCH;
+
+    out.* = ManagedMatch.init(alloc, match) catch |err| {
+        match.deinit(alloc);
+        return conv.toErrorCode(err);
+    };
+    return .OK;
+}
 /// Stable return code type used by the C ABI.
 pub const regx_rcode_t = ext.C_ReturnCode;
+pub const regx_flags_t = u8;
 pub const regx_span_t = types.Span;
 pub const regx_buffer_t = ext.C_GenericBuffer;
 
@@ -182,6 +228,61 @@ export fn regx_iter_next(iter: ?*regx_iter_t, out_obj: ?*?*regx_match_t) regx_rc
 /// It is allocated on the heap and must be released
 pub const regx_pattern_t = regrex.Pattern;
 
+export fn regx_pattern_destroy(pattern: ?*regx_pattern_t) callconv(.c) void {
+    const p = pattern orelse return;
+    p.deinit();
+}
+
+export fn regx_pattern_match(
+    pattern: ?*const regx_pattern_t,
+    in_cstr: [*:0]const u8,
+    in_buf: ?*regx_buffer_t,
+    out_obj: ?*?*regx_match_t,
+) callconv(.c) regx_rcode_t {
+    return patternMatchImpl(.match, c_alloc, pattern, in_cstr, in_buf, out_obj);
+}
+
+export fn regx_pattern_search(
+    pattern: ?*const regx_pattern_t,
+    in_cstr: [*:0]const u8,
+    in_buf: ?*regx_buffer_t,
+    out_obj: ?*?*regx_match_t,
+) callconv(.c) regx_rcode_t {
+    return patternMatchImpl(.search, c_alloc, pattern, in_cstr, in_buf, out_obj);
+}
+
+export fn regx_pattern_find_iter(
+    pattern: ?*const regx_pattern_t,
+    in_cstr: [*:0]const u8,
+    in_buf: ?*regx_buffer_t,
+    out_obj: ?*?*regx_iter_t,
+) callconv(.c) regx_rcode_t {
+    const p = pattern orelse return .REGREX_EARG;
+    const out = out_obj orelse return .REGREX_EARG;
+    const buffer = in_buf orelse return .REGREX_EARG;
+
+    // Ensure that output pointer is null if function fails before creating iterator
+    out.* = null;
+
+    const buf_init_rc = conv.initCBufferFromSlice(
+        u8,
+        c_alloc,
+        buffer,
+        &idleDestructor,
+        std.mem.span(in_cstr),
+    );
+    if (buf_init_rc != .OK) return buf_init_rc;
+
+    const input = buffer.ptr[0..buffer.len];
+    const iter = p.findIter(input) catch |err| {
+        return conv.toErrorCode(err);
+    };
+
+    out.* = ManagedIterator.init(c_alloc, iter) catch |err| {
+        return conv.toErrorCode(err);
+    };
+    return .OK;
+}
 // export fn regx_pattern_find_all(
 //     pattern: ?*const regx_pattern_t,
 //     input: ?[*:0]const u8,

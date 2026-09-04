@@ -4,6 +4,18 @@ const Type = std.builtin.Type;
 const StructField = Type.StructField;
 const Attributes = Type.StructField.Attributes;
 
+/// Pattern behaviour modifiers
+pub const Flags = packed struct(u8) {
+    /// Case-insensitive matching
+    ignore_case: bool = false,
+    /// Interpret `^` and `$` as marking start and end
+    /// of a single line instead of the whole input
+    multiline: bool = false,
+    /// Wildcards match newline characters as well
+    dot_all: bool = false,
+    _padding: u5 = 0,
+};
+
 pub fn hasDeinit(comptime T: type) bool {
     return switch(@typeInfo(T)) {
         .@"struct",
