@@ -201,16 +201,6 @@ pub fn initCBufferFromManaged(
         }
     }
 }
-// pub fn initCBufferFromManaged(
-//     comptime CT: type,
-//     comptime T: type,
-//     alloc: std.mem.Allocator,
-//     buffer: *ext.C_GenericBuffer,
-//     destroy_cb: *const fn(*anyopaque) callconv(.c) void,
-//     sequence: []T,
-// ) ext.C_ReturnCode {
-//
-// }
 
 pub fn bitmaskToFlags(mask: u8) Flags {
     return .{

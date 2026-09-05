@@ -118,10 +118,7 @@ export fn regx_buffer_pop(buffer: ?*regx_buffer_t, item: ?*anyopaque) callconv(.
     return regx_buffer_t.pop(buf, iptr);
 }
 
-/// Opaque handler for result type produced by matching operations.
-///
-/// It is allocated on the heap and must be released.
-pub const regx_match_t = opaque {};
+pub const regx_match_t = ext.C_MatchHolder;
 
 export fn regx_match_destroy(match: ?*regx_match_t) callconv(.c) void {
     ManagedMatch.deinit(c_alloc, match);
@@ -204,12 +201,7 @@ export fn regx_match_subgroups(
     return .OK;
 }
 
-/// Opaque handler for a lazy iterator created by the compiled pattern.
-///
-/// The parent pattern and input buffer must outlive the iterator.
-///
-/// It is allocated on the heap and must be released
-pub const regx_iter_t = opaque {};
+pub const regx_iter_t = ext.C_IterHolder;
 
 /// `regx_iter_t` destructor.
 ///
