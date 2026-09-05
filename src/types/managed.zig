@@ -56,7 +56,7 @@ pub fn ManagedDynamicBuffer(
 
         /// Releases an individual owned value according to this list's
         /// destruction policy.
-        fn deinitItem(self: Self, item: *T) void {
+        pub fn deinitItem(self: Self, item: *T) void {
             if (T_destructor_cb) |callback_fn| {
                 callback_fn(self.allocator, item);
             } else if (comptime hasDeinit(T)) {

@@ -1,6 +1,7 @@
 const std = @import("std");
+const ext = @import("./ext.zig");
 const ErrorSet = @import("./error.zig").ErrorSet;
-const ManagedDynamicBuffer = @import("./managed.zig").ManagedDynamicBuffer;
+const managed = @import("./managed.zig");
 const Range = @import("./meta.zig").Range;
 const Sentinel = std.math.maxInt(usize);
 const testing = std.testing;
@@ -120,8 +121,14 @@ pub const Match = struct {
     }
 };
 
+fn freeMatchCallback(alloc: std.mem.Allocator, value: *Match) void {
+    value.deinit(alloc);
+}
+
+// Managed wrappers
 /// A resizable dynamic buffer to store Match entries
-pub const MatchListBuffer = ManagedDynamicBuffer(Match, null);
+pub const MatchListBuffer = managed.ManagedDynamicBuffer(Match, null);
+pub const ManagedMatch = managed.ManagedOpaqueWrapper(ext.C_MatchHolder, Match, freeMatchCallback);
 
 test "EmptySpan should return an empty Span" {
     const g = EmptySpan();

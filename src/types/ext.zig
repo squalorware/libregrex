@@ -10,7 +10,7 @@ pub const C_ReturnCode = enum(c_int) {
     ENOSYS = -1,
     /// Success
     OK = 0,
-    /// Generic error (unknown)
+    /// Non-specific generic error
     ERR = 1,
     /// Invalid argument
     REGREX_EARG = 2,
@@ -30,16 +30,18 @@ pub const C_ReturnCode = enum(c_int) {
     REGREX_EEND = 9,
     /// Expected expression
     REGREX_EEXPR = 10,
-    /// Malformed or trailing backslash
+    /// Malformed escape sequence
     REGREX_EBADESC = 11,
+    /// Trailing backslash
+    REGREX_ETRAILESC = 12,
     /// Invalid repetition operator
-    REGREX_EBADREP = 12,
+    REGREX_EBADREP = 13,
     /// Closing parenthesis missing
-    REGREX_ERPAREN = 13,
+    REGREX_ERPAREN = 14,
     /// Closing bracket missing
-    REGREX_ERBRACK = 14,
+    REGREX_ERBRACK = 15,
     /// Unexpected bytecode instruction
-    REGREX_EINSTERR = 15,
+    REGREX_EINSTERR = 16,
 };
 
 /// No-op destructor callback for buffer elements that require no cleanup
@@ -156,3 +158,15 @@ pub const C_GenericBuffer = extern struct {
         return .OK;
     }
 };
+
+/// Opaque handler for result type produced by matching operations.
+///
+/// It is allocated on the heap and must be released.
+pub const C_MatchHolder = opaque {};
+
+/// Opaque handler for a lazy iterator created by the compiled pattern.
+///
+/// The parent pattern and input buffer must outlive the iterator.
+///
+/// It is allocated on the heap and must be released
+pub const C_IterHolder = opaque {};

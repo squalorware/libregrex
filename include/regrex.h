@@ -35,7 +35,7 @@ enum
 {
     ENOSYS = -1,             /* Shouldn't ever return; invalid syscall or not implemented */
     OK = 0,                  /* Success */
-    ERR = 1,                 /* Generic error (unknown) */
+    ERR = 1,                 /* Non-specific generic error */
     REGREX_EARG,             /* Invalid argument */
     REGREX_ENOMATCH,         /* No matching group */
     REGREX_EMALLOC,          /* Memory allocation error */
@@ -45,7 +45,8 @@ enum
     REGREX_ETOKEN,           /* Unexpected Token */
     REGREX_EEND,             /* Unexpected end of pattern */
     REGREX_EEXPR,            /* Expected expression */
-    REGREX_EBADESC,          /* Malformed or trailing backslash */
+    REGREX_EBADESC,          /* Malformed escape sequence */
+    REGREX_ETRAILESC,        /* Trailing backslash */
     REGREX_EBADREP,          /* Invalid repetition operator */
     REGREX_ERPAREN,          /* Closing parenthesis missing */
     REGREX_ERBRACK,          /* Closing bracket missing */
@@ -144,6 +145,11 @@ regx_rcode_t regx_pattern_find_iter(const regx_pattern_t* pattern,
 regx_rcode_t regx_pattern_find_all(const regx_pattern_t* pattern,
                                 const char* input, regx_buffer_t* out_buf);
 
+/*
+    Regular expression compilation flags
+
+    Modify pattern behaviour
+*/
 typedef uint8_t regx_flags_t;
 
 #define REGX_IGNORE_CASE ((regx_flags_t)(1u << 0))
