@@ -1,9 +1,8 @@
-//! Defines the lexical tokens produced by lexer 
-//! and consumed by the parser.
-const Rune = @import("../common/types.zig").Rune;
-
+const testing = @import("std").testing;
+const Rune = @import("unicode").Rune;
+const ManagedDynamicBuffer = @import("types").ManagedDynamicBuffer;
 /// Known types of tokens produced by lexer.
-/// 
+///
 /// Some tokens can be assigned a context-specific meaning, e.g. `CARET`
 /// can signify both a start anchor at the beginning of pattern, and
 /// a character-class negation if comes right after `[`
@@ -41,20 +40,22 @@ pub const TokenType = enum {
 };
 
 /// Single lexical token.
-pub const Self = @This();
+pub const Token = struct {
+    typ: TokenType,
+    /// Contains a Unicode code point from input at `pos`;
+    ///
+    /// `null` for EOF
+    val: ?Rune,
+    /// Zero-based code-point offset in the regex pattern.
+    pos: usize = 0,
+};
 
-typ: TokenType,
-/// Contains a Unicode code point from input at `pos`; 
-/// 
-/// `null` for EOF
-val: ?Rune,
-/// Zero-based code-point offset in the regex pattern.
-pos: usize = 0,
+pub const TokenListBuffer = ManagedDynamicBuffer(Token, null);
 
 /// Maps metacharacters to dedicated token types.
 /// Returns `null` for regular literal characters.
 pub fn mapRuneToTokenType(rune: Rune) ?TokenType {
-    return switch (rune) {
+    return switch (rune.raw()) {
         '.' => .DOT,
         '^' => .CARET,
         '$' => .DOLLAR,
@@ -71,31 +72,29 @@ pub fn mapRuneToTokenType(rune: Rune) ?TokenType {
     };
 }
 
-const expectEqual = @import("std").testing.expectEqual;
-
 test "Should map a character to corresponding token type" {
     const cases = [_]struct {
-        input: Rune,
+        rune: Rune,
         expected: ?TokenType,
     }{
-        .{ .input = '.', .expected = .DOT },
-        .{ .input = '^', .expected = .CARET },
-        .{ .input = '$', .expected = .DOLLAR },
-        .{ .input = '*', .expected = .STAR },
-        .{ .input = '+', .expected = .PLUS },
-        .{ .input = '?', .expected = .QUESTION },
-        .{ .input = '|', .expected = .PIPE },
-        .{ .input = '(', .expected = .LPAREN },
-        .{ .input = ')', .expected = .RPAREN },
-        .{ .input = '[', .expected = .LBRACKET },
-        .{ .input = ']', .expected = .RBRACKET },
-        .{ .input = '-', .expected = .DASH },
+        .{ .rune = try Rune.from('.'), .expected = .DOT },
+        .{ .rune = try Rune.from('^'), .expected = .CARET },
+        .{ .rune = try Rune.from('$'), .expected = .DOLLAR },
+        .{ .rune = try Rune.from('*'), .expected = .STAR },
+        .{ .rune = try Rune.from('+'), .expected = .PLUS },
+        .{ .rune = try Rune.from('?'), .expected = .QUESTION },
+        .{ .rune = try Rune.from('|'), .expected = .PIPE },
+        .{ .rune = try Rune.from('('), .expected = .LPAREN },
+        .{ .rune = try Rune.from(')'), .expected = .RPAREN },
+        .{ .rune = try Rune.from('['), .expected = .LBRACKET },
+        .{ .rune = try Rune.from(']'), .expected = .RBRACKET },
+        .{ .rune = try Rune.from('-'), .expected = .DASH },
         // Not a regex metacharacter
-        .{ .input = 'a', .expected = null },
+        .{ .rune = try Rune.from('a'), .expected = null },
     };
 
     for (cases) |c| {
-        const result = mapRuneToTokenType(c.input);
-        try expectEqual(c.expected, result);
+        const result = mapRuneToTokenType(c.rune);
+        try testing.expectEqual(c.expected, result);
     }
 }
