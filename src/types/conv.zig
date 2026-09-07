@@ -131,6 +131,29 @@ pub fn toErrorSet(rc: ext.C_ReturnCode) ?ErrorSet {
     };
 }
 
+pub fn toErrorMsg(rcode: ext.C_ReturnCode) [:0]const u8 {
+    return switch (rcode) {
+        .OK => "OK",
+        .ERR => "Internal error",
+        .REGREX_EARG => "Invalid argument",
+        .REGREX_ENOMATCH => "No matching group",
+        .REGREX_EMALLOC => "Memory allocation error",
+        .REGREX_ERANGE => "Index is out of range",
+        .REGREX_EMAXGRP => "Exceeded maximum group count limit",
+        .REGREX_EBADUTF8 => "Parsing error: Invalid or malformed UTF-8 code point",
+        .REGREX_ETOKEN => "Parsing error: Unexpected token",
+        .REGREX_EEND => "Parsing error: Unexpected end of pattern",
+        .REGREX_EEXPR => "Parsing error: Expected an expression",
+        .REGREX_EBADESC => "Syntax error: Malformed escape sequence",
+        .REGREX_ETRAILESC => "Syntax error: Trailing backslash",
+        .REGREX_EBADREP => "Syntax error: Invalid repetition operator",
+        .REGREX_ERPAREN => "Syntax error: Closing parenthesis missing",
+        .REGREX_ERBRACK => "Syntax error: Closing bracket missing",
+        .REGREX_EINSTERR => "Compilation error: Unexpected bytecode instruction",
+        else => "Unknown error",
+    };
+}
+
 pub fn toCString(alloc: std.mem.Allocator, input: ?[]const u8) ErrorSet![*:0]const u8 {
     const slice = input orelse return ErrorSet.InvalidArgument;
 

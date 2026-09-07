@@ -131,11 +131,13 @@ typedef uint8_t regx_flags_t;
 #define REGX_MULTILINE ((regx_flags_t)(1u << 1))
 #define REGX_DOT_ALL ((regx_flags_t)(1u << 2))
 
+const char* regrex_error(regx_rcode_t rcode);
+
 regx_rcode_t regrex_compile(const char* pattern, regx_flags_t flags, regx_pattern_t** out_obj);
 
-regx_rcode_t regrex_match(const char* pattern, const char* input, regx_match_t** out_obj);
+regx_rcode_t regrex_match(const char* pattern, regx_flags_t flags, const char* input, regx_match_t** out_obj);
 
-regx_rcode_t regrex_search(const char* pattern, const char* input, regx_match_t** out_obj);
+regx_rcode_t regrex_search(const char* pattern, regx_flags_t flags, const char* input, regx_match_t** out_obj);
 
 regx_rcode_t regrex_find_all(const char* pattern, const char* input,
                         regx_match_t*** out_arr, size_t* out_size);

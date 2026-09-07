@@ -278,6 +278,10 @@ export fn regx_pattern_sub(
     return .OK;
 }
 
+export fn regrex_error(rcode: regx_rcode_t) callconv(.c) [*:0]const u8 {
+    return conv.toErrorMsg(rcode).ptr;
+}
+
 export fn regrex_compile(
     pattern: ?[*:0]const u8,
     flags: regx_flags_t,
