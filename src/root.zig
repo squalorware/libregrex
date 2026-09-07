@@ -8,12 +8,11 @@ const MergedStruct = types.meta.MergedStruct;
 
 pub const FindIterator = engine.FindIterator;
 pub const Flags = types.meta.Flags;
+pub const freeAll = types.meta.freeAll;
 pub const Match = types.Match;
-pub const MatchList = types.MatchListBuffer;
 pub const Pattern = engine.Pattern;
 pub const PatternSubOptions = engine.PatternSubOptions;
 pub const RegrexError = errors.ErrorSet;
-pub const ReturnCode = types.ext.ReturnCode;
 pub const Span = types.Span;
 
 /// `Flags` and `PatternSubOptions` types merged into a single structure
@@ -108,15 +107,15 @@ pub fn search(
 /// Compiled `*Pattern` object is automatically destroyed at execution end.
 /// 
 /// Returns:
-/// - `MatchList` on success (heap allocated, should be explicitly 
-/// released by caller with `MatchList.deinit()`)
+/// - `[]Match` on success (allocator-owned, must be released by caller;
+///  see `freeAll`)
 /// - `RegrexError` on failure
 pub fn findAll(
     alloc: std.mem.Allocator,
     pattern: []const u8,
     input: []const u8,
     flags: Flags
-) RegrexError!MatchList {
+) RegrexError![]Match {
     const compiled: *Pattern = try compile(alloc, pattern, flags);
     defer compiled.deinit();
 

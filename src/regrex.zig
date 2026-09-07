@@ -13,6 +13,13 @@ const c_alloc = std.heap.c_allocator;
 fn freeMatchCallback(alloc: std.mem.Allocator, value: *regrex.Match) void {
     value.deinit(alloc);
 }
+//
+// /// C-compatible callback required to initialize the C buffer object
+// fn freeManagedMatchCallback(item: *anyopaque) callconv(.c) void {
+//     const slot: **regx_match_t = @ptrCast(@alignCast(item));
+//
+//     ManagedMatch.deinit(c_alloc, slot.*);
+// }
 
 fn freeIteratorCallback(alloc: std.mem.Allocator, value: *regrex.FindIterator) void {
     _ = alloc;
@@ -31,103 +38,33 @@ fn patternMatchImpl(
     comptime mode: PatternMatchMode,
     alloc: std.mem.Allocator,
     pattern: ?*const regx_pattern_t,
-    in_cstr: [*:0]const u8,
-    in_buf: ?*regx_buffer_t,
+    input: [*:0]const u8,
     out_obj: ?*?*regx_match_t,
 // convention: use actual Zig types for non-exported functions
-) ext.C_ReturnCode {
+) RegrexError!void {
     const p = pattern orelse return .REGREX_EARG;
     const out = out_obj orelse return .REGREX_EARG;
-    const buf = in_buf orelse return .REGREX_EARG;
 
     // Ensure that output pointer is null if function fails before finding matches
     out_obj.* = null;
 
-    conv.initCBufferFromSlice(u8, alloc, buf, &idleDestructor, std.mem.span(in_cstr)) catch |err| {
-        return conv.toErrorCode(err);
+    const match = try switch(mode) {
+        .match => p.match(std.mem.span(input)),
+        .search => p.search(std.mem.span(input)),
     };
-    defer regx_buffer_t.deinit(c_alloc, buf);
 
-    const input = buf.ptr[0..buf.len];
-
-    const match = switch(mode) {
-        .match => p.match(input),
-        .search => p.search(input),
-    } catch |err| {
-        return conv.toErrorCode(err);
-    } orelse return .REGREX_ENOMATCH;
-
-    out.* = ManagedMatch.init(alloc, match) catch |err| {
-        match.deinit(alloc);
-        return conv.toErrorCode(err);
-    };
-    return .OK;
+    out.* = try ManagedMatch.init(alloc, match);
 }
+
 /// Stable return code type used by the C ABI.
 pub const regx_rcode_t = ext.C_ReturnCode;
+/// Regular expression compile flags to modify pattern behaviour
 pub const regx_flags_t = u8;
 pub const regx_span_t = types.Span;
-pub const regx_buffer_t = ext.C_GenericBuffer;
-
-/// Initializes `buffer` with storage for `capacity` fixed-size elements
-///
-/// `destroy_cb` is called for each remaining element when the buffer is freed.
-/// Use `ext.C_noOpDestructor` for element types that require no cleanup.
-export fn regx_buffer_alloc(
-    destroy_cb: *const fn(*anyopaque) callconv(.c) void,
-    capacity: usize,
-    item_align: usize,
-    item_size: usize,
-    buffer: ?*regx_buffer_t
-) callconv(.c) regx_rcode_t {
-    const buf = buffer orelse return .REGREX_EARG;
-
-    if (
-        item_align == 0 or
-        item_size == 0 or
-        !std.math.isPowerOfTwo(item_align)
-    ) return .REGREX_EARG;
-
-    return regx_buffer_t.init(
-        c_alloc,
-        capacity,
-        destroy_cb,
-        item_align,
-        item_size,
-        buf,
-    );
-}
-
-/// Deinitializes the items within the buffer and then dereferences the buffer itself
-export fn regx_buffer_free(buffer: ?*regx_buffer_t) callconv(.c) void {
-    const buf = buffer orelse return;
-    regx_buffer_t.deinit(c_alloc, buf);
-}
-
-export fn regx_buffer_push(buffer: ?*regx_buffer_t, item: ?*const anyopaque) callconv(.c) regx_rcode_t {
-    const buf = buffer orelse return .REGREX_EARG;
-    const iptr = item orelse return .REGREX_EARG;
-
-    return regx_buffer_t.push(buf, iptr);
-}
-
-export fn regx_buffer_pop(buffer: ?*regx_buffer_t, item: ?*anyopaque) callconv(.c) regx_rcode_t {
-    const buf = buffer orelse return .REGREX_EARG;
-    const iptr = item orelse return .REGREX_EARG;
-
-    return regx_buffer_t.pop(buf, iptr);
-}
-
 pub const regx_match_t = ext.C_MatchHolder;
 
 export fn regx_match_destroy(match: ?*regx_match_t) callconv(.c) void {
     ManagedMatch.deinit(c_alloc, match);
-}
-
-fn regx_match_destroy_cb(item: *anyopaque) callconv(.c) void {
-    const slot: **regx_match_t = @ptrCast(@alignCast(item));
-
-    ManagedMatch.deinit(c_alloc, slot.*);
 }
 
 /// Returns the start and end byte offsets of a capture group in input string
@@ -149,55 +86,57 @@ export fn regx_match_span(
 /// Copies the bytes matched by capture group `i` into a byte buffer
 export fn regx_match_group(
     match: ?*const regx_match_t,
-    i: usize, out: ?*regx_buffer_t
+    i: usize,
+    out_str: ?*?[*:0]u8
 ) callconv(.c) regx_rcode_t {
     const m = match orelse return .REGREX_EARG;
-    const buffer = out orelse return .REGREX_EARG;
+    const out  = out_str orelse return .REGREX_EARG;
+    out.* = null;
 
     const owned = ManagedMatch.unwrapConst(m);
-    const group_str = owned.group(i) catch |err| {
+    const group = owned.group(i) catch |err| {
         return conv.toErrorCode(err);
     };
 
-    conv.initCBufferFromSlice(u8, c_alloc, buffer, &idleDestructor, group_str) catch |err| {
-        return conv.toErrorCode(err);
-    };
+    out.* = conv.toCString(c_alloc, group) catch |err| return conv.toErrorCode(err);
     return .OK;
 }
 
 /// Copies the bytes of the full match into a byte buffer
-export fn regx_match_full(
-    match: ?*const regx_match_t,
-    out: ?*regx_buffer_t
-) callconv(.c) regx_rcode_t {
+export fn regx_match_full(match: ?*const regx_match_t, out_str: ?*?[*:0]u8) callconv(.c) regx_rcode_t {
     const m = match orelse return .REGREX_EARG;
-    const buffer = out orelse return .REGREX_EARG;
+    const out = out_str orelse return .REGREX_EARG;
+    out.* = null;
 
     const owned = ManagedMatch.unwrapConst(m);
     const full_match = owned.group(0) catch |err| {
         return conv.toErrorCode(err);
     };
 
-    conv.initCBufferFromSlice(u8, c_alloc, buffer, &idleDestructor, full_match) catch |err| {
-        return conv.toErrorCode(err);
-    };
+    out.* = conv.toCString(full_match) catch |err| return conv.toErrorCode(err);
     return .OK;
 }
 
 /// Copies all groups (byte offsets) except the first one into a buffer
 export fn regx_match_subgroups(
     match: ?*const regx_match_t,
-    out_buf: ?*regx_buffer_t
+    out_arr: ?[*]*regx_span_t,
+    out_size: ?*usize,
 ) callconv(.c) regx_rcode_t {
     const m = match orelse return .REGREX_EARG;
-    const buffer = out_buf orelse return .REGREX_EARG;
+    const arr = out_arr orelse return .REGREX_EARG;
+    const arr_size = out_size orelse return .REGREX_EARG;
+
+    arr.* = null;
+    arr_size.* = 0;
 
     const owned = ManagedMatch.unwrapConst(m);
     const subgroups = owned.subgroups();
+    const groups_count = subgroups.len;
 
-    conv.initCBufferFromSlice(regx_span_t, c_alloc, buffer, &idleDestructor, subgroups) catch |err| {
-        return conv.toErrorCode(err);
-    };
+    conv.toCArray(regx_span_t, c_alloc, subgroups, arr) catch |err| return conv.toErrorCode(err);
+
+    arr_size.* = groups_count;
     return .OK;
 }
 
@@ -248,42 +187,38 @@ export fn regx_pattern_destroy(pattern: ?*regx_pattern_t) callconv(.c) void {
 
 export fn regx_pattern_match(
     pattern: ?*const regx_pattern_t,
-    in_cstr: [*:0]const u8,
-    in_buf: ?*regx_buffer_t,
+    input: [*:0]const u8,
     out_obj: ?*?*regx_match_t,
 ) callconv(.c) regx_rcode_t {
-    return patternMatchImpl(.match, c_alloc, pattern, in_cstr, in_buf, out_obj);
+    patternMatchImpl(.match, c_alloc, pattern, input, out_obj) catch |err| {
+        return conv.toErrorCode(err);
+    };
+    return .OK;
 }
 
 export fn regx_pattern_search(
     pattern: ?*const regx_pattern_t,
-    in_cstr: [*:0]const u8,
-    in_buf: ?*regx_buffer_t,
+    input: [*:0]const u8,
     out_obj: ?*?*regx_match_t,
 ) callconv(.c) regx_rcode_t {
-    return patternMatchImpl(.search, c_alloc, pattern, in_cstr, in_buf, out_obj);
+    patternMatchImpl(.search, c_alloc, pattern, input, out_obj) catch |err| {
+        return conv.toErrorCode(err);
+    };
+    return .OK;
 }
 
 export fn regx_pattern_find_iter(
     pattern: ?*const regx_pattern_t,
-    in_cstr: [*:0]const u8,
-    in_buf: ?*regx_buffer_t,
+    input: [*:0]const u8,
     out_obj: ?*?*regx_iter_t,
 ) callconv(.c) regx_rcode_t {
     const p = pattern orelse return .REGREX_EARG;
     const out = out_obj orelse return .REGREX_EARG;
-    const buf = in_buf orelse return .REGREX_EARG;
 
     // Ensure that output pointer is null if function fails before creating iterator
     out.* = null;
 
-    conv.initCBufferFromSlice(u8, c_alloc, buf, &idleDestructor, std.mem.span(in_cstr)) catch |err| {
-        return conv.toErrorCode(err);
-    };
-    defer regx_buffer_t.deinit(c_alloc, buf);
-
-    const input = buf.ptr[0..buf.len];
-    const iter = p.findIter(input) catch |err| {
+    const iter = p.findIter(std.mem.span(input)) catch |err| {
         return conv.toErrorCode(err);
     };
 
@@ -293,33 +228,67 @@ export fn regx_pattern_find_iter(
     return .OK;
 }
 
-export fn regx_buffer_find_all(
+export fn regx_pattern_find_all(
     pattern: ?*const regx_pattern_t,
-    in_cstr: [*:0]const u8,
-    in_buf: ?*regx_buffer_t,
-    out_buf: ?*regx_buffer_t,
+    input: [*:0]const u8,
+    out_arr: ?*?[*]*regx_match_t,
+    out_size: ?*usize,
 ) callconv(.c) regx_rcode_t {
     const p = pattern orelse return .REGREX_EARG;
-    const in_buffer = in_buf orelse return .REGREX_EARG;
-    const out = out_buf orelse return .REGREX_EARG;
+    const arr = out_arr orelse return .REGREX_EARG;
+    const arr_size = out_size orelse return .REGREX_EARG;
 
-    const buf_init_rc = conv.initCBufferFromSlice(
-        u8,
+    arr.* = null;
+    arr_size.* = 0;
+
+    const matches = p.findAll(std.mem.span(input)) catch |err| return conv.toErrorCode(err);
+    const match_count = matches.len;
+
+    conv.toCArrayWrapped(
+        regrex.Match,
+        *regx_match_t,
+        ManagedMatch,
         c_alloc,
-        in_buffer,
-        &idleDestructor,
-        std.mem.span(in_cstr),
-    );
-    defer regx_buffer_t.deinit(c_alloc, in_buffer);
+        matches,
+        freeMatchCallback,
+        arr,
+    ) catch |err| return conv.toErrorCode(err);
 
-    if (buf_init_rc != .OK) return buf_init_rc;
-    const input = in_buffer.ptr[0..in_buffer.len];
+    arr_size.* = match_count;
+    return .OK;
+}
 
-    const matches = p.findAll(input) catch |err| {
+export fn regx_pattern_sub(
+    pattern: ?*const regx_pattern_t,
+    input: [*:0]const u8,
+    repl: [*:0]const u8,
+    count: usize,
+    out_str: ?*?[*:0]u8,
+) callconv(.c) regx_rcode_t {
+    const p = pattern orelse return .REGREX_EARG;
+    const out = out_str orelse return .REGREX_EARG;
+    out.* = null;
+
+    const sub = p.sub(std.mem.span(input), std.mem.span(repl), .{ .count = count }) catch |err| {
         return conv.toErrorCode(err);
     };
-    conv.initCBufferFromManaged(*regx_match_t, ManagedMatch, &matches, out, &regx_match_destroy_cb) catch |err| {
-        return conv.toErrorCode(err);
+    const result = conv.toCString(c_alloc, sub) catch |err| return conv.toErrorCode(err);
+
+    out.* = result;
+    return .OK;
+}
+
+export fn regrex_compile(
+    pattern: ?[*:0]const u8,
+    flags: regx_flags_t,
+    out_obj: ?*?*regx_pattern_t,
+) callconv(.c) regx_rcode_t {
+    const p = pattern orelse return .REGREX_EARG;
+    const out = out_obj orelse return .REGREX_EARG;
+    out.* = null;
+    const compiled = regrex.compile(c_alloc, p, conv.bitmaskToFlags(flags)) catch |err| {
+        return conv.toErrCode(err);
     };
+    out.* = compiled;
     return .OK;
 }

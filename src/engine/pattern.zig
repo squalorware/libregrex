@@ -166,15 +166,13 @@ pub const Pattern = opaque {
     /// Executes the bytecode-compiled pattern to search for
     /// all non-overlapping matches in `input` string.
     ///
-    /// An 'eager' counterpart to `findIter`. Consumes a `FindIterator`
-    /// until it is exhausted and stores every returned match
-    ///
-    /// Returns a managed wrapper over `ArrayList(Match)`. The caller must release it
+    /// Returns an allocator-owned slice of `Match`es. Must be released by caller -
+    /// see `types.meta.freeAll` helper
     ///
     /// Returns
     /// - `RegrexError.MemoryError` if failed allocating or manipulating the copy buffer
     /// - `RegrexError.InvalidUnicode` if a broken UTF-8 code point encountered
-    pub fn findAll(ptr: *Pattern, input: []const u8) RegrexError!MatchListBuffer {
+    pub fn findAll(ptr: *Pattern, input: []const u8) RegrexError![]Match {
         const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
 
         var iter = try findIter(ptr, input);
@@ -185,7 +183,7 @@ pub const Pattern = opaque {
 
         while (try iter.next()) |m| try matches.append(m);
 
-        return matches;
+        return try matches.toOwnedSlice();
     }
 
     /// Executes the bytecode-compiled pattern to retrieve all of the matches

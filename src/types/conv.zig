@@ -1,13 +1,11 @@
 //! Various type casting/conversion utility functions
 const std = @import("std");
-const errors = @import("./error.zig");
+const ErrorSet = @import("./error.zig").ErrorSet;
 const ext = @import("./ext.zig");
 const matching = @import("./matching.zig");
 const Flags = @import("./meta.zig").Flags;
 const testing = std.testing;
 const Match = matching.Match;
-const MatchListBuffer = matching.MatchListBuffer;
-const ManagedMatch = matching.ManagedMatch;
 const Span = matching.Span;
 const EmptySpan = matching.EmptySpan;
 const isEmpty = matching.isEmpty;
@@ -30,17 +28,17 @@ pub fn toMatch(
     input: []const u8,
     captures_len: usize,
     slots: []const ?usize,
-) errors.ErrorSet!Match {
+) ErrorSet!Match {
     const full_start = slots[0] orelse 0;
     const full_end = slots[1] orelse full_start;
     const groups_len = captures_len + 1;
 
     if (groups_len > matching.MAX_GROUPS_LEN) {
-        return errors.ErrorSet.GroupBufferOverflow;
+        return ErrorSet.GroupBufferOverflow;
     }
 
     var groups_buf = allocator.alloc(Span, groups_len) catch {
-        return errors.ErrorSet.MemoryError;
+        return ErrorSet.MemoryError;
     };
     errdefer allocator.free(groups_buf);
 
@@ -91,115 +89,99 @@ pub fn toOctDigit(val: u21) ?u21 {
 /// Converts Zig error set to C-compatible error code
 pub fn toErrorCode(err: anyerror) ext.C_ReturnCode {
     return switch(err) {
-        errors.ErrorSet.InvalidArgument => .REGREX_EARG,
-        errors.ErrorSet.NoMatch => .REGREX_ENOMATCH,
-        errors.ErrorSet.MemoryError => .REGREX_EMALLOC,
-        errors.ErrorSet.OutOfRange => .REGREX_EBADGRP,
-        errors.ErrorSet.GroupBufferOverflow => .REGREX_EMAXGRP,
-        errors.ErrorSet.InvalidUnicode => .REGREX_EBADUTF8,
-        errors.ErrorSet.UnexpectedToken => .REGREX_ETOKEN,
-        errors.ErrorSet.UnexpectedEnd => .REGREX_EEND,
-        errors.ErrorSet.ExpressionExpected => .REGREX_EEXPR,
-        errors.ErrorSet.InvalidEscape  => .REGREX_EBADESC,
-        errors.ErrorSet.TrailingEscape => .REGREX_ETRAILESC,
-        errors.ErrorSet.InvalidRepeat => .REGREX_EBADREP,
-        errors.ErrorSet.UnmatchedParen => .REGREX_ERPAREN,
-        errors.ErrorSet.UnmatchedBracket => .REGREX_ERBRACK,
-        errors.ErrorSet.UnexpectedInstruction => .REGREX_EINSTERR,
-        errors.ErrorSet.InternalError => .ERR,
+        ErrorSet.InvalidArgument => .REGREX_EARG,
+        ErrorSet.NoMatch => .REGREX_ENOMATCH,
+        ErrorSet.MemoryError => .REGREX_EMALLOC,
+        ErrorSet.OutOfRange => .REGREX_EBADGRP,
+        ErrorSet.GroupBufferOverflow => .REGREX_EMAXGRP,
+        ErrorSet.InvalidUnicode => .REGREX_EBADUTF8,
+        ErrorSet.UnexpectedToken => .REGREX_ETOKEN,
+        ErrorSet.UnexpectedEnd => .REGREX_EEND,
+        ErrorSet.ExpressionExpected => .REGREX_EEXPR,
+        ErrorSet.InvalidEscape  => .REGREX_EBADESC,
+        ErrorSet.TrailingEscape => .REGREX_ETRAILESC,
+        ErrorSet.InvalidRepeat => .REGREX_EBADREP,
+        ErrorSet.UnmatchedParen => .REGREX_ERPAREN,
+        ErrorSet.UnmatchedBracket => .REGREX_ERBRACK,
+        ErrorSet.UnexpectedInstruction => .REGREX_EINSTERR,
+        ErrorSet.InternalError => .ERR,
     };
 }
 
 /// Converts a C-compatible error code to a Zig error.
-pub fn toErrorSet(rc: ext.C_ReturnCode) ?errors.ErrorSet {
+pub fn toErrorSet(rc: ext.C_ReturnCode) ?ErrorSet {
     return switch (rc) {
         .OK => null,
-        .REGREX_EARG => errors.ErrorSet.InvalidArgument,
-        .REGREX_ENOMATCH => errors.ErrorSet.NoMatch,
-        .REGREX_EMALLOC => errors.ErrorSet.MemoryError,
-        .REGREX_EBADGRP => errors.ErrorSet.OutOfRange,
-        .REGREX_EMAXGRP => errors.ErrorSet.GroupBufferOverflow,
-        .REGREX_EBADUTF8 => errors.ErrorSet.InvalidUnicode,
-        .REGREX_ETOKEN => errors.ErrorSet.UnexpectedToken,
-        .REGREX_EEND => errors.ErrorSet.UnexpectedEnd,
-        .REGREX_EEXPR => errors.ErrorSet.ExpressionExpected,
-        .REGREX_EBADESC => errors.ErrorSet.InvalidEscape,
-        .REGREX_ETRAILESC => errors.ErrorSet.TrailingEscape,
-        .REGREX_EBADREP => errors.ErrorSet.InvalidRepeat,
-        .REGREX_ERPAREN => errors.ErrorSet.UnmatchedParen,
-        .REGREX_ERBRACK => errors.ErrorSet.UnmatchedBracket,
-        .REGREX_EINSTERR => errors.ErrorSet.UnexpectedInstruction,
-        .ERR => errors.ErrorSet.InternalError,
+        .REGREX_EARG => ErrorSet.InvalidArgument,
+        .REGREX_ENOMATCH => ErrorSet.NoMatch,
+        .REGREX_EMALLOC => ErrorSet.MemoryError,
+        .REGREX_EBADGRP => ErrorSet.OutOfRange,
+        .REGREX_EMAXGRP => ErrorSet.GroupBufferOverflow,
+        .REGREX_EBADUTF8 => ErrorSet.InvalidUnicode,
+        .REGREX_ETOKEN => ErrorSet.UnexpectedToken,
+        .REGREX_EEND => ErrorSet.UnexpectedEnd,
+        .REGREX_EEXPR => ErrorSet.ExpressionExpected,
+        .REGREX_EBADESC => ErrorSet.InvalidEscape,
+        .REGREX_ETRAILESC => ErrorSet.TrailingEscape,
+        .REGREX_EBADREP => ErrorSet.InvalidRepeat,
+        .REGREX_ERPAREN => ErrorSet.UnmatchedParen,
+        .REGREX_ERBRACK => ErrorSet.UnmatchedBracket,
+        .REGREX_EINSTERR => ErrorSet.UnexpectedInstruction,
+        .ERR => ErrorSet.InternalError,
     };
 }
 
-/// Initializes a C-compatible buffer and copies all items from `sequence` (slice of `T`s).
-///
-/// Items are shallow-copied into the buffer.
-pub fn initCBufferFromSlice(
-    comptime T: type,
-    alloc: std.mem.Allocator,
-    buffer: *ext.C_GenericBuffer,
-    destroy_cb: *const fn(*anyopaque) callconv(.c) void,
-    sequence: []const T,
-) errors.ErrorSet!void {
-    const init_rc: ext.C_ReturnCode = ext.C_GenericBuffer.init(
-        alloc,
-        sequence.len,
-        destroy_cb,
-        @alignOf(T),
-        @sizeOf(T),
-        buffer,
-    );
-    if (init_rc != .OK) return toErrorSet(init_rc);
+pub fn toCString(alloc: std.mem.Allocator, input: ?[]const u8) ErrorSet![*:0]const u8 {
+    const slice = input orelse return ErrorSet.InvalidArgument;
 
-    for (sequence) |item| {
-        const push_rc = ext.C_GenericBuffer.push(buffer, &item);
-
-        if (push_rc != .OK) {
-            ext.C_GenericBuffer.deinit(alloc, buffer);
-            return toErrorSet(init_rc);
-        }
-    }
+    const out = alloc.dupeSentinel(u8, slice, 0) catch return ErrorSet.MemoryError;
+    return out.ptr;
 }
 
-pub fn initCBufferFromManaged(
-    comptime CItem: type,
-    comptime ManagedWrapper: type,
-    managed_buffer: anytype,
-    out: *ext.C_GenericBuffer,
-    destroy_cb: *const fn (*anyopaque) callconv(.c) void,
-) errors.ErrorSet!void {
-    const alloc = managed_buffer.allocator;
-    const items = try managed_buffer.toOwnedSlice();
-    defer alloc.free(items);
+/// Casts a slice of plain types to a C-compatible array
+pub fn toCArray(comptime T: type, alloc: std.mem.Allocator, sequence: []T, out: *?[*]T) ErrorSet!void {
+    out.* = null;
 
-    var rc: ext.C_ReturnCode = ext.C_GenericBuffer.init(alloc, items.len, destroy_cb, @alignOf(CItem), @sizeOf(CItem), out);
-    if (rc != .OK) {
-        for (items) |*item| managed_buffer.deinitItem(item);
-        return toErrorSet(rc);
-    }
+    if (sequence.len == 0) return;
 
+    const result = alloc.dupe(T, sequence) catch return ErrorSet.MemoryError;
+    out.* = result.ptr;
+}
+
+/// Casts a slice of wrapped opaque managed types to a C-compatible array
+pub fn toCArrayWrapped(
+    comptime T: type,
+    comptime CT: type,
+    comptime T_Wrapper: type,
+    allocator: std.mem.Allocator,
+    sequence: []T,
+    destroy_cb: *const fn(std.mem.Allocator, *T) void,
+    out: *?[*]CT
+) ErrorSet!void {
+    out.* = null;
+    defer allocator.free(sequence);
+
+    if (sequence.len == 0) return;
+
+    const wrapped = allocator.alloc(CT, sequence.len) catch {
+        for (sequence) |*elem| {
+            destroy_cb(allocator, elem);
+        }
+        return ErrorSet.MemoryError;
+    };
     var i: usize = 0;
-    while (i < items.len) : (i += 1) {
-        const wrapped: CItem = ManagedWrapper.init(alloc, items[i]) catch |err| {
-            // items before `i` are already owned by `out`;
-            // `items[i]` and everything after it are still owned by this function
-            for (items[i..]) |*item| managed_buffer.deinitItem(item);
-            ext.C_GenericBuffer.deinit(alloc, out);
+    while (i < sequence.len) : (i += 1) {
+        wrapped[i] = T_Wrapper.init(allocator, sequence[i]) catch |err| {
+            // Release already wrapped
+            for (wrapped[0..i]) |item| T_Wrapper.deinit(allocator, item);
+            // Release the rest
+            for (wrapped[i..]) |*item| destroy_cb(allocator, item);
+            // Free the backing allocator-owned slice
+            allocator.free(wrapped);
             return err;
         };
-        rc = ext.C_GenericBuffer.push(out, &wrapped);
-        if (rc != .OK) {
-            // items[i] has already transferred ownership to wrapped
-            ManagedWrapper.deinit(alloc, wrapped);
-            // clean up subsequent items
-            for (items[i + 1..]) |*item| managed_buffer.deinitItem(item);
-            // clean up the rest
-            ext.C_GenericBuffer.deinit(alloc, out);
-            return toErrorSet(rc);
-        }
     }
+    out.* = wrapped.ptr;
 }
 
 pub fn bitmaskToFlags(mask: u8) Flags {

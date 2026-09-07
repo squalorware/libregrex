@@ -1,4 +1,6 @@
 //! Shared error set for the regex frontend and compiler.
+const conv = @import("./conv.zig");
+const C_ReturnCode = @import("./ext.zig").C_ReturnCode;
 
 /// Common parsing and compilation errors
 pub const ErrorSet = error {
@@ -32,4 +34,11 @@ pub const ErrorSet = error {
     UnmatchedBracket,
     /// Non-specific generic error
     InternalError,
+};
+
+const ErrorTypeTag = enum { zig, c };
+
+pub const ErrorType = union(ErrorTypeTag) {
+    zig: ErrorSet,
+    c: C_ReturnCode,
 };

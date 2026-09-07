@@ -205,6 +205,16 @@ pub fn Range(comptime T: type) type {
     };
 }
 
+/// Frees an allocator-owned slice. Deinitializes its elements before releasing memory
+pub fn freeAll(comptime T: type, alloc: std.mem.Allocator, sequence: []T) void {
+    for (sequence) |*elem| {
+        if (hasDeinit(T)) {
+            elem.deinit(alloc);
+        }
+    }
+    alloc.free(sequence);
+}
+
 test "MergedStruct merges two regular structs" {
     const Foo = struct {
         foo: u8 = 1,
