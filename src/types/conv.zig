@@ -154,7 +154,7 @@ pub fn toErrorMsg(rcode: ext.C_ReturnCode) [:0]const u8 {
     };
 }
 
-pub fn toCString(alloc: std.mem.Allocator, input: ?[]const u8) ErrorSet![*:0]const u8 {
+pub fn toC_String(alloc: std.mem.Allocator, input: ?[]const u8) ErrorSet![*:0]const u8 {
     const slice = input orelse return ErrorSet.InvalidArgument;
 
     const out = alloc.dupeSentinel(u8, slice, 0) catch return ErrorSet.MemoryError;
@@ -162,7 +162,7 @@ pub fn toCString(alloc: std.mem.Allocator, input: ?[]const u8) ErrorSet![*:0]con
 }
 
 /// Casts a slice of plain types to a C-compatible array
-pub fn toCArray(comptime T: type, alloc: std.mem.Allocator, sequence: []T, out: *?[*]T) ErrorSet!void {
+pub fn toC_Array(comptime T: type, alloc: std.mem.Allocator, sequence: []T, out: *?[*]T) ErrorSet!void {
     out.* = null;
 
     if (sequence.len == 0) return;
@@ -172,7 +172,7 @@ pub fn toCArray(comptime T: type, alloc: std.mem.Allocator, sequence: []T, out: 
 }
 
 /// Casts a slice of wrapped opaque managed types to a C-compatible array
-pub fn toCArrayWrapped(
+pub fn toC_ArrayWrapped(
     comptime T: type,
     comptime CT: type,
     comptime T_Wrapper: type,
@@ -207,7 +207,7 @@ pub fn toCArrayWrapped(
     out.* = wrapped.ptr;
 }
 
-pub fn bitmaskToFlags(mask: u8) Flags {
+pub fn toCompileFlags(mask: u8) Flags {
     return .{
         .ignore_case = mask & (1 << 0) != 0,
         .multiline = mask & (1 << 1) != 0,

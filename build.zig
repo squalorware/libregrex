@@ -114,6 +114,7 @@ pub fn build(b: *std.Build) void {
             .static,
             root_mod,
             types_mod,
+            engine_mod,
         );
         b.installArtifact(static_lib);
     }
@@ -126,6 +127,7 @@ pub fn build(b: *std.Build) void {
             .dynamic,
             root_mod,
             types_mod,
+            engine_mod,
         );
         b.installArtifact(dynamic_lib);
     }
@@ -141,11 +143,20 @@ fn buildLibrary(
     linkage: std.builtin.LinkMode,
     root_mod: *std.Build.Module,
     types_mod: *std.Build.Module,
+    engine_mod: *std.Build.Module,
 ) *Step.Compile {
     const zon = @import("./build.zig.zon");
     const version = std.SemanticVersion.parse(zon.version) catch {
         @panic("Invalid semver format");
     };
+
+    const lib_mod = b.addModule("lib", .{
+        .root_source_file = b.path("src/lib.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    lib_mod.addImport("types", types_mod);
+    lib_mod.addImport("engine", engine_mod);
 
     const mod = b.createModule(.{
         .root_source_file = b.path("src/regrex.zig"),
@@ -154,7 +165,7 @@ fn buildLibrary(
         .link_libc = true,
     });
     mod.addImport("regrex", root_mod);
-    mod.addImport("types", types_mod);
+    mod.addImport("lib", lib_mod);
 
     const lib = b.addLibrary(.{
         .name = "regrex",

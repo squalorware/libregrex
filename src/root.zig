@@ -139,7 +139,7 @@ pub fn sub(
     input: []const u8,
     repl: []const u8,
     option_set: SubOptions,
-) RegrexError![]const u8 {
+) RegrexError![]u8 {
     const compiled: *Pattern = try compile(alloc, pattern, @as(Flags, .{
         .ignore_case = option_set.ignore_case,
         .multiline = option_set.multiline,

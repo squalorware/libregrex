@@ -121,13 +121,13 @@ pub const Match = struct {
     }
 };
 
-fn freeMatchCallback(alloc: std.mem.Allocator, value: *Match) void {
+pub fn freeMatchCallback(alloc: std.mem.Allocator, value: *Match) void {
     value.deinit(alloc);
 }
 
-// Managed wrappers
 /// A resizable dynamic buffer to store Match entries
 pub const MatchListBuffer = managed.ManagedDynamicBuffer(Match, null);
+/// Managed opaque handler for C compatibility implementations
 pub const ManagedMatch = managed.ManagedOpaqueWrapper(ext.C_MatchHolder, Match, freeMatchCallback);
 
 test "EmptySpan should return an empty Span" {
@@ -146,8 +146,8 @@ const test_input = "lol 420 kek";
 
 const MatchFixture = struct {
     match: Match,
-    /// Creates a test match and copies group spans
-    /// into allocator-owned memory.
+    // Creates a test match and copies group spans
+    // into allocator-owned memory.
     pub fn init(
         allocator: std.mem.Allocator,
         full_start: usize,
