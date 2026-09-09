@@ -1,4 +1,6 @@
-.zig-cache
+.*-cache
 zig-out
 zig-pkg
 dist
+.idea
+.vscode
