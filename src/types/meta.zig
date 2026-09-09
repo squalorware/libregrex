@@ -181,12 +181,18 @@ pub const RangeOptions = struct {
     extern_compat: bool = false,
 };
 
-/// Generic Range type.
+/// Generic integer range type
 ///
-/// Holds start and end offsets into any sequence or subsequence of given type
+/// Stores integers `T` as start and end bounds or indices within a sequence of items;
+/// The bounds follow slice semantics: start is inclusive, end is exclusive
 ///
-/// Accepts any scalar type (usually integers).
-/// Exposes basic functionality for comparison and existence checking.
+/// By default, returns a plain Zig struct.
+/// Accepts option structure `RangeOptions{ extern_compat: bool }`
+///
+/// Setting `extern_compat` to `true` creates a C ABI-compatible Range with `extern struct`;
+/// Element type must be C-compatible (with 0 or power of two bits), otherwise fails at comptime
+///
+/// Exposes basic comparison and containment operations
 pub fn Range(comptime T: type, opts: RangeOptions) type {
     const info = @typeInfo(T);
 
