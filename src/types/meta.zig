@@ -225,7 +225,12 @@ pub fn Range(comptime T: type, opts: RangeOptions) type {
 
         start: T,
         end: T,
-        /// Compares a scalar item against an inclusive range `[tail..head]`
+        /// Compares an integer `T` against an inclusive range `[tail..head]` of same type
+        ///
+        /// Returns item's relative position against the range:
+        /// - `LookupOrder.after` if item out of bounds; particularly after current `.head`;
+        /// - `LookupOrder.before` if item out of bounds; particularly before current `.tail`;
+        /// - Otherwise returns `LookupOrder.match`
         pub fn compare(tail: T, head: T,item: T) LookupOrder {
             if (item < tail) return .before;
             if (item > head) return .after;
