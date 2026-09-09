@@ -18,7 +18,7 @@ pub const RuneRangeType = enum {
 };
 
 /// Inclusive Unicode scalar range or case-fold mapping.
-pub const RuneRange = meta.Range(u21);
+pub const RuneRange = meta.Range(u21, .{});
 
 /// The lookup table representation
 ///

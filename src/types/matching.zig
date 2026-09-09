@@ -12,7 +12,7 @@ pub const MAX_GROUPS_LEN = 1024;
 /// starting and ending offsets into the input string
 ///
 /// Follows slice semantics - `start` is inclusive, `end` is exclusive
-pub const Span = Range(usize);
+pub const Span = Range(usize, .{ .extern_compat = true });
 
 /// Creates a span where start and end are set to sentinel values
 ///

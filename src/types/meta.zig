@@ -177,19 +177,48 @@ pub const LookupOrder = enum {
     after,
 };
 
+pub const RangeOptions = struct {
+    extern_compat: bool = false,
+};
+
 /// Generic Range type.
 ///
 /// Holds start and end offsets into any sequence or subsequence of given type
 ///
 /// Accepts any scalar type (usually integers).
 /// Exposes basic functionality for comparison and existence checking.
-pub fn Range(comptime T: type) type {
-    return extern struct {
-        start: T,
-        end: T,
+pub fn Range(comptime T: type, opts: RangeOptions) type {
+    const info = @typeInfo(T);
 
+    if (info != .int) @compileError("Range accepts only integer element types");
+    if (opts.extern_compat and !std.math.isPowerOfTwo(info.int.bits)) {
+        @compileError("Extern Range wanted, but the given element type is not C ABI compatible");
+    }
+    if (opts.extern_compat) {
+        return extern struct {
+            const Self = @This();
+
+            start: T,
+            end: T,
+            /// Compares a scalar item against an inclusive range `[tail..head]`
+            pub fn compare(tail: T, head: T,item: T) LookupOrder {
+                if (item < tail) return .before;
+                if (item > head) return .after;
+
+                return .match;
+            }
+
+            /// Checks if given item exists within this range
+            pub fn contains(self: Self, item: T) bool {
+                return compare(self.start, self.end, item) == .match;
+            }
+        };
+    }
+    return struct {
         const Self = @This();
 
+        start: T,
+        end: T,
         /// Compares a scalar item against an inclusive range `[tail..head]`
         pub fn compare(tail: T, head: T,item: T) LookupOrder {
             if (item < tail) return .before;
