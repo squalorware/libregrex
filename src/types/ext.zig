@@ -1,9 +1,13 @@
 //! C-compatible data types and functions
 const std = @import("std");
+const conv = @import("./conv.zig");
 const ErrorSet = @import("./error.zig").ErrorSet;
+const matching = @import("./matching.zig");
 const meta = @import("./meta.zig");
+const Match = matching.Match;
+const Span = matching.Span;
 
-/// C-compatible enum specifying return codes used by the library
+/// Explicitly use signed 8-bit integer to ensure memory layout compatibility with C ABI
 pub const C_ReturnCode = enum(i8) {
     /// Shouldn't ever return; invalid syscall or not implemented
     ENOSYS = -1,
@@ -43,14 +47,60 @@ pub const C_ReturnCode = enum(i8) {
     REGREX_EINSTERR = 16,
 };
 
-/// Opaque handler for result type produced by matching operations.
-///
-/// It is allocated on the heap and must be released.
-pub const C_MatchHolder = opaque {};
+/// NULL-terminated `const char*`, immutable, borrowed
+pub const C_StaticString = [*:0]const u8;
 
-/// Opaque handler for a lazy iterator created by the compiled pattern.
-///
-/// The parent pattern and input buffer must outlive the iterator.
-///
-/// It is allocated on the heap and must be released
-pub const C_IterHolder = opaque {};
+/// NULL-terminated `char*`, mutable, owned by allocator 
+pub const C_String = [*:0]u8;
+
+pub const C_Match = extern struct {
+    ptr: ?*anyopaque,
+    cgroups: [*]Span,
+    groups_len: usize,
+
+    const destroyCallback: meta.T_DestructorCallback(Match) = matching.freeMatchCallback;
+
+    pub fn create(alloc: std.mem.Allocator, match: ?*Match) ErrorSet!C_Match {
+        const m = match orelse return ErrorSet.InvalidArgument;
+
+        const ptr = alloc.create(Match) catch return ErrorSet.MemoryError;
+        ptr.* = m.*;
+
+        return .{
+            .ptr = @ptrCast(ptr),
+            .cgroups = m.groups.ptr,
+            .groups_len = m.groups.len,
+        };
+    }
+
+    pub fn destroy(ptr: *C_Match, alloc: std.mem.Allocator) void {
+        const self = ptr.unwrap() catch return;
+        const cb = destroyCallback orelse return;
+        cb(alloc, self);
+        self.* = undefined;
+        alloc.destroy(self);
+    }
+
+    pub fn unwrap(self: *C_Match) ErrorSet!*Match {
+        const m = self.ptr orelse return ErrorSet.InvalidArgument;
+        return @ptrCast(@alignCast(m));
+    }
+
+    pub fn unwrapConst(self: *C_Match) ErrorSet!*const Match {
+        const m = self.ptr orelse return ErrorSet.InvalidArgument;
+        return @ptrCast(@alignCast(m));
+    }
+};
+
+/// Generic destructor for allocated data types like arrays
+pub fn c_freeAllocated(
+    alloc: std.mem.Allocator, 
+    comptime T: type, ptr: ?[*]T, 
+    len: usize, 
+    options: meta.T_FreeOptions(T)
+) void {
+    const array = ptr orelse return;
+
+    _ = meta.freeAllocated(alloc, T, array[0..len], options);
+}
+

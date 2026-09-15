@@ -4,7 +4,9 @@ const C_ReturnCode = @import("./ext.zig").C_ReturnCode;
 
 /// Common parsing and compilation errors
 pub const ErrorSet = error {
+    /// Invalid argument
     InvalidArgument,
+    /// No matching group
     NoMatch,
     /// Index is out of range
     OutOfRange,
@@ -14,9 +16,9 @@ pub const ErrorSet = error {
     ExpressionExpected,
     /// Invalid use of repetition operator `*`
     InvalidRepeat,
-    /// Out of memory
+    /// Memory allocation error
     MemoryError,
-    /// An invalid or broken UTF-8 character
+    /// Invalid or malformed UTF-8 codepoint
     InvalidUnicode,
     /// Malformed escape sequence
     InvalidEscape,

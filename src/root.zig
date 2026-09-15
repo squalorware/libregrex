@@ -4,135 +4,83 @@ const engine = @import("engine");
 const bytecode = engine.bytecode;
 const tokens = engine.tokens;
 const errors = types.errors;
-const MergedStruct = types.meta.MergedStruct;
+const meta = types.meta;
+const T_MergedStruct = meta.T_MergedStruct;
 
-pub const FindIterator = engine.FindIterator;
-pub const Flags = types.meta.Flags;
-pub const freeAll = types.meta.freeAll;
+pub const LazyIterator = engine.LazyIterator;
+pub const CompileFlags = types.CompileFlags;
+pub const freeAllocated = types.meta.freeAllocated;
 pub const Match = types.Match;
 pub const Pattern = engine.Pattern;
-pub const PatternSubOptions = engine.PatternSubOptions;
 pub const RegrexError = errors.ErrorSet;
 pub const Span = types.Span;
 
-/// `Flags` and `PatternSubOptions` types merged into a single structure
-pub const SubOptions = MergedStruct(Flags, PatternSubOptions);
+pub const PatternSubOptions = engine.PatternSubOptions;
+pub const SubOptions = T_MergedStruct(CompileFlags, PatternSubOptions);
 
-/// Compiles a regex `pattern` string for later use. Accepts `Flags` that modify the behaviour.
-///
-/// Default flags all set to `false`. If the default behaviour is preferred, just pass an empty
-/// structure literal
-///
-/// Returns a reusable `Pattern` handle which encapsulates compiled pattern
-/// and exposes a basic public interface for the consumer.
+/// Compiles regular expression string. 
+/// Returns a pointer type that wraps the pattern buffer and exposes public interface
 /// 
-/// `Pattern` owns the encapsulated bytecode buffer and so must be released with
-/// `Pattern.deinit`.
-/// 
-/// Returns `RegrexError` on failure
-pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: Flags) RegrexError!*Pattern {
-    var arena = std.heap.ArenaAllocator.init(alloc);
+/// Accepts flags to modify pattern behaviour
+pub fn compile(allocator: std.mem.Allocator, pattern: []const u8, flags: CompileFlags) RegrexError!*Pattern {
+    var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var token_list = try tokens.TokenListBuffer.init(alloc, null);
+    const alloc = arena.allocator();
+
+    var token_list = try tokens.TokenListBuffer.init(alloc, .{});
     defer token_list.deinit();
 
     var lexer = engine.Lexer.init(pattern);
     try lexer.tokenize(&token_list);
 
-    var parser = engine.Parser.init(arena.allocator(), token_list.items());
+    var parser = engine.Parser.init(alloc, token_list.items());
     const ast = try parser.parse();
 
-    var bcode = try bytecode.BytecodeBuffer.init(alloc, null);
+    var bcode = try bytecode.BytecodeBuffer.init(alloc, .{});
     defer bcode.deinit();
 
     const compiler = engine.Compiler.init(&bcode, flags);
     try compiler.compile(alloc, ast);
 
-    return try Pattern.init(
-        alloc,
-        pattern,
-        &bcode,
-        parser.group_count,
-    );
+    return try Pattern.init(alloc, pattern, &bcode, parser.group_count);
 }
 
-/// Compiles the string `pattern` and searches the `input` string
-/// for the first location where the `pattern` matches.
-/// 
-/// Compiled `*Pattern` object is automatically destroyed at execution end.
-/// 
-/// Returns:
-/// - `Match` on success (owns heap-allocated `subgroups` list, 
-/// should be explicitly released by caller with `Match.deinit(alloc)`);
-/// - `null` if no match found;
-/// - `RegrexError` on failure
-pub fn match(
-    alloc: std.mem.Allocator,
-    pattern: []const u8,
-    input: []const u8,
-    flags: Flags
-) RegrexError!?Match {
-    const compiled: *Pattern = try compile(alloc, pattern, flags);
-    defer compiled.deinit();
+/// Returns the first match encountered at the beginning of the input
+pub fn match(alloc: std.mem.Allocator, pattern: []const u8, input: []const u8, flags: CompileFlags) RegrexError!?Match {
+    const regex: *Pattern = try compile(alloc, pattern, flags);
+    defer regex.deinit();
 
-    return try compiled.match(input);
+    return try regex.match(input);
 }
 
-/// Compiles the string `pattern` and looks for a match
-/// at the beginning of the `input` string.
-/// 
-/// Compiled `*Pattern` object is automatically destroyed at execution end.
-/// 
-/// Returns:
-/// - `Match` on success (owns heap-allocated `subgroups` list, 
-/// should be explicitly released by caller with `Match.deinit(alloc)`);
-/// - `null` if no match found;
-/// - `RegrexError` on failure
-pub fn search(
-    alloc: std.mem.Allocator,
-    pattern: []const u8,
-    input: []const u8,
-    flags: Flags
-) RegrexError!?Match {
-    const compiled: *Pattern = try compile(alloc, pattern, flags);
-    defer compiled.deinit();
+/// Returns the first match produced at any position within the input
+pub fn search(alloc: std.mem.Allocator, pattern: []const u8, input: []const u8, flags: CompileFlags) RegrexError!?Match {
+    const regex: *Pattern = try compile(alloc, pattern, flags);
+    defer regex.deinit();
 
-    return try compiled.search(input);
+    return try regex.search(input);
 }
 
-/// Compiles the string `pattern` and collects
-/// all non-overlapping matches in the `input string`.
+/// Returns a slice containing all non-overlapping matches found in the input
 /// 
-/// Compiled `*Pattern` object is automatically destroyed at execution end.
-/// 
-/// Returns:
-/// - `[]Match` on success (allocator-owned, must be released by caller;
-///  see `freeAll`)
-/// - `RegrexError` on failure
+/// The caller owns the slice and must explicitly release it
 pub fn findAll(
-    alloc: std.mem.Allocator,
-    pattern: []const u8,
-    input: []const u8,
-    flags: Flags
+    alloc: std.mem.Allocator, 
+    pattern: []const u8, 
+    input: []const u8, 
+    flags: CompileFlags
 ) RegrexError![]Match {
-    const compiled: *Pattern = try compile(alloc, pattern, flags);
-    defer compiled.deinit();
+    const regex: *Pattern = try compile(alloc, pattern, flags);
+    defer regex.deinit();
 
-    return try compiled.findAll(input);
+    return try regex.findAll(input);
 }
 
-/// Compiles the string `pattern` and searches for matches in the `input` string,
-/// then copies non-matching parts and replaces the matches with the `repl` string.
+
+/// Copies the input string to a dynamic buffer, then substitutes all pattern matches with a replacement string
 /// 
-/// Compiled `*Pattern` object is automatically destroyed at execution end.
-/// 
-/// `options.count` controls the number of matches to replace (default = 0)
-/// 
-/// Returns:
-/// - `[]u8` on success (heap allocated, should be explicitly 
-/// released by caller with `alloc.free(replaced)`)
-/// - `RegrexError` on failure
+/// Returns the modified copy of the input. Returned slice is owned by caller and must be released
 pub fn sub(
     alloc: std.mem.Allocator,
     pattern: []const u8,
@@ -140,15 +88,15 @@ pub fn sub(
     repl: []const u8,
     option_set: SubOptions,
 ) RegrexError![]u8 {
-    const compiled: *Pattern = try compile(alloc, pattern, @as(Flags, .{
+    const regex: *Pattern = try compile(alloc, pattern, @as(CompileFlags, .{
         .ignore_case = option_set.ignore_case,
         .multiline = option_set.multiline,
         .dot_all = option_set.dot_all,
         ._padding = option_set._padding,
     }));
-    defer compiled.deinit();
+    defer regex.deinit();
 
-    return try compiled.sub(input, repl, @as(PatternSubOptions, .{
+    return try regex.sub(input, repl, @as(PatternSubOptions, .{
         .count = option_set.count,
     }));
 }

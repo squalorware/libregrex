@@ -27,9 +27,7 @@
 extern "C" {
 #endif
 
-/*
-    Stable return code type used by the C ABI.
-*/
+/* Return codes used within the library */
 typedef int8_t regx_rcode_t;
 enum
 {
@@ -41,116 +39,130 @@ enum
     REGREX_EMALLOC,          /* Memory allocation error */
     REGREX_ERANGE,           /* Index is out of range */
     REGREX_EMAXGRP,          /* Exceeded maximum group count limit */
-    REGREX_EBADUTF8,         /* Invalid or malformed UTF-8  */
-    REGREX_ETOKEN,           /* Unexpected Token */
-    REGREX_EEND,             /* Unexpected end of pattern */
+    REGREX_EBADUTF8,         /* Invalid or malformed UTF-8 codepoint */
+    REGREX_ETOKEN,           /* Token unexpected in current context */
+    REGREX_EEND,             /* Unexpected end of pattern (EOF before construct complete) */
     REGREX_EEXPR,            /* Expected expression */
     REGREX_EBADESC,          /* Malformed escape sequence */
-    REGREX_ETRAILESC,        /* Trailing backslash */
+    REGREX_ETRAILESC,        /* Trailing backslash at the pattern end */
     REGREX_EBADREP,          /* Invalid repetition operator */
     REGREX_ERPAREN,          /* Closing parenthesis missing */
     REGREX_ERBRACK,          /* Closing bracket missing */
-    REGREX_EINSTERR          /* Unexpected bytecode instruction */
+    REGREX_EINSTERR          /* Instruction unexpected in current context */
 };
 
-/*
-    Start and end indices of a capture group inside the input string
-
-    `start` is inclusive. `end` is exclusive.
-    Both values are byte offsets, not UTF-8 scalar indices.
-*/
+/* Start and end byte offsets of a capture group */
 typedef struct
 {
     size_t start;
     size_t end;
 } regx_span_t;
-/*
-    Opaque handler for result type produced by matching operations.
 
-    It is allocated on the heap and must be released.
-*/
-typedef struct regx_match_t regx_match_t;
+/* Releases an array of byte offset ranges */
+void regx_span_buf_free(regx_span_t *ptr, size_t len);
 
-void regx_match_destroy(regx_match_t* match);
+/* Data structure that holds the match result data */
+typedef struct
+{
+    /* A pointer to an internal Match object */
+    void *ptr;
+    /* Byte offsets of matches within the input. 
+                        `cgroups[0]` always represents the full match.
+                        `cgroups[1..]` contains capture groups */
+    regx_span_t *cgroups;
+    size_t groups_len;
+} regx_match_t;
 
-/* */
-regx_rcode_t regx_match_span(const regx_match_t* match, size_t i, regx_span_t* out_obj);
-/* Allocates and returns a NULL-terminated copy of capture group i in out_str */
-regx_rcode_t regx_match_group(const regx_match_t* match, size_t i, char** out_str);
-/* Allocates and returns a NULL-terminated copy of the full match in out_str */
-regx_rcode_t regx_match_full(const regx_match_t* match, size_t i, char** out);
-/* Copies all capture groups (byte offsets) except the first one into a buffer */
-regx_rcode_t regx_match_subgroups(const regx_match_t* match, regx_span_t** out_arr, size_t out_size);
+/* Releases the opaque handler wrapping the match object representation */
+void regx_match_destroy(regx_match_t *ptr);
 
-/*
-    Opaque handler for a lazy iterator created by the compiled pattern.
+/* Releases memory allocated to store a buffer of match objects */
+void regx_match_buf_free(regx_match_t **ptr, size_t len);
 
-    The parent pattern and input buffer must outlive the iterator.
+/* Retrieves a capture group at `cgroups[i]`; */
+regx_rcode_t regx_match_span(regx_match_t *match, size_t i, regx_span_t *out_obj);
 
-    It is allocated on the heap and must be released
-*/
+/* Allocates a NULL-terminated buffer, stores in it a substring of input outlined by byte offset at `cgroups[i]` */
+regx_rcode_t regx_match_group(regx_match_t *match, size_t i, char **out_str, size_t *out_len);
+
+/* Allocates a NULL-terminated buffer, stores in it a copy of the full match */
+regx_rcode_t regx_match_full(regx_match_t *match, size_t i, char **out_str, size_t *out_len);
+
+/* Allocates a buffer with capture groups of the match excluding the full match at `cgroups[0]` */
+regx_rcode_t regx_match_subgroups(regx_match_t *match, regx_span_t **out_buf, size_t *out_len);
+
+/* Lazy iterator */
 typedef struct regx_iter_t regx_iter_t;
 
-void regx_iter_destroy(regx_iter_t* iter);
+void regx_iter_destroy(regx_iter_t *iter);
 
-/* Get the next match and store it in `out_obj` or get .REGREX_ENOMATCH */
-regx_rcode_t regx_iter_next(regx_iter_t* iter, regx_match_t** out_obj);
+/* Retrieves the next match and stores it in `out_obj` */
+regx_rcode_t regx_iter_next(regx_iter_t *iter, regx_match_t *out_obj);
 
-/*
-    Opaque handler for compiled reusable regex pattern.
+/* Represents the compiled regex pattern. Contains the bytecode buffer executed by internal VM.
 
-    It is allocated on the heap and must be released
-*/
+    Has no public fields and is immutable. Provides a public interface for interaction.
+
+    Can only be created by compiling the string pattern, and discarded using associated destructor */
 typedef struct regx_pattern_t regx_pattern_t;
 
-void regx_pattern_destroy(regx_pattern_t* pattern);
+void regx_pattern_destroy(regx_pattern_t *pattern);
 
-/* */
-regx_rcode_t regx_pattern_match(const regx_pattern_t* pattern,
-                                const char* input, regx_match_t** out_obj);
-/* */
-regx_rcode_t regx_pattern_search(const regx_pattern_t* pattern,
-                                const char* input, regx_match_t** out_obj);
+/* Retrieves the first match encountered at the beginning of the input */
+regx_rcode_t regx_pattern_match(regx_pattern_t *pattern,
+                                const char *input, regx_match_t *out_obj);
+
+/* Retrieves the first match produced at any position within the input */
+regx_rcode_t regx_pattern_search(regx_pattern_t *pattern,
+                                const char *input, regx_match_t *out_obj);
+
 /* Initializes the lazy iterator */
-regx_rcode_t regx_pattern_find_iter(const regx_pattern_t* pattern,
-                                    const char* input, regx_iter_t** out_obj);
-/* Allocates an array of match types and stores all non-overlapping matches into it */
-regx_rcode_t regx_pattern_find_all(const regx_pattern_t* pattern,
-                                const char* input, regx_match_t*** out_arr, size_t* out_size);
-/* */
-regx_rcode_t regx_pattern_sub(const regx_pattern_t* pattern,
-                            const char* input, const char* repl,
-                            size_t count, char** out_str);
+regx_rcode_t regx_pattern_find_iter(regx_pattern_t *pattern,
+                                    const char *input, regx_iter_t **out_obj);
 
-/*
-    Regular expression compile flags to modify pattern behaviour
-*/
+/* Allocates a buffer and stores in it all non-overlapping matches */
+size_t regx_pattern_find_all(regx_pattern_t *pattern, const char *input,
+                        regx_match_t **out_buf, size_t *out_len);
+
+/* Copies the input string, then substitutes all matches with a replacement string 
+        Writes result into an allocated NULL-terminated buffer */
+regx_rcode_t regx_pattern_sub(regx_pattern_t *pattern, const char *input,  const char *repl,
+                        size_t count, char **out_str, size_t *out_len);
+
+/* Bits representing flags for compiling the pattern to modify its behaviour. Unset by default */
 typedef uint8_t regx_flags_t;
 
-#define REGX_IGNORE_CASE ((regx_flags_t)(1u << 0))
-#define REGX_MULTILINE ((regx_flags_t)(1u << 1))
-#define REGX_DOT_ALL ((regx_flags_t)(1u << 2))
+#define REGX_ICASE ((regx_flags_t) 1u)   /* If set: matching ignores case; else: matching is case-sensitive */
+#define REGX_NEWLINE (REGX_ICASE << 1)   /* If set: `^` and `$` mark new line boundaries; else: the whole input */
+#define REGX_DOT_ALL (REGX_NEWLINE << 1) /* If set: wildcard includes new line characters in matching; else: ignored */
 
-/*
- Takes a return code and returns a static string with error message
 
- Doesn't need to be freed
-*/
+void regrex_str_free(char *ptr, size_t len);
+
+/* Retrieve a human-readable error message from the return code. 
+    Returned string is not allocated and does not need to be released  */
 const char* regrex_error(regx_rcode_t rcode);
 
-regx_rcode_t regrex_compile(const char* pattern, regx_flags_t flags, regx_pattern_t** out_obj);
+/* Compiles regular expression pattern string 
+    Provides a pointer to an opaque type encapsulating the compiled pattern data and exposing a public interface */
+regx_rcode_t regrex_compile(const char *pattern, regx_flags_t flags, regx_pattern_t **out_obj);
 
-regx_rcode_t regrex_match(const char* pattern, const char* input,
-                        regx_flags_t flags, regx_match_t** out_obj);
+/* One-off lookup for the first match at the beginning of the input */
+regx_rcode_t regrex_match(const char *pattern, const char *input,
+                        regx_flags_t flags, regx_match_t *out_obj);
 
-regx_rcode_t regrex_search(const char* pattern, const char* input,
-                        regx_flags_t flags, regx_match_t** out_obj);
+/* One-off lookup for the first match at any position within the input */
+regx_rcode_t regrex_search(const char *pattern, const char *input,
+                        regx_flags_t flags, regx_match_t *out_obj);
 
-regx_rcode_t regrex_find_all(const char* pattern, const char* input,
-                        regx_match_t*** out_arr, size_t* out_size);
+/* One-off lookup for all non-overlapping matches within the input */
+regx_rcode_t regrex_find_all(const char *pattern, const char *input,
+                        regx_match_t **out_arr, size_t *out_size);
 
-regx_rcode_t regrex_sub(const char* pattern, const char* input,
-                        const char* repl, regx_flags_t flags, size_t count, char** out_str);
+/* One-off substitution of matches in the input with a replacement string.
+    Allocates a copy, does not mutate the input */
+regx_rcode_t regrex_sub(const char *pattern, const char *input,
+                        const char *repl, regx_flags_t flags, size_t count, char **out_str);
 
 #ifdef __cplusplus
 }

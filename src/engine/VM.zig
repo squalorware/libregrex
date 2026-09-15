@@ -11,7 +11,7 @@ const testing = std.testing;
 const Instruction = bytecode.Instruction;
 const RegrexError = types.errors.ErrorSet;
 const Match = types.Match;
-const toMatch = types.conv.toMatch;
+const T_DestructorCallback = types.meta.T_DestructorCallback;
 const CurrentRuneMatcher = utils.CurrentRuneMatcher;
 const matchRune = utils.matchRune;
 
@@ -35,8 +35,17 @@ const Frame = struct {
     }
 };
 
+fn frameDeinitCallback(alloc: std.mem.Allocator, self: *Frame) void {
+    self.deinit(alloc);
+}
+
 /// Backtracking VM execution stack for saving alternative execution states.
-const Stack = types.ManagedDynamicBuffer(Frame, null);
+const Stack = types.T_ManagedArrayList(Frame, frameDeinitCallback);
+
+pub const ExecutionContext = struct {
+    input: []const u8,
+    pos: usize,
+};
 
 /// Clones the current capture-slot state for a saved backtracking Frame.
 ///
@@ -116,7 +125,7 @@ pub fn execAt(
         slot.* = null;
     }
 
-    var stack = try Stack.init(allocator, null);
+    var stack = try Stack.init(allocator, .{});
     defer stack.deinit();
 
      // Initialize the program execution counter
@@ -220,11 +229,11 @@ pub fn execAt(
                 pc = target;
             },
             // Terminal instruction
-            .Match => {
-                const result = try toMatch(
+            .Match => { 
+                const result = try Match.init(
                     allocator,
-                    input,
                     group_count,
+                    input,
                     captures,
                 );
                 allocator.free(captures);
@@ -255,7 +264,7 @@ test "execAt() should produce a Match from given position" {
         try testing.expect(false);
         return;
     };
-    defer result.deinit(allocator);
+    defer result.deinit();
 
     try testing.expectEqualStrings("420", try result.full());
     try testing.expectEqual(@as(usize, 4), try result.start(0));
@@ -285,7 +294,7 @@ test "execAt() should handle capture slots" {
         try testing.expect(false);
         return;
     };
-    defer result.deinit(allocator);
+    defer result.deinit();
 
     try testing.expectEqualStrings("420", try result.full());
 
@@ -313,7 +322,7 @@ test "execAt() should consume a complete multibyte Unicode Rune" {
         try testing.expect(false);
         return;
     };
-    defer result.deinit(allocator);
+    defer result.deinit();
 
     try testing.expectEqual(
         @as(usize, 3),
@@ -366,7 +375,7 @@ test "execAt() should correctly handle an anchored lowercase character class rep
         try testing.expect(false);
         return;
     };
-    defer result.deinit(allocator);
+    defer result.deinit();
 
     try testing.expectEqualStrings("abc", try result.full());
 

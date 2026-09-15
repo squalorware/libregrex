@@ -10,7 +10,7 @@ const T_Closure = types.meta.T_Closure;
 const _Iterator = struct {
     ctx: *const anyopaque,
     done: bool = false,
-    func: T_Closure(anyopaque, ExecutionContext, ?*Match),
+    func: T_Closure(anyopaque, ExecutionContext, ?Match),
     input: []const u8,
     pos: usize = 0,
 };
@@ -24,7 +24,7 @@ pub const LazyIterator = opaque {
         alloc: std.mem.Allocator,
         ctx: *const anyopaque,
         input: []const u8,
-        func: T_Closure(anyopaque, ExecutionContext, ?*Match),
+        func: T_Closure(anyopaque, ExecutionContext, ?Match),
     ) ErrorSet!*LazyIterator {
         const self: *_Iterator = alloc.create(_Iterator) catch {
             return ErrorSet.MemoryError;
@@ -66,7 +66,7 @@ pub const LazyIterator = opaque {
             });
 
             if (maybe_match) |found| {
-                var match = found;
+                var match: *Match = @constCast(&found);
                 errdefer match.deinit();
 
                 const start = try match.start(0);

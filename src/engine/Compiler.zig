@@ -7,7 +7,7 @@ const types = @import("types");
 const AST = @import("./syntax.zig");
 const bytecode = @import("./bytecode.zig");
 const testing = std.testing;
-const Flags = types.meta.Flags;
+const Flags = types.CompileFlags;
 const Instruction = bytecode.Instruction;
 const BytecodeBuffer = bytecode.BytecodeBuffer;
 const RegrexError = types.errors.ErrorSet;
@@ -17,10 +17,7 @@ const RegrexError = types.errors.ErrorSet;
 /// Prevents bytecode from pointing into the temporary `Parser` AST arena
 /// 
 /// Returns `RegrexError.MemoryError` if failed to allocate memory on heap for copy
-fn cloneCharClass(
-    alloc: std.mem.Allocator, 
-    cls: AST.CharClass
-) RegrexError!AST.CharClass {
+fn cloneCharClass(alloc: std.mem.Allocator, cls: AST.CharClass) RegrexError!AST.CharClass {
     const ranges = alloc.dupe(AST.RuneRange, cls.ranges) catch {
         return RegrexError.MemoryError;
     };
@@ -68,11 +65,7 @@ fn patch(self: Compiler, idx: usize, inst: Instruction) RegrexError!void {
 }
 
 /// Emit bytecode for an AST Node
-fn compileNode(
-    self: Compiler, 
-    alloc: std.mem.Allocator, 
-    node: *const AST.Node
-) RegrexError!void {
+fn compileNode(self: Compiler, alloc: std.mem.Allocator, node: *const AST.Node) RegrexError!void {
     switch (node.*) {
         .Literal => |lit| {
             _ = try self.emit(.{
@@ -154,11 +147,7 @@ fn compileNode(
 /// - `?` (zero to one)
 /// 
 /// Returns `RegrexError.InvalidRepeat` for unsupported repeat patterns.
-fn compileRepeat(
-    self: Compiler, 
-    alloc: std.mem.Allocator, 
-    rep: AST.Repeat
-) RegrexError!void {
+fn compileRepeat(self: Compiler, alloc: std.mem.Allocator, rep: AST.Repeat) RegrexError!void {
     if (rep.min == 0 and rep.max == null) {
         const split_idx = try self.emit(.Hold);
 
@@ -218,11 +207,7 @@ fn compileRepeat(
 /// - left branch
 /// - `Jump(after)`
 /// - right branch
-fn compileBranch(
-    self: Compiler, 
-    alloc: std.mem.Allocator,
-    branch: AST.Branch
-) RegrexError!void {
+fn compileBranch(self: Compiler, alloc: std.mem.Allocator, branch: AST.Branch) RegrexError!void {
     const split_idx = try self.emit(.Hold);
 
     const left_start = self.instructions.len();
@@ -255,11 +240,7 @@ fn compileBranch(
 /// The caller owns the returned slice and must free it. 
 /// If bytecode contains `Class` instructions, their internal slices 
 /// must be freed by the owner as well.  
-pub fn compile(
-    self: Compiler, 
-    alloc: std.mem.Allocator, 
-    node: *const AST.Node
-) RegrexError!void {
+pub fn compile(self: Compiler, alloc: std.mem.Allocator, node: *const AST.Node) RegrexError!void {
     _ = try self.emit(.{ .Save = 0 });
     _ = try self.compileNode(alloc, node);
     _ = try self.emit(.{ .Save = 1 });
@@ -274,7 +255,7 @@ test "Should compile a sequence of literals `abc`" {
 
     const ast_alloc = arena.allocator();
 
-    var inst_list = try BytecodeBuffer.init(allocator, null);
+    var inst_list = try BytecodeBuffer.init(allocator, .{});
     defer inst_list.deinit();
 
     const tree = try ast_alloc.alloc(*AST.Node, 3);
@@ -323,7 +304,7 @@ test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
 
     const ast_alloc = arena.allocator();
 
-    var inst_list = try BytecodeBuffer.init(allocator, null);
+    var inst_list = try BytecodeBuffer.init(allocator, .{});
     defer inst_list.deinit();
 
     const start = try ast_alloc.create(AST.Node);
@@ -417,7 +398,7 @@ test "Should compile branching `a|b`" {
 
     const ast_alloc = arena.allocator();
 
-    var inst_list = try BytecodeBuffer.init(allocator, null);
+    var inst_list = try BytecodeBuffer.init(allocator, .{});
     defer inst_list.deinit();
 
     const left = try ast_alloc.create(AST.Node);
@@ -475,7 +456,7 @@ test "Should compile a capture group `(a)`" {
 
     const ast_alloc = arena.allocator();
 
-    var inst_list = try BytecodeBuffer.init(allocator, null);
+    var inst_list = try BytecodeBuffer.init(allocator, .{});
     defer inst_list.deinit();
 
     const lit = try ast_alloc.create(AST.Node);
@@ -526,7 +507,7 @@ test "Should compile an optional repeat `a?`" {
 
     const ast_alloc = arena.allocator();
 
-    var inst_list = try BytecodeBuffer.init(allocator, null);
+    var inst_list = try BytecodeBuffer.init(allocator, .{});
     defer inst_list.deinit();
 
     const lit = try ast_alloc.create(AST.Node);
@@ -577,7 +558,7 @@ test "Should apply pattern flags to emitted instructions" {
 
     var inst_list = try BytecodeBuffer.init(
         allocator,
-        null,
+        .{},
     );
     defer inst_list.deinit();
 
@@ -660,7 +641,7 @@ test "Should compile zero-width assertions" {
     const ast_alloc = arena.allocator();
     var inst_list = try BytecodeBuffer.init(
         allocator,
-        null,
+        .{},
     );
     defer inst_list.deinit();
 
@@ -691,7 +672,7 @@ test "Should preserve preset character classes" {
     const ast_alloc = arena.allocator();
     var inst_list = try bytecode.BytecodeBuffer.init(
         allocator,
-        null,
+        .{},
     );
     defer inst_list.deinit();
 

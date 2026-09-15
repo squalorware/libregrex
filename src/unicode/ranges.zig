@@ -2,7 +2,8 @@ const testing = @import("std").testing;
 const types = @import("types");
 const Rune = @import("./Rune.zig");
 const Error = types.errors.ErrorSet;
-const meta = types.meta;
+const T_Range = types.meta.T_Range;
+const LookupOrder = types.misc.LookupOrder;
 
 /// Predefined Unicode character class type.
 pub const CharClassType = enum {
@@ -18,7 +19,7 @@ pub const RuneRangeType = enum {
 };
 
 /// Inclusive Unicode scalar range or case-fold mapping.
-pub const RuneRange = meta.Range(u21, .{});
+pub const RuneRange = T_Range(u21, .{});
 
 /// The lookup table representation
 ///
@@ -41,7 +42,7 @@ pub const RuneTable: struct {
 ///  or as a case-fold mapping
 ///
 /// Returns the position of the scalar relative to the specified range
-fn compareWithRange(rune: u21, range: RuneRange, as: RuneRangeType) meta.LookupOrder {
+fn compareWithRange(rune: u21, range: RuneRange, as: RuneRangeType) LookupOrder {
     return switch(as) {
         .char_class => RuneRange.compare(range.start, range.end, rune),
         .case_fold => RuneRange.compare(range.start, range.start, rune),
@@ -154,27 +155,27 @@ pub fn foldEqual(left: u21, right: u21) bool {
 
 test "RuneRange.compare should compare Rune against an inclusive range" {
     try testing.expectEqual(
-        meta.LookupOrder.before,
+        LookupOrder.before,
         RuneRange.compare(10, 20, 9),
     );
 
     try testing.expectEqual(
-        meta.LookupOrder.match,
+        LookupOrder.match,
         RuneRange.compare(10, 20, 10),
     );
 
     try testing.expectEqual(
-        meta.LookupOrder.match,
+        LookupOrder.match,
         RuneRange.compare(10, 20, 15),
     );
 
     try testing.expectEqual(
-        meta.LookupOrder.match,
+        LookupOrder.match,
         RuneRange.compare(10, 20, 20),
     );
 
     try testing.expectEqual(
-        meta.LookupOrder.after,
+        LookupOrder.after,
         RuneRange.compare(10, 20, 21),
     );
 }

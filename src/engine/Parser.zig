@@ -524,7 +524,7 @@ test "Should parse anchored lowercase character class repeat" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    var token_buffer = try tokens.TokenListBuffer.init(alloc, null);
+    var token_buffer = try tokens.TokenListBuffer.init(alloc, .{});
     defer token_buffer.deinit();
 
     var lexer = Lexer.init("^[a-z]*$");
@@ -566,7 +566,7 @@ test "Should parse non-capturing group" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    var token_buffer = try tokens.TokenListBuffer.init(alloc, null);
+    var token_buffer = try tokens.TokenListBuffer.init(alloc, .{});
     defer token_buffer.deinit();
 
     var lexer = Lexer.init("(?:ab)+");
@@ -615,7 +615,7 @@ test "Should parse predefined Unicode character classes" {
 
     var token_buffer = try tokens.TokenListBuffer.init(
         alloc,
-        null,
+        .{},
     );
     defer token_buffer.deinit();
 
@@ -699,7 +699,7 @@ test "Should parse predefined classes inside bracket character class" {
 
     var token_buffer = try tokens.TokenListBuffer.init(
         alloc,
-        null,
+        .{},
     );
     defer token_buffer.deinit();
 
@@ -763,7 +763,7 @@ test "Should parse absolute and word-boundary assertions" {
 
     var token_buffer = try tokens.TokenListBuffer.init(
         alloc,
-        null,
+        .{},
     );
     defer token_buffer.deinit();
 
@@ -849,7 +849,7 @@ test "Should preserve decoded escaped literals as literal AST nodes" {
 
     var token_buffer = try tokens.TokenListBuffer.init(
         alloc,
-        null,
+        .{},
     );
     defer token_buffer.deinit();
 

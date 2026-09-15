@@ -2,55 +2,38 @@ const std = @import("std");
 const types = @import("types");
 const unicode = @import("unicode");
 const bytecode = @import("./bytecode.zig");
-const tokens = @import("./tokens.zig");
-const Compiler = @import("./Compiler.zig");
-const FindIterator = @import("./FindIterator.zig").FindIterator;
-const Lexer = @import("./Lexer.zig");
-const Parser = @import("./Parser.zig");
+const LazyIterator = @import("./Iterator.zig").LazyIterator;
 const vm = @import("./VM.zig");
-const RegrexError = types.errors.ErrorSet;
-const DynamicStringBuffer = types.DynamicStringBuffer;
+const ErrorSet = types.errors.ErrorSet;
+const StringBuffer = types.StringBuffer;
 const Match = types.Match;
 const MatchListBuffer = types.MatchListBuffer;
+const ExecutionContext = vm.ExecutionContext;
 
-/// Internal representation of a compiled regular expression pattern.
-///
-/// It is deliberately unavailable from outside to prevent any malicious access.
-/// Users can interact with it only through opaque top-level `Pattern` type.
-const CompiledPattern = struct {
+const _Pattern = struct {
     alloc: std.mem.Allocator,
     pattern: []const u8,
     instructions: []bytecode.Instruction,
     group_count: usize,
 };
 
-/// Optional set of arguments accepted by `regrex.Pattern.sub`, providing default values
 pub const PatternSubOptions = struct {
-    /// Maximum number of occurrences to replace
-    ///
-    /// `0` means replacing all occurrences (default)
+    /// How many matches to replace (0 for replacing all; default)
     count: usize = 0,
 };
 
-/// Opaque type to secure the internal CompiledPattern representation.
-///
-/// Ensures full encapsulation and exposes outside only a specific set of operations
-/// without giving access to the compiled bytecode buffer itself
+/// A pointer type to encapsulate compiled pattern buffer and execution state
+/// 
+/// Exposes a public-facing interface for lookups within a string input
 pub const Pattern = opaque {
-    /// Copies the instructions from the dynamic buffer into internal storage
-    ///
-    /// The managed `BytecodeBuffer` is then released with `deinit`
-    ///
-    /// Returns a pointer to an opaque wrapper that does not expose any of `CompiledPattern` fields
-    /// and provides a safe manipulation interface
     pub fn init(
         alloc: std.mem.Allocator,
         pattern: []const u8,
         inst_list: *bytecode.BytecodeBuffer,
         group_count: usize,
-    ) RegrexError!*Pattern {
-        const self: *CompiledPattern = alloc.create(CompiledPattern) catch {
-            return RegrexError.MemoryError;
+    ) ErrorSet!*Pattern {
+        const self: *_Pattern = alloc.create(_Pattern) catch {
+            return ErrorSet.MemoryError;
         };
 
         var instructions = try inst_list.toOwnedSlice();
@@ -65,9 +48,9 @@ pub const Pattern = opaque {
         return @ptrCast(self);
     }
 
-    /// Releases the bytecode instruction set and dereferences the internal structure
+    /// Releases the bytecode instruction set and dereferences its buffer
     pub fn deinit(ptr: *Pattern) void {
-        const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
+        const self: *_Pattern = @ptrCast(@alignCast(ptr));
         const alloc = self.alloc;
 
         for (self.instructions) |*inst| {
@@ -78,18 +61,9 @@ pub const Pattern = opaque {
         alloc.destroy(self);
     }
 
-    /// Executes the bytecode-compiled pattern to return the first match
-    /// found starting from byte offset `0` (i.e. start of `input` string)
-    ///
-    /// Returns `Match` if the compiled pattern succeeds at the start of `input`
-    ///
-    /// Returns `null` if no `Match` can be produced from start of `input`
-    ///
-    /// Returns
-    /// - `RegrexError.MemoryError` if allocation failed
-    /// - `RegrexError.InvalidUnicode` if a broken UTF-8 code point encountered
-    pub fn match(ptr: *Pattern, input: []const u8) RegrexError!?Match {
-        const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
+    /// Returns the first match encountered at the beginning of the input
+    pub fn match(ptr: *Pattern, input: []const u8) ErrorSet!?Match {
+        const self: *_Pattern = @ptrCast(@alignCast(ptr));
 
         return try vm.execAt(
             self.alloc,
@@ -100,18 +74,9 @@ pub const Pattern = opaque {
         );
     }
 
-    /// Executes the bytecode-compiled pattern to search for the first position
-    /// in the `input` where a `Match` can be produced.
-    ///
-    /// Returns the first `Match` produced at any position
-    ///
-    /// Returns `null` if no `Match` can be produced anywhere in `input`
-    ///
-    /// Returns
-    /// - `RegrexError.MemoryError` if allocation failed
-    /// - `RegrexError.InvalidUnicode` if a broken UTF-8 code point encountered
-    pub fn search(ptr: *Pattern, input: []const u8) RegrexError!?Match {
-        const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
+    /// Returns the first match produced at any position within the input
+    pub fn search(ptr: *Pattern, input: []const u8) ErrorSet!?Match {
+        const self: *_Pattern = @ptrCast(@alignCast(ptr));
         var pos: usize = 0;
 
         while (pos <= input.len) {
@@ -128,34 +93,30 @@ pub const Pattern = opaque {
         return null;
     }
 
+
+
     /// Creates an interface for `vm.execAt` to be called from inside the `FindGenerator`
     /// while being within current `Pattern` context
     fn execAdapter(
         ctx: *const anyopaque,
-        input: []const u8,
-        pos: usize,
-    ) RegrexError!?Match {
-        const self: *const CompiledPattern = @ptrCast(@alignCast(ctx));
+        opts: ExecutionContext,
+    ) ErrorSet!?Match {
+        const self: *const _Pattern = @ptrCast(@alignCast(ctx));
 
-        return try vm.execAt(
+        return vm.execAt(
             self.alloc,
-            input,
-            pos,
+            opts.input,
+            opts.pos,
             self.group_count,
             self.instructions,
         );
     }
 
-    /// Creates a lazy iterator over all non-overlapping matches in `input` string.
-    ///
-    /// Does not scan the input immediately - initializes a `FindIterator` instead.
-    /// Matching is performed one item at a time when `FindIterator.next` is called.
-    ///
-    /// Returns `FindIterator`
-    pub fn findIter(ptr: *Pattern, input: []const u8) RegrexError!FindIterator {
-        const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
+    /// Initializes and returns an instance of the lazy iterator
+    pub fn findIter(ptr: *Pattern, input: []const u8) ErrorSet!*LazyIterator {
+        const self: *_Pattern = @ptrCast(@alignCast(ptr));
 
-        return FindIterator.init(
+        return LazyIterator.init(
             self.alloc,
             self,
             input,
@@ -163,58 +124,41 @@ pub const Pattern = opaque {
         );
     }
 
-    /// Executes the bytecode-compiled pattern to search for
-    /// all non-overlapping matches in `input` string.
-    ///
-    /// Returns an allocator-owned slice of `Match`es. Must be released by caller -
-    /// see `types.meta.freeAll` helper
-    ///
-    /// Returns
-    /// - `RegrexError.MemoryError` if failed allocating or manipulating the copy buffer
-    /// - `RegrexError.InvalidUnicode` if a broken UTF-8 code point encountered
-    pub fn findAll(ptr: *Pattern, input: []const u8) RegrexError![]Match {
-        const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
+    /// Returns a slice containing all non-overlapping matches found in the input
+    /// 
+    /// The caller owns the slice and must explicitly release it
+    pub fn findAll(ptr: *Pattern, input: []const u8) ErrorSet![]Match {
+        const self: *_Pattern = @ptrCast(@alignCast(ptr));
 
         var iter = try findIter(ptr, input);
-        defer iter.deinit();
+        defer iter.deinit(self.alloc);
 
-        var matches = try MatchListBuffer.init(self.alloc, null);
+        // var matches: std.ArrayList(*Match) = .empty;
+        // errdefer matches.deinit(self.alloc);
+        var matches = try MatchListBuffer.init(self.alloc, .{});
         defer matches.deinit();
 
-        while (try iter.next()) |m| try matches.append(m);
+        while (try iter.next()) |m| try matches.append(m.*);
 
         return try matches.toOwnedSlice();
     }
 
-    /// Executes the bytecode-compiled pattern to retrieve all of the matches
-    /// in the `input` string and return its copy with matches  replaced by `repl`.
-    ///
-    /// The replacement is literal. Current implementation does not support
-    /// expanding capture group references like `\1` or `$1`
-    ///
-    /// `count` argument controls the number of occurences to replace.
-    /// - If `count = 0`, replaces all of the occurences;
-    /// - If `count > 0` replaces number of the occurences specified
-    /// - If `count` is bigger than the actual occurences count, replaces all and safely ignores rest
-    ///
-    /// Returns an allocator-owned copy of the input string (must be freed manually with `alloc.free`).
-    ///
-    /// Returns
-    /// - `RegrexError.MemoryError` if failed allocating or manipulating the copy buffer
-    /// - `RegrexError.InvalidUnicode` (propagated by `VM.execAt` or encountered during lookup)
+    /// Copies the input string to a dynamic buffer, then substitutes all pattern matches with a replacement string
+    /// 
+    /// Returns the modified copy of the input. Returned slice is owned by caller and must be released
     pub fn sub(
         ptr: *Pattern,
         input: []const u8,
         repl: []const u8,
         opts: PatternSubOptions,
-    ) RegrexError![]u8 {
-        const self: *CompiledPattern = @ptrCast(@alignCast(ptr));
+    ) ErrorSet![]u8 {
+        const self: *_Pattern = @ptrCast(@alignCast(ptr));
 
-        var out_buf = try DynamicStringBuffer.init(self.alloc, null);
+        var out_buf = try StringBuffer.init(self.alloc, .{});
         defer out_buf.deinit();
 
         var iter = try findIter(ptr, input);
-        defer iter.deinit();
+        defer iter.deinit(self.alloc);
 
         var copy_pos: usize = 0;
         var repl_count: usize = 0;
@@ -223,7 +167,7 @@ pub const Pattern = opaque {
             const found = (try iter.next()) orelse break;
 
             var matched = found;
-            defer matched.deinit(self.alloc);
+            defer matched.deinit();
 
             const start = try matched.start(0);
             const end = try matched.end(0);

@@ -9,7 +9,7 @@ from string import Template
 from urllib.request import Request, urlopen
 
 # Type alias for convenience
-CodepointPair = tuple[int, int]
+Range = tuple[int, int]
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT_DIR = SCRIPT_DIR.parent
@@ -121,13 +121,13 @@ def validate_pair(start: int,end: int) -> None:
         raise ValueError(f"Codepoint range includes UTF-16 surrogates: U+{start:04X}..U+{end:04X}")
 
 
-def merge_pairs(pairs: Iterable[CodepointPair]) -> list[CodepointPair]:
+def merge_pairs(pairs: Iterable[Range]) -> list[Range]:
     ordered = sorted(pairs)
 
     if not ordered:
         return []
 
-    merged: list[CodepointPair] = []
+    merged: list[Range] = []
 
     current_start, current_end = ordered[0]
 
@@ -147,8 +147,8 @@ def merge_pairs(pairs: Iterable[CodepointPair]) -> list[CodepointPair]:
 
 
 def parse_unicode_data(path: Path) -> tuple[
-    list[CodepointPair],
-    list[CodepointPair],
+    list[Range],
+    list[Range],
 ]:
     """
     Parse UnicodeData.txt.
@@ -161,10 +161,10 @@ def parse_unicode_data(path: Path) -> tuple[
             General categories beginning with L or N, plus underscore.
     """
 
-    d_ranges: list[CodepointPair] = []
+    d_ranges: list[Range] = []
 
     # Explicitly include LOW LINE, U+005F.
-    w_ranges: list[CodepointPair] = [(0x005F, 0x005F)]
+    w_ranges: list[Range] = [(0x005F, 0x005F)]
 
     # UnicodeData.txt sometimes represents large blocks using:
     #
@@ -181,7 +181,7 @@ def parse_unicode_data(path: Path) -> tuple[
 
     with path.open("r", encoding="utf-8") as src:
         for ln, raw_line in enumerate(src, start=1):
-            line = raw_line.rstrip("\r\n")
+            line = raw_line.rstrip("\r")
 
             if not line:
                 continue
@@ -208,10 +208,7 @@ def parse_unicode_data(path: Path) -> tuple[
 
                 start, first_name, first_category = pending_range
 
-                expected_last_name = first_name.replace(
-                    ", First>",
-                    ", Last>",
-                )
+                expected_last_name = first_name.replace(", First>", ", Last>")
 
                 if name != expected_last_name or category != first_category:
                     raise ValueError(f"{path}:{ln}: mismatched First/Last records")
@@ -240,9 +237,7 @@ def parse_unicode_data(path: Path) -> tuple[
     )
 
 
-def parse_codepoint_range(
-    value: str,
-) -> CodepointPair:
+def parse_codepoint_range(value: str) -> Range:
     value = value.strip()
 
     if ".." in value:
@@ -259,8 +254,8 @@ def parse_codepoint_range(
     return start, end
 
 
-def parse_property_ranges(path: Path, property_name: str) -> list[CodepointPair]:
-    ranges: list[CodepointPair] = []
+def parse_property_ranges(path: Path, property_name: str) -> list[Range]:
+    ranges: list[Range] = []
 
     with path.open("r", encoding="utf-8") as src:
         for line_number, raw_line in enumerate(src, start=1):
@@ -288,7 +283,7 @@ def parse_property_ranges(path: Path, property_name: str) -> list[CodepointPair]
     return merge_pairs(ranges)
 
 
-def parse_simple_case_folding(path: Path) -> list[CodepointPair]:
+def parse_simple_case_folding(path: Path) -> list[Range]:
     """
     Parse one-code-point Unicode case folding.
 
@@ -355,7 +350,7 @@ def zig_hex(codepoint: int) -> str:
     return f"0x{codepoint:06X}"
 
 
-def render_pairs_list(pairs: list[CodepointPair]) -> str:
+def render_pairs_list(pairs: list[Range]) -> str:
     lines = []
 
     for start, end in pairs:
