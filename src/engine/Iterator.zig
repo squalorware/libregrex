@@ -54,7 +54,7 @@ pub const LazyIterator = opaque {
 
     /// Scans the input once, starting at position in current context, 
     /// then advances position register by one UTF-8 codepoint bytelength
-    pub fn next(ptr: *LazyIterator) ErrorSet!?*Match {
+    pub fn next(ptr: *LazyIterator) ErrorSet!?Match {
         const self: *_Iterator = @ptrCast(@alignCast(ptr));
 
         if (self.done) return null;
@@ -66,7 +66,7 @@ pub const LazyIterator = opaque {
             });
 
             if (maybe_match) |found| {
-                var match: *Match = @constCast(&found);
+                var match = found;
                 errdefer match.deinit();
 
                 const start = try match.start(0);

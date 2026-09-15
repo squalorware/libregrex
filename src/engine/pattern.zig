@@ -138,7 +138,7 @@ pub const Pattern = opaque {
         var matches = try MatchListBuffer.init(self.alloc, .{});
         defer matches.deinit();
 
-        while (try iter.next()) |m| try matches.append(m.*);
+        while (try iter.next()) |m| try matches.append(m);
 
         return try matches.toOwnedSlice();
     }

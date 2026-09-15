@@ -95,13 +95,28 @@ pub fn build(b: *std.Build) void {
         .root_module = unicode_mod,
     });
 
-    const unit_test_step = b.step("test", "Run unit tests");
+    const unit_test_step = b.step("test_unit", "Run inline tests");
 
     unit_test_step.dependOn(&b.addRunArtifact(root_unit_tests).step);
     unit_test_step.dependOn(&b.addRunArtifact(types_unit_tests).step);
     unit_test_step.dependOn(&b.addRunArtifact(unicode_unit_tests).step);
     unit_test_step.dependOn(&b.addRunArtifact(engine_unit_tests).step);
 
+    const integration_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    integration_test_mod.addImport("regrex", root_mod);
+
+    const integration_tests = b.addTest(.{
+        .name = "libregrex",
+        .root_module = integration_test_mod,
+    });
+
+    const lib_test_step = b.step("test_lib", "Build library and run integration tests");
+
+    lib_test_step.dependOn(&b.addRunArtifact(integration_tests).step);
     // Compile library (C-compatible)
     //
     // Default linkage is dynamic, can be changed with build options,

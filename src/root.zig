@@ -22,11 +22,9 @@ pub const SubOptions = T_MergedStruct(CompileFlags, PatternSubOptions);
 /// Returns a pointer type that wraps the pattern buffer and exposes public interface
 /// 
 /// Accepts flags to modify pattern behaviour
-pub fn compile(allocator: std.mem.Allocator, pattern: []const u8, flags: CompileFlags) RegrexError!*Pattern {
-    var arena = std.heap.ArenaAllocator.init(allocator);
+pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: CompileFlags) RegrexError!*Pattern {
+    var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
-
-    const alloc = arena.allocator();
 
     var token_list = try tokens.TokenListBuffer.init(alloc, .{});
     defer token_list.deinit();
@@ -34,7 +32,7 @@ pub fn compile(allocator: std.mem.Allocator, pattern: []const u8, flags: Compile
     var lexer = engine.Lexer.init(pattern);
     try lexer.tokenize(&token_list);
 
-    var parser = engine.Parser.init(alloc, token_list.items());
+    var parser = engine.Parser.init(arena.allocator(), token_list.items());
     const ast = try parser.parse();
 
     var bcode = try bytecode.BytecodeBuffer.init(alloc, .{});

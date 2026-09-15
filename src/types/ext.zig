@@ -60,11 +60,11 @@ pub const C_Match = extern struct {
 
     const destroyCallback: meta.T_DestructorCallback(Match) = matching.freeMatchCallback;
 
-    pub fn create(alloc: std.mem.Allocator, match: ?*Match) ErrorSet!C_Match {
+    pub fn create(alloc: std.mem.Allocator, match: ?Match) ErrorSet!C_Match {
         const m = match orelse return ErrorSet.InvalidArgument;
 
         const ptr = alloc.create(Match) catch return ErrorSet.MemoryError;
-        ptr.* = m.*;
+        ptr.* = m;
 
         return .{
             .ptr = @ptrCast(ptr),

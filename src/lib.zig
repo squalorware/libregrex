@@ -77,6 +77,6 @@ pub fn commonMatchImpl(
         } orelse return RegrexError.NoMatch;
     };
 
-    out.* = try C.Match.create(alloc, @constCast(&m));
+    out.* = try C.Match.create(alloc, m);
 }
 

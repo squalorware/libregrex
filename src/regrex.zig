@@ -222,7 +222,7 @@ export fn regx_pattern_find_all(
     };
     errdefer C.alloc.free(buffer);
 
-    for (matches, 0..) |*m, i| {
+    for (matches, 0..) |m, i| {
         buffer[i] = C.Match.create(C.alloc, m) catch |err| {
             return lib.toErrorCode(err);
         };
@@ -374,7 +374,7 @@ export fn regrex_find_all(
     };
     errdefer C.alloc.free(buffer);
 
-    for (matches, 0..) |*m, i| {
+    for (matches, 0..) |m, i| {
         buffer[i] = C.Match.create(C.alloc, m) catch |err| {
             return lib.toErrorCode(err);
         };
