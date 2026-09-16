@@ -74,19 +74,19 @@ pub fn build(b: *std.Build) void {
 
     // Build and run unit tests
     const root_unit_tests = b.addTest(.{
-        .name = "regrex",
+        .name = "[unit] - <regrex :: root>",
         .root_module = root_mod,
     });
     const types_unit_tests = b.addTest(.{
-        .name = "types",
+        .name = "[unit] - <regrex :: types>",
         .root_module = types_mod,
     });
     const engine_unit_tests = b.addTest(.{
-        .name = "engine",
+        .name = "[unit] - <regrex :: engine>",
         .root_module = engine_mod,
     });
     const unicode_unit_tests = b.addTest(.{
-        .name = "unicode",
+        .name = "[unit] - <regrex :: unicode>",
         .root_module = unicode_mod,
     });
 
@@ -97,77 +97,86 @@ pub fn build(b: *std.Build) void {
     unit_test_step.dependOn(&b.addRunArtifact(unicode_unit_tests).step);
     unit_test_step.dependOn(&b.addRunArtifact(engine_unit_tests).step);
 
-    const integration_test_mod = b.createModule(.{
-        .root_source_file = b.path("tests/main.zig"),
+    // Test module for integrated testing of Zig package
+    const zig_lib_tests_mod = b.createModule(.{
+        .root_source_file = b.path("tests/integration.zig"),
         .target = target,
         .optimize = optimize,
     });
-    integration_test_mod.addImport("regrex", root_mod);
+    zig_lib_tests_mod.addImport("regrex", root_mod);
 
-    const integration_tests = b.addTest(.{
-        .name = "libregrex",
-        .root_module = integration_test_mod,
+    const c_lib_imports = [_]ModuleMap{
+        ModuleMap { .name = "types", .root = types_mod, },
+        ModuleMap { .name = "engine", .root = engine_mod, },
+    };
+    // Initialize the library root module that will be used during build as well
+    const libroot_mod = buildLibraryRootModule(
+        b,
+        target,
+        optimize,
+        // make sure the library root includes the package root module
+        root_mod,
+        c_lib_imports[0..]
+    );
+    // Test module for integrated testing of the exported library
+    const c_lib_tests_mod = b.createModule(.{
+        .root_source_file = b.path("tests/integration_C.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    c_lib_tests_mod.addImport("libregrex", libroot_mod);
+
+    const zig_lib_tests = b.addTest(.{
+        .name = "[integration] - <regrex :: root>",
+        .root_module = zig_lib_tests_mod,
+    });
+    const c_lib_tests = b.addTest(.{
+        .name = "[integration] - <regrex :: libregrex (C ABI)>",
+        .root_module = c_lib_tests_mod,
     });
 
-    const lib_test_step = b.step("test_lib", "Build library and run integration tests");
+    const integration_test_step = b.step("test_lib", "Build library and run integration tests");
+    integration_test_step.dependOn(&b.addRunArtifact(zig_lib_tests).step);
+    integration_test_step.dependOn(&b.addRunArtifact(c_lib_tests).step);
 
-    lib_test_step.dependOn(&b.addRunArtifact(integration_tests).step);
-
-    // Compile library (C-compatible)
+    // Compile and export the library (C-compatible)
     //
     // Default linkage is dynamic, can be changed with build options,
     // e.g. `-Dlinkage=static`. Option `both` links and compiles both types
     if (linkage == .static or linkage == .both) {
-        const static_lib = buildLibrary(
-            b,
-            target,
-            optimize,
-            .static,
-            root_mod,
-            types_mod,
-            engine_mod,
-        );
+        const static_lib = buildLibrary(b, .static, libroot_mod);
         b.installArtifact(static_lib);
     }
 
     if (linkage == .dynamic or linkage == .both) {
-        const dynamic_lib = buildLibrary(
-            b,
-            target,
-            optimize,
-            .dynamic,
-            root_mod,
-            types_mod,
-            engine_mod,
-        );
+        const dynamic_lib = buildLibrary(b, .dynamic, libroot_mod);
         b.installArtifact(dynamic_lib);
     }
 }
 
-/// Compiles the library and includes a C header file
-///
-/// Links `libc` for both statically and dynamically linked libraries
-fn buildLibrary(
+const ModuleMap = struct {
+    name: []const u8,
+    root: *std.Build.Module,
+};
+
+/// Compiles the library root module used both for export and for integration testing
+/// 
+/// Links `libc` for both static and dynamic linkage
+fn buildLibraryRootModule(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    linkage: std.builtin.LinkMode,
-    root_mod: *std.Build.Module,
-    types_mod: *std.Build.Module,
-    engine_mod: *std.Build.Module,
-) *Step.Compile {
-    const zon = @import("./build.zig.zon");
-    const version = std.SemanticVersion.parse(zon.version) catch {
-        @panic("Invalid semver format");
-    };
-
+    pkg_mod: *std.Build.Module,
+    imports: []const ModuleMap,
+) *std.Build.Module {
     const lib_mod = b.addModule("lib", .{
         .root_source_file = b.path("src/lib.zig"),
         .target = target,
         .optimize = optimize,
     });
-    lib_mod.addImport("types", types_mod);
-    lib_mod.addImport("engine", engine_mod);
+    for (imports) |module| {
+        lib_mod.addImport(module.name, module.root);
+    }
 
     const mod = b.createModule(.{
         .root_source_file = b.path("src/regrex.zig"),
@@ -175,13 +184,29 @@ fn buildLibrary(
         .optimize = optimize,
         .link_libc = true,
     });
-    mod.addImport("regrex", root_mod);
+    // Zig library package root module
+    mod.addImport("regrex", pkg_mod);
+    // Namespace module providing Zig types for C ABI implementation
     mod.addImport("lib", lib_mod);
+
+    return mod;
+}
+
+/// Compiles the library and includes a C header file
+fn buildLibrary(
+    b: *std.Build,
+    linkage: std.builtin.LinkMode,
+    root_mod: *std.Build.Module,
+) *Step.Compile {
+    const zon = @import("./build.zig.zon");
+    const version = std.SemanticVersion.parse(zon.version) catch {
+        @panic("Invalid semver format");
+    };
 
     const lib = b.addLibrary(.{
         .name = "regrex",
         .linkage = linkage,
-        .root_module = mod,
+        .root_module = root_mod,
         .version = version,
     });
     lib.installHeader(b.path("include/regrex.h"), "regrex.h");

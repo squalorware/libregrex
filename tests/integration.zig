@@ -1,4 +1,4 @@
-//! Integration tests on library as a whole
+//! Integrated testing of library as a Zig package
 const std = @import("std");
 const regrex = @import("regrex");
 const testing = std.testing;

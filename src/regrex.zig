@@ -7,30 +7,34 @@ const c_alloc = std.heap.c_allocator;
 pub const regx_rcode_t = C.ReturnCode;
 /// Regex flags as a bitmask
 pub const regx_flags_t = u8;
-
+/// Byte offset within the input string. Represents match data (full match and capture groups).
+///     Follows slice semantics: `.start` is inclusive; `.end` is exclusive.
 pub const regx_span_t = lib.RegrexSpan;
 
 /// Releases an array of byte offset ranges
-export fn regx_span_buf_free(ptr: ?[*]regx_span_t, len: usize) callconv(.c) void {
+pub export fn regx_span_buf_free(ptr: ?[*]regx_span_t, len: usize) callconv(.c) void {
     _ = C.freeBuffer(regx_span_t, c_alloc, ptr, len, null);
 }
 
+/// Data structure that stores the matching result as a buffer of byte offsets
 pub const regx_match_t = C.Match;
 
-export fn regx_match_destroy(match: ?*regx_match_t) callconv(.c) void {
+pub export fn regx_match_destroy(match: ?*regx_match_t) callconv(.c) void {
     const m = match orelse return;
     m.destroy(c_alloc);
 }
 
 /// Releases an array of matches and their capture groups
-export fn regx_match_buf_free(ptr: ?*?[*]regx_match_t, len: usize) void {
-    const matches = ptr orelse return;
+pub export fn regx_match_buf_free(ptr: ?*?[*]regx_match_t, len: usize) void {
+    // _ = len;
+    const buf = ptr orelse return;
+    const matches = buf.* orelse return;
 
-    _ = C.freeBuffer(regx_match_t, c_alloc, matches.*, len, C.freeCMatchCallback);
+    _ = C.freeBuffer(regx_match_t, c_alloc, matches, len, C.freeCMatchCallback);
 }
 
 /// Retrieves a capture group at `cgroups[i]`;
-export fn regx_match_span(match: ?*regx_match_t, i: usize, out_p: ?*regx_span_t) callconv(.c) regx_rcode_t {
+pub export fn regx_match_span(match: ?*regx_match_t, i: usize, out_p: ?*regx_span_t) callconv(.c) regx_rcode_t {
     const m = match orelse return .REGREX_EARG;
     const span = out_p orelse return .REGREX_EARG;
 
@@ -41,7 +45,7 @@ export fn regx_match_span(match: ?*regx_match_t, i: usize, out_p: ?*regx_span_t)
 }
 
 /// Returns a substring of input outlined by byte offset at `cgroups[i]`
-export fn regx_match_group(
+pub export fn regx_match_group(
     match: ?*regx_match_t,
     i: usize,
     out_buf: ?*?C.String,
@@ -69,7 +73,7 @@ export fn regx_match_group(
 }
 
 /// Allocates a a NULL-terminated buffer, stores in it a copy of the full match
-export fn regx_match_full(match: ?*regx_match_t, out_buf: ?*?C.String, out_len: ?*usize) callconv(.c) regx_rcode_t {
+pub export fn regx_match_full(match: ?*regx_match_t, out_buf: ?*?C.String, out_len: ?*usize) callconv(.c) regx_rcode_t {
     const m = match orelse return .REGREX_EARG;
     const buf = out_buf orelse return .REGREX_EARG;
     const len = out_len orelse return .REGREX_EARG;
@@ -92,26 +96,30 @@ export fn regx_match_full(match: ?*regx_match_t, out_buf: ?*?C.String, out_len: 
 }
 
 /// Returns the capture groups of the match excluding the full match at `cgroups[0]`
-export fn regx_match_subgroups(m: ?*regx_match_t, out_buf: ?*?[*]regx_span_t, out_len: ?*usize) callconv(.c) regx_rcode_t {
+pub export fn regx_match_subgroups(m: ?*regx_match_t, out_buf: ?*?[*]regx_span_t, out_len: ?*usize) callconv(.c) regx_rcode_t {
     const match = m orelse return .REGREX_EARG;
     const buf = out_buf orelse return .REGREX_EARG;
     const len = out_len orelse return .REGREX_EARG;
 
-    buf.* = match.cgroups[1..];
+    const subgroups = match.cgroups[1..match.groups_len];
+
+    buf.* = subgroups.ptr;
     len.* = match.groups_len - 1;
+
     return .OK;
 }
 
+/// Lazy iterator over matches
 pub const regx_iter_t = lib.RegrexIterator;
 
-export fn regx_iter_destroy(iter: ?*regx_iter_t) callconv(.c) void {
+pub export fn regx_iter_destroy(iter: ?*regx_iter_t) callconv(.c) void {
     const iterator = iter orelse return;
     iterator.deinit(c_alloc);
 }
 
 /// Scans the input once, starting at position in current context,
 /// then advances position register by one UTF-8 codepoint bytelength
-export fn regx_iter_next(iter: ?*regx_iter_t, out_p: ?*regx_match_t) callconv(.c) regx_rcode_t {
+pub export fn regx_iter_next(iter: ?*regx_iter_t, out_p: ?*regx_match_t) callconv(.c) regx_rcode_t {
     var iterator = iter orelse return .REGREX_EARG;
     const out = out_p orelse return .REGREX_EARG;
 
@@ -130,12 +138,12 @@ export fn regx_iter_next(iter: ?*regx_iter_t, out_p: ?*regx_match_t) callconv(.c
 ///    Can only be created by compiling the pattern, and discarded
 pub const regx_pattern_t = lib.RegrexPattern;
 
-export fn regx_pattern_destroy(pattern: ?*regx_pattern_t) callconv(.c) void {
+pub export fn regx_pattern_destroy(pattern: ?*regx_pattern_t) callconv(.c) void {
     const p = pattern orelse return;
     p.deinit();
 }
 /// Retrieves the first match encountered moving from the input start
-export fn regx_pattern_match(
+pub export fn regx_pattern_match(
     pattern: ?*regx_pattern_t,
     in_str: ?C.StaticString,
     out_p: ?*regx_match_t,
@@ -145,7 +153,7 @@ export fn regx_pattern_match(
     return .OK;
 }
 /// Retrieves the first match found anywhere in input
-export fn regx_pattern_search(
+pub export fn regx_pattern_search(
     pattern: ?*regx_pattern_t,
     in_str: ?C.StaticString,
     out_p: ?*regx_match_t,
@@ -156,7 +164,7 @@ export fn regx_pattern_search(
 }
 
 /// Initializes the lazy iterator
-export fn regx_pattern_find_iter(
+pub export fn regx_pattern_find_iter(
     pattern: ?*regx_pattern_t,
     in_str: ?C.StaticString,
     out_p: ?*?*regx_iter_t,
@@ -177,7 +185,7 @@ export fn regx_pattern_find_iter(
 }
 
 /// Allocates a buffer and stores in it all non-overlapping matches
-export fn regx_pattern_find_all(
+pub export fn regx_pattern_find_all(
     pattern: ?*regx_pattern_t,
     in_str: ?C.StaticString,
     out_buf: ?*?[*]regx_match_t,
@@ -195,7 +203,6 @@ export fn regx_pattern_find_all(
         return lib.toErrorCode(err);
     };
     const mlen = matches.len;
-    defer lib.freeAny(lib.RegrexMatch, c_alloc, matches[0..mlen], lib.freeMatchCallback);
 
     var buffer = c_alloc.alloc(C.Match, mlen) catch {
         return .REGREX_EMALLOC;
@@ -217,7 +224,7 @@ export fn regx_pattern_find_all(
 /// Copies the input string, then substitutes all matches with a replacement string
 ///
 /// Writes result into an allocated NULL-terminated buffer
-export fn regx_pattern_sub(
+pub export fn regx_pattern_sub(
     pattern: ?*regx_pattern_t,
     in_str: ?C.StaticString,
     repl_str: ?C.StaticString,
@@ -249,21 +256,21 @@ export fn regx_pattern_sub(
     return .OK;
 }
 
-export fn regrex_str_free(ptr: ?C.String, len: usize) callconv(.c) void {
+pub export fn regrex_str_free(ptr: ?C.String, len: usize) callconv(.c) void {
     _ = C.freeBuffer(u8, c_alloc, ptr, len, null);
 }
 
 /// Retrieve a human-readable error message from the return code.
 ///
 /// Returned string is not allocated and does not need to be released
-export fn regrex_error(rcode: regx_rcode_t) callconv(.c) C.StaticString {
+pub export fn regrex_error(rcode: regx_rcode_t) callconv(.c) C.StaticString {
     return C.toErrorMsg(rcode);
 }
 
 /// Compiles regular expression pattern string
 ///
 /// Provides a pointer to an opaque type encapsulating the compiled pattern data and exposing a public interface
-export fn regrex_compile(
+pub export fn regrex_compile(
     pattern: ?C.StaticString,
     flags: regx_flags_t,
     out_p: ?*?*regx_pattern_t,
@@ -279,7 +286,7 @@ export fn regrex_compile(
 }
 
 /// One-off lookup for the first match at the beginning of the input
-export fn regrex_match(pattern: ?C.StaticString, in_str: ?C.StaticString, flags: regx_flags_t, out_p: ?*regx_match_t) callconv(.c) regx_rcode_t {
+pub export fn regrex_match(pattern: ?C.StaticString, in_str: ?C.StaticString, flags: regx_flags_t, out_p: ?*regx_match_t) callconv(.c) regx_rcode_t {
     _ = lib.commonMatchImpl(
         .match,
         .root,
@@ -293,7 +300,7 @@ export fn regrex_match(pattern: ?C.StaticString, in_str: ?C.StaticString, flags:
 }
 
 /// One-off lookup for the first match at any position within the input
-export fn regrex_search(pattern: ?C.StaticString, in_str: ?C.StaticString, flags: regx_flags_t, out_p: ?*regx_match_t) callconv(.c) regx_rcode_t {
+pub export fn regrex_search(pattern: ?C.StaticString, in_str: ?C.StaticString, flags: regx_flags_t, out_p: ?*regx_match_t) callconv(.c) regx_rcode_t {
     _ = lib.commonMatchImpl(
         .search,
         .root,
@@ -307,7 +314,7 @@ export fn regrex_search(pattern: ?C.StaticString, in_str: ?C.StaticString, flags
 }
 
 /// One-off lookup for all non-overlapping matches within the input
-export fn regrex_find_all(
+pub export fn regrex_find_all(
     pattern: ?C.StaticString,
     in_str: ?C.StaticString,
     flags: regx_flags_t,
@@ -330,8 +337,6 @@ export fn regrex_find_all(
     ) catch |err| return lib.toErrorCode(err);
     const mlen = matches.len;
 
-    defer lib.freeAny(lib.RegrexMatch, c_alloc, matches[0..mlen], lib.freeMatchCallback);
-
     var buffer = c_alloc.alloc(C.Match, mlen) catch {
         return .REGREX_EMALLOC;
     };
@@ -351,7 +356,7 @@ export fn regrex_find_all(
 /// One-off substitution of matches in the input with a replacement string.
 ///
 /// Allocates a copy, does not mutate the input
-export fn regrex_sub(
+pub export fn regrex_sub(
     pattern: ?C.StaticString,
     in_str: ?C.StaticString,
     repl_str: ?C.StaticString,

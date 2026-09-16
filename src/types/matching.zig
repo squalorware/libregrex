@@ -115,7 +115,7 @@ pub const Match = struct {
     }
 
     /// Returns capture groups (exceot full match)
-    pub fn subgroups(self: Match) ErrorSet![]const Span {
+    pub fn subgroups(self: Match) ErrorSet![]Span {
         return self.groups[1..];
     }
 };
