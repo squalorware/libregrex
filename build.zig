@@ -40,16 +40,11 @@ pub fn build(b: *std.Build) void {
     engine_mod.addImport("unicode", unicode_mod);
 
     // Root module for Zig package
-    const root_mod = b.addModule("regrex", .{
-        .target = target,
-        .optimize = optimize,
-        .root_source_file = b.path("src/root.zig"),
-        .imports = &.{
-            .{ .name = "types", .module = types_mod },
-            .{ .name = "unicode", .module = unicode_mod },
-            .{ .name = "engine", .module = engine_mod },
-        }
-    });
+    const root_mod = b.addModule("regrex", .{ .target = target, .optimize = optimize, .root_source_file = b.path("src/root.zig"), .imports = &.{
+        .{ .name = "types", .module = types_mod },
+        .{ .name = "unicode", .module = unicode_mod },
+        .{ .name = "engine", .module = engine_mod },
+    } });
 
     // Skip creating pkg-config file for Windows
     const OS = target.result.os.tag;

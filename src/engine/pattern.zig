@@ -24,11 +24,6 @@ pub const PatternSubOptions = struct {
     count: usize = 0,
 };
 
-/// Data structure produced by `regrex.compile()` representing a compiled pattern.
-/// 
-/// Points to a private structure which stores the runtime context. Fields `.pattern`, `.instructions`, 
-/// `.group_count` and `.allocator` are private and accessed only by exposed public interface.
-///  Owned and released by caller.
 pub const Pattern = opaque {
     pub fn init(
         alloc: std.mem.Allocator,
@@ -69,13 +64,7 @@ pub const Pattern = opaque {
     pub fn match(ptr: *Pattern, input: []const u8) ErrorSet!?Match {
         const self: *_Pattern = @ptrCast(@alignCast(ptr));
 
-        return try vm.execAt(
-            self.alloc,
-            input,
-            0,
-            self.group_count,
-            self.instructions
-        );
+        return try vm.execAt(self.alloc, input, 0, self.group_count, self.instructions);
     }
 
     /// Returns the first match produced at any position within the input
@@ -84,13 +73,7 @@ pub const Pattern = opaque {
         var pos: usize = 0;
 
         while (pos <= input.len) {
-            if (try vm.execAt(
-                self.alloc,
-                input,
-                pos,
-                self.group_count,
-                self.instructions
-            )) |m| return m;
+            if (try vm.execAt(self.alloc, input, pos, self.group_count, self.instructions)) |m| return m;
 
             _ = unicode.advancePos(input, &pos) catch break;
         }
@@ -114,7 +97,7 @@ pub const Pattern = opaque {
     }
 
     /// Initializes and returns an instance of the lazy iterator to perform lookups
-    /// 
+    ///
     /// The caller owns the instance and must release it explicitly by calling `iter.deinit(alloc)`
     pub fn findIter(ptr: *Pattern, input: []const u8) ErrorSet!*LazyIterator {
         const self: *_Pattern = @ptrCast(@alignCast(ptr));
@@ -128,7 +111,7 @@ pub const Pattern = opaque {
     }
 
     /// Returns a slice containing all non-overlapping matches found in the input
-    /// 
+    ///
     /// The caller owns the slice and must explicitly release it
     pub fn findAll(ptr: *Pattern, input: []const u8) ErrorSet![]Match {
         const self: *_Pattern = @ptrCast(@alignCast(ptr));
@@ -145,7 +128,7 @@ pub const Pattern = opaque {
     }
 
     /// Copies the input string to a dynamic buffer, then substitutes all pattern matches with a replacement string
-    /// 
+    ///
     /// Returns the modified copy of the input. Returned slice is owned by caller and must be released
     pub fn sub(
         ptr: *Pattern,
@@ -164,7 +147,7 @@ pub const Pattern = opaque {
         var copy_pos: usize = 0;
         var repl_count: usize = 0;
 
-        while(opts.count == 0 or opts.count > repl_count) {
+        while (opts.count == 0 or opts.count > repl_count) {
             const found = (try iter.next()) orelse break;
 
             var matched = found;

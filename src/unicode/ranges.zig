@@ -43,7 +43,7 @@ pub const RuneTable: struct {
 ///
 /// Returns the position of the scalar relative to the specified range
 fn compareWithRange(rune: u21, range: RuneRange, as: RuneRangeType) LookupOrder {
-    return switch(as) {
+    return switch (as) {
         .char_class => RuneRange.compare(range.start, range.end, rune),
         .case_fold => RuneRange.compare(range.start, range.start, rune),
     };
@@ -92,7 +92,7 @@ fn charClassContains(class: []const RuneRange, literal: u21) bool {
 
 /// Checks if given literal belongs to one of the preset character classes
 pub fn isInClass(cls: CharClassType, literal: u21) bool {
-    return switch(cls) {
+    return switch (cls) {
         .digit => charClassContains(RuneTable.digit_ranges, literal),
         .word => charClassContains(RuneTable.word_ranges, literal),
         .whitespace => charClassContains(RuneTable.whitespace_ranges, literal),
@@ -138,11 +138,7 @@ pub fn isWord(rune: ?Rune) bool {
 ///
 /// If literal has no correspondent mapping returns it unchanged
 pub fn simpleCaseFold(literal: u21) u21 {
-    const map = binarySearch(
-        RuneTable.case_folds[0..],
-        literal,
-        RuneRangeType.case_fold
-    ) orelse return literal;
+    const map = binarySearch(RuneTable.case_folds[0..], literal, RuneRangeType.case_fold) orelse return literal;
 
     return map.end;
 }

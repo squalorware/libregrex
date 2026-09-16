@@ -16,7 +16,7 @@ const _Iterator = struct {
 };
 
 /// Public-facing Iterator interface
-/// 
+///
 /// On init takes a pointer and a closure function from `Pattern`,
 /// which allows updating shared execution context and call VM execution within closure
 pub const LazyIterator = opaque {
@@ -52,7 +52,7 @@ pub const LazyIterator = opaque {
         }
     }
 
-    /// Scans the input once, starting at position in current context, 
+    /// Scans the input once, starting at position in current context,
     /// then advances position register by one UTF-8 codepoint bytelength
     pub fn next(ptr: *LazyIterator) ErrorSet!?Match {
         const self: *_Iterator = @ptrCast(@alignCast(ptr));
@@ -60,10 +60,7 @@ pub const LazyIterator = opaque {
         if (self.done) return null;
 
         while (!self.done) {
-            const maybe_match = try self.func(self.ctx, .{ 
-                .input = self.input,
-                .pos = self.pos
-            });
+            const maybe_match = try self.func(self.ctx, .{ .input = self.input, .pos = self.pos });
 
             if (maybe_match) |found| {
                 var match = found;

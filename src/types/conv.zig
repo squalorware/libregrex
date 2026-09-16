@@ -9,7 +9,7 @@ const testing = std.testing;
 
 /// Converts a UTF-8 codepoint into a hexadecimal digit
 pub fn toHexDigit(val: u21) ?u21 {
-    return switch(val) {
+    return switch (val) {
         '0'...'9' => val - '0',
         'a'...'f' => val - 'a' + 10,
         'A'...'F' => val - 'A' + 10,
@@ -19,14 +19,14 @@ pub fn toHexDigit(val: u21) ?u21 {
 
 /// Converts a UTF-8 codepoint into an octal digit
 pub fn toOctDigit(val: u21) ?u21 {
-    return switch(val) {
+    return switch (val) {
         '0'...'7' => val - '0',
         else => null,
     };
 }
 
 pub fn toErrorCode(err: anyerror) ext.C_ReturnCode {
-    return switch(err) {
+    return switch (err) {
         ErrorSet.InvalidArgument => .REGREX_EARG,
         ErrorSet.NoMatch => .REGREX_ENOMATCH,
         ErrorSet.MemoryError => .REGREX_EMALLOC,
@@ -36,7 +36,7 @@ pub fn toErrorCode(err: anyerror) ext.C_ReturnCode {
         ErrorSet.UnexpectedToken => .REGREX_ETOKEN,
         ErrorSet.UnexpectedEnd => .REGREX_EEND,
         ErrorSet.ExpressionExpected => .REGREX_EEXPR,
-        ErrorSet.InvalidEscape  => .REGREX_EBADESC,
+        ErrorSet.InvalidEscape => .REGREX_EBADESC,
         ErrorSet.TrailingEscape => .REGREX_ETRAILESC,
         ErrorSet.InvalidRepeat => .REGREX_EBADREP,
         ErrorSet.UnmatchedParen => .REGREX_ERPAREN,
@@ -93,14 +93,14 @@ pub fn toErrorMsg(rcode: ext.C_ReturnCode) ext.C_StaticString {
 }
 
 pub fn toC_Array(
-    allocator: std.mem.Allocator, 
-    comptime T: type, 
-    sequence: []const T, 
+    allocator: std.mem.Allocator,
+    comptime T: type,
+    sequence: []const T,
     options: meta.T_FreeOptions(T),
 ) ErrorSet!?[*]T {
     if (sequence.len == 0) return null;
     defer allocator.free(sequence);
-    
+
     if (!options.managed) {
         const result = allocator.dupe(T, sequence) catch return ErrorSet.MemoryError;
         return result.ptr;
@@ -117,7 +117,7 @@ pub fn toC_Array(
             return ErrorSet.MemoryError;
         };
         var i: usize = 0;
-        while(i < sequence.len) : (i += 1) {
+        while (i < sequence.len) : (i += 1) {
             result[i] = allocator.create(T) catch {
                 _ = ext.c_freeAllocated(T, allocator, result.ptr, result.len, .{
                     .destructor = options.destructor,
@@ -125,7 +125,7 @@ pub fn toC_Array(
                 });
                 return ErrorSet.MemoryError;
             };
-            result[i].* = sequence[i];  
+            result[i].* = sequence[i];
         }
         return result.ptr;
     }

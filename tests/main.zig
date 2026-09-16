@@ -37,12 +37,7 @@ test "regrex.match() should try to match only at the input start" {
 
     try testing.expectEqualStrings("420", try result.full());
 
-    const no_match = try regrex.match(
-        allocator, 
-        "[0-9]+", 
-        "lol 420 kek",
-        .{}
-    );
+    const no_match = try regrex.match(allocator, "[0-9]+", "lol 420 kek", .{});
     try testing.expect(no_match == null);
 }
 
@@ -113,13 +108,7 @@ test "regrex.findAll() should return all non-overlapping matches" {
 test "regrex.sub() replaces all occurences matching pattern" {
     const allocator = testing.allocator;
 
-    const result = try regrex.sub(
-        allocator,
-        "[0-9]+",
-        "lol 420 kek 69",
-        "SIXSEVEN",
-        .{}
-    );
+    const result = try regrex.sub(allocator, "[0-9]+", "lol 420 kek 69", "SIXSEVEN", .{});
     defer allocator.free(result);
 
     try testing.expectEqualStrings("lol SIXSEVEN kek SIXSEVEN", result);
@@ -152,5 +141,5 @@ test "regrex.sub() safely replaces all occurences if options.count is greater th
     );
     defer allocator.free(result);
 
-    try testing.expectEqualStrings("lol SIXSEVEN kek SIXSEVEN", result); 
+    try testing.expectEqualStrings("lol SIXSEVEN kek SIXSEVEN", result);
 }

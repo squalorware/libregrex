@@ -50,7 +50,7 @@ pub const C_ReturnCode = enum(i8) {
 /// NULL-terminated `const char*`, immutable, borrowed
 pub const C_StaticString = [*:0]const u8;
 
-/// NULL-terminated `char*`, mutable, owned by allocator 
+/// NULL-terminated `char*`, mutable, owned by allocator
 pub const C_String = [*:0]u8;
 
 pub const C_Match = extern struct {
@@ -104,4 +104,3 @@ pub fn c_freeBuffer(
 
     _ = meta.freeAny(T, alloc, buf[0..len], destroy_cb);
 }
-

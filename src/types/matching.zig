@@ -8,22 +8,19 @@ const testing = std.testing;
 
 pub const MAX_GROUPS_LEN = 1024;
 
-/// Byte offset within the input string. Represents match data (full match and capture groups).
-///     Follows slice semantics: `.start` is inclusive; `.end` is exclusive.
 pub const Span = T_Range(usize, .{ .extern_compat = true });
 
 /// Sentinel offset to represent a capture group that took no part in matching
-pub const EmptySpan =  Span{ .start = Sentinel, .end = Sentinel };
+pub const EmptySpan = Span{ .start = Sentinel, .end = Sentinel };
 
 pub fn isEmpty(span: Span) bool {
     return span.start == Sentinel and span.end == Sentinel;
 }
 
-/// Data structure to the match result data as a buffer of byte offsets
 pub const Match = struct {
     alloc: std.mem.Allocator,
     input: []const u8,
-    /// Byte offsets of matches within the input. 
+    /// Byte offsets of matches within the input.
     ///     `group[0]` always represents the full match.
     ///     `group[1..]` contains capture groups
     groups: []Span,
@@ -31,7 +28,7 @@ pub const Match = struct {
     pub fn init(
         allocator: std.mem.Allocator,
         captures_len: usize,
-        input: []const u8, 
+        input: []const u8,
         slots: []const ?usize,
     ) ErrorSet!Match {
         const full_start = slots[0] orelse 0;
@@ -148,7 +145,7 @@ const test_input = "lol 420 kek";
 test "Match.init() should return a Match with valid full match and no capture groups" {
     const allocator = testing.allocator;
     // Capture slot with whole match start and end indices
-    const slots = [_]?usize { 4, 7 };
+    const slots = [_]?usize{ 4, 7 };
 
     var m = try Match.init(allocator, 0, test_input, slots[0..]);
     defer m.deinit();
@@ -163,7 +160,12 @@ test "Match.init() should return a Match with valid full match and no capture gr
 
 test "Match.init() should return a Match with a valid subgroup" {
     const allocator = testing.allocator;
-    const slots = [_]?usize { 4, 7, 4, 7, };
+    const slots = [_]?usize{
+        4,
+        7,
+        4,
+        7,
+    };
 
     var m = try Match.init(allocator, 1, test_input, slots[0..]);
     defer m.deinit();
@@ -180,7 +182,7 @@ test "Match.init() should return a Match with a valid subgroup" {
 
 test "Match.init() should create a Match with unmatched subgroups as sentinel groups" {
     const allocator = testing.allocator;
-    const slots = [_]?usize { 4, 7, null, null };
+    const slots = [_]?usize{ 4, 7, null, null };
 
     var m = try Match.init(allocator, 1, test_input, slots[0..]);
     defer m.deinit();
@@ -194,7 +196,7 @@ test "Match.init() should create a Match with unmatched subgroups as sentinel gr
 
 test "Match.init() should create a Match with partially captured groups as sentinel groups" {
     const allocator = testing.allocator;
-    const slots = [_]?usize { 4, 7, 4, null };
+    const slots = [_]?usize{ 4, 7, 4, null };
 
     var m = try Match.init(allocator, 1, test_input, slots[0..]);
     defer m.deinit();
@@ -208,13 +210,13 @@ test "Match.init() should create a Match with partially captured groups as senti
 
 test "Match.init() should create a Match with multiple capture groups" {
     const allocator = testing.allocator;
-    const slots = [_]?usize {
+    const slots = [_]?usize{
         0, 11, // group 0 (full match)
         0, 3, // group 1
         4, 7, // group 2
-        8, 11 // group 3
+        8, 11, // group 3
     };
-    const expected = [_][]const u8 {"lol", "420", "kek"};
+    const expected = [_][]const u8{ "lol", "420", "kek" };
 
     var m = try Match.init(allocator, 3, test_input, slots[0..]);
     defer m.deinit();

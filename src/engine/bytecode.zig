@@ -1,5 +1,5 @@
 //! Intermediate Code Representation.
-//! 
+//!
 //! Defines instructions and the shape of bytecode produced by the `Compiler`
 //! and consumed by the `VM`
 const Allocator = @import("std").mem.Allocator;
@@ -55,7 +55,7 @@ pub const Instruction = union(enum) {
     /// - slot 2 / 3: group 1 start/end
     /// - slot 4 / 5: group 2 start/end
     Save: usize,
-    /// Temporary instruction that holds current input position 
+    /// Temporary instruction that holds current input position
     /// until patched (replaced at index) by another instruction like Split or Jump
     Hold,
     /// Backtracking branch.

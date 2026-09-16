@@ -5,7 +5,7 @@ const AST = @import("./syntax.zig");
 const bytecode = @import("./bytecode.zig");
 
 /// Represents a rule by which a Rune-consuming Instruction should test it.
-/// 
+///
 /// This lets `.Rune`, `.Any`, and `.Class` share the same consume/decode path
 /// while preserving their distinct matching semantics.
 pub const CurrentRuneMatcher = union(enum) {
@@ -41,20 +41,16 @@ fn matchChars(rune: Rune, chars: []const u21, ignore_case: bool) bool {
 
 /// Checks whether a scalar matches any enabled preset character class.
 fn matchPreset(literal: u21, preset: AST.PresetClassSet) bool {
-    return (
-        preset.match(literal, .digit) or
+    return (preset.match(literal, .digit) or
         preset.match(literal, .word) or
-        preset.match(literal, .whitespace)
-    );
+        preset.match(literal, .whitespace));
 }
 
 /// Checks whether a scalar matches any enabled negated preset character class.
 fn matchNegatedPreset(literal: u21, preset: AST.PresetClassSet) bool {
-    return (
-        preset.matchNegated(literal, .digit) or
+    return (preset.matchNegated(literal, .digit) or
         preset.matchNegated(literal, .word) or
-        preset.matchNegated(literal, .whitespace)
-    );
+        preset.matchNegated(literal, .whitespace));
 }
 
 /// Checks whether a Rune is accepted by a CharClass
@@ -65,12 +61,10 @@ fn matchNegatedPreset(literal: u21, preset: AST.PresetClassSet) bool {
 /// Negated classes invert the final result
 fn matchCharClasses(rune: Rune, matcher: bytecode.ClassMatcher) bool {
     const cls = matcher.class;
-    const matched = (
-        matchRanges(rune.raw(), cls.ranges, matcher.ignore_case ) or
+    const matched = (matchRanges(rune.raw(), cls.ranges, matcher.ignore_case) or
         matchChars(rune, cls.chars, matcher.ignore_case) or
         matchPreset(rune.raw(), cls.preset) or
-        matchNegatedPreset(rune.raw(), cls.negated_preset)
-    );
+        matchNegatedPreset(rune.raw(), cls.negated_preset));
 
     return if (cls.negated) !matched else matched;
 }
@@ -122,12 +116,7 @@ fn isLineEnd(input: []const u8, pos: usize) RegrexError!bool {
 }
 
 /// Checks whether a start or end anchor matches current input position.
-pub fn anchorMatched(
-    inst: bytecode.Instruction,
-    input: []const u8,
-    pos: usize,
-    multiline: bool
-) RegrexError!bool {
+pub fn anchorMatched(inst: bytecode.Instruction, input: []const u8, pos: usize, multiline: bool) RegrexError!bool {
     switch (inst) {
         .AssertStart => {
             if (multiline) return try isLineStart(input, pos);
@@ -151,7 +140,7 @@ fn isWordBoundary(input: []const u8, pos: usize) RegrexError!bool {
 
 /// Checks whether a zero-width assertion matches current input position.
 pub fn assertMatched(input: []const u8, pos: usize, assert: AST.AssertionType) RegrexError!bool {
-    return switch(assert) {
+    return switch (assert) {
         .start_abs => pos == 0,
         .end_abs => pos == input.len,
         .word_bounds => try isWordBoundary(input, pos),

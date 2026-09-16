@@ -33,12 +33,8 @@ pub fn init(pattern: []const u8) Lexer {
 }
 
 pub fn isSemanticEscape(char: u21) bool {
-    return switch(char) {
-        'd', 'D',
-        'w', 'W',
-        's', 'S',
-        'A', 'Z',
-        'b', 'B' => true,
+    return switch (char) {
+        'd', 'D', 'w', 'W', 's', 'S', 'A', 'Z', 'b', 'B' => true,
         else => false,
     };
 }
@@ -63,7 +59,7 @@ pub fn tokenize(self: *Lexer, tlist: *TokenListBuffer) RegrexError!void {
     while (iter.nextCodepoint()) |char| {
         const current_pos = self.pos;
         self.pos += 1;
-    
+
         if (char == '\\') {
             const escaped = iter.nextCodepoint() orelse {
                 return RegrexError.TrailingEscape;
@@ -71,7 +67,7 @@ pub fn tokenize(self: *Lexer, tlist: *TokenListBuffer) RegrexError!void {
 
             self.pos += 1;
 
-            const literal: u21 = switch(escaped) {
+            const literal: u21 = switch (escaped) {
                 'n' => '\n',
                 'r' => '\r',
                 't' => '\t',
@@ -118,10 +114,10 @@ pub fn tokenize(self: *Lexer, tlist: *TokenListBuffer) RegrexError!void {
                 else => escaped,
             };
 
-            try tlist.append(.{ 
+            try tlist.append(.{
                 .typ = if (isSemanticEscape(escaped)) .ESCAPED_CHAR else .CHAR,
                 .val = try Rune.from(literal),
-                .pos = current_pos, 
+                .pos = current_pos,
             });
             continue;
         }
@@ -129,16 +125,16 @@ pub fn tokenize(self: *Lexer, tlist: *TokenListBuffer) RegrexError!void {
         const rune = try Rune.from(char);
         const typ = mapRuneToTokenType(rune) orelse .CHAR;
 
-        try tlist.append(.{ 
-            .typ = typ, 
-            .val = try Rune.from(char), 
-            .pos = current_pos, 
+        try tlist.append(.{
+            .typ = typ,
+            .val = try Rune.from(char),
+            .pos = current_pos,
         });
     }
-    try tlist.append(.{ 
-        .typ = .EOF, 
-        .val = null, 
-        .pos = self.pos, 
+    try tlist.append(.{
+        .typ = .EOF,
+        .val = null,
+        .pos = self.pos,
     });
 }
 

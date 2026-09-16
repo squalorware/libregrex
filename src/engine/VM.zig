@@ -16,8 +16,8 @@ const CurrentRuneMatcher = utils.CurrentRuneMatcher;
 const matchRune = utils.matchRune;
 
 /// Represents a snapshot of alternative VM state produced by `Split` instruction
-/// 
-/// Used by VM to try backtracking if current execution failed - `Frame` is loaded from the `Stack` 
+///
+/// Used by VM to try backtracking if current execution failed - `Frame` is loaded from the `Stack`
 const Frame = struct {
     /// Program counter - keeps track of executed `Instruction`s
     pc: usize,
@@ -36,22 +36,16 @@ fn freeCapturesCallback(alloc: std.mem.Allocator, ptr: *Frame) void {
     ptr.deinit(alloc);
 }
 
-/// Backtracking VM execution stack for saving alternative execution states.
 const Stack = types.T_ManagedArrayList(Frame, freeCapturesCallback);
 
+/// Current execution context
+///
+/// Contains snapshot of the position in the input
 pub const ExecutionContext = struct {
     input: []const u8,
     pos: usize,
 };
 
-/// Clones the current capture-slot state for a saved backtracking Frame.
-///
-/// Capture slots contain input byte offsets:
-///
-/// - slots 0/1: whole match start/end
-/// - slots 2/3: capture group 1 start/end
-/// - slots 4/5: capture group 2 start/end
-/// - etc.
 fn cloneCaptures(alloc: std.mem.Allocator, captures: []const ?usize) RegrexError![]?usize {
     const clone = alloc.dupe(?usize, captures) catch {
         return RegrexError.MemoryError;
@@ -59,13 +53,7 @@ fn cloneCaptures(alloc: std.mem.Allocator, captures: []const ?usize) RegrexError
     return clone;
 }
 
-/// Tries to retrieve a last saved `Frame` from `Stack`
-///
-/// If a Frame was retrieved, updates the VM state (backtracks)
-/// to resume execution from the saved program counter and input position, 
-/// overwriting the current capture slots with the saved snapshot, then returns `true`.
-/// 
-/// Returns `false` if failed to retrieve a Frame from the Stack, for example because there are none
+/// Attempts to backtrack to the alternative state saved to Stack and restore execution from it
 fn hasBacktracked(
     alloc: std.mem.Allocator,
     stack: *Stack,
@@ -81,11 +69,7 @@ fn hasBacktracked(
     return true;
 }
 
-/// Checks if backtracking restored the VM state to resume execution.
-/// 
-/// Returns `true` if successfully retrieved and restored VM state with the Frame from the Stack.
-/// 
-/// Returns `false` otherwise, marking the entire execution as failed.
+/// Checks if backtracking succeded, aborts execution and cleans up context otherwise
 fn hasRestoredState(
     alloc: std.mem.Allocator,
     stack: *Stack,
@@ -100,20 +84,16 @@ fn hasRestoredState(
     return false;
 }
 
-/// Executes bytecode instructions against the input string starting at `start_pos`
-///
-/// Returns `Match` if a match was found in the input.
-/// 
-/// Returns `null` if no match was found.
+/// Executes instructions in the bytecode buffer `prog` against the input starting from `start_pos`
 pub fn execAt(
-    allocator: std.mem.Allocator, 
-    input: []const u8, 
+    allocator: std.mem.Allocator,
+    input: []const u8,
     start_pos: usize,
     group_count: usize,
-    instructions: []const Instruction,
+    prog: []const Instruction,
 ) RegrexError!?Match {
     const capture_slots = (group_count + 1) * 2;
-    var captures = allocator.alloc(? usize, capture_slots) catch {
+    var captures = allocator.alloc(?usize, capture_slots) catch {
         return RegrexError.MemoryError;
     };
     errdefer allocator.free(captures);
@@ -125,20 +105,20 @@ pub fn execAt(
     var stack = try Stack.init(allocator, .{});
     defer stack.deinit();
 
-     // Initialize the program execution counter
+    // Initialize the program execution counter
     var pc: usize = 0;
     var pos: usize = start_pos;
-    // Bytecode instructions execution loop
+    // Execution loop
     while (true) {
-        if (pc >= instructions.len) {
+        if (pc >= prog.len) {
             if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) continue;
             return null;
         }
 
-        const inst = instructions[pc];
+        const inst = prog[pc];
         switch (inst) {
             .Rune => |matcher| {
-                if (try utils.runeMatched(input, &pos, .{.literal = matcher})) {
+                if (try utils.runeMatched(input, &pos, .{ .literal = matcher })) {
                     pc += 1;
                     continue;
                 }
@@ -148,7 +128,7 @@ pub fn execAt(
                 return null;
             },
             .Any => |matcher| {
-                if (try utils.runeMatched(input, &pos, .{.any = matcher})) {
+                if (try utils.runeMatched(input, &pos, .{ .any = matcher })) {
                     pc += 1;
                     continue;
                 }
@@ -158,7 +138,7 @@ pub fn execAt(
                 return null;
             },
             .Class => |matcher| {
-                if (try utils.runeMatched(input, &pos, .{.char_class = matcher})) {
+                if (try utils.runeMatched(input, &pos, .{ .char_class = matcher })) {
                     pc += 1;
                     continue;
                 }
@@ -202,7 +182,7 @@ pub fn execAt(
                     if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) {
                         continue;
                     }
-                    return null;     
+                    return null;
                 }
                 captures[slot] = pos;
                 pc += 1;
@@ -219,6 +199,7 @@ pub fn execAt(
                 }) catch {
                     return RegrexError.MemoryError;
                 };
+                // Resume execution from the program counter of the "left" `Frame`
                 pc = split.first;
             },
             // Unconditional jump to instruction at specified index
@@ -226,7 +207,7 @@ pub fn execAt(
                 pc = target;
             },
             // Terminal instruction
-            .Match => { 
+            .Match => {
                 const result = try Match.init(
                     allocator,
                     group_count,
@@ -242,7 +223,7 @@ pub fn execAt(
 
 test "execAt() should produce a Match from given position" {
     const allocator = testing.allocator;
-    const inst_list = [_]Instruction{
+    const prog = [_]Instruction{
         .{ .Save = 0 },
         .{ .Rune = .{ .value = '4' } },
         .{ .Rune = .{ .value = '2' } },
@@ -256,7 +237,7 @@ test "execAt() should produce a Match from given position" {
         "lol 420 kek",
         4,
         0,
-        inst_list[0..],
+        prog[0..],
     )) orelse {
         try testing.expect(false);
         return;
@@ -270,7 +251,7 @@ test "execAt() should produce a Match from given position" {
 
 test "execAt() should handle capture slots" {
     const allocator = testing.allocator;
-    const inst_list = [_]Instruction{
+    const prog = [_]Instruction{
         .{ .Save = 0 },
         .{ .Save = 2 },
         .{ .Rune = .{ .value = '4' } },
@@ -286,7 +267,7 @@ test "execAt() should handle capture slots" {
         "420",
         0,
         1,
-        inst_list[0..],
+        prog[0..],
     )) orelse {
         try testing.expect(false);
         return;
@@ -302,7 +283,7 @@ test "execAt() should handle capture slots" {
 test "execAt() should consume a complete multibyte Unicode Rune" {
     const allocator = testing.allocator;
 
-    const inst_list = [_]Instruction{
+    const prog = [_]Instruction{
         .{ .Save = 0 },
         .{ .Rune = .{ .value = 'Ї' } },
         .{ .Save = 1 },
@@ -314,7 +295,7 @@ test "execAt() should consume a complete multibyte Unicode Rune" {
         "abcЇdef",
         3,
         0,
-        inst_list[0..],
+        prog[0..],
     )) orelse {
         try testing.expect(false);
         return;
@@ -334,15 +315,15 @@ test "execAt() should consume a complete multibyte Unicode Rune" {
 
 test "execAt() should correctly handle an anchored lowercase character class repeat" {
     const allocator = testing.allocator;
-    const ranges = [_]AST.RuneRange {
+    const ranges = [_]AST.RuneRange{
         .{ .start = 'a', .end = 'z' },
     };
-    const chars = [_]u21 {};
+    const chars = [_]u21{};
     const lowercase_class: AST.CharClass = .{
         .ranges = ranges[0..],
         .chars = chars[0..],
     };
-    const inst_list = [_]Instruction{
+    const prog = [_]Instruction{
         .{ .Save = 0 },
         .{ .AssertStart = .{} },
         .{
@@ -367,7 +348,7 @@ test "execAt() should correctly handle an anchored lowercase character class rep
         "abc",
         0,
         0,
-        inst_list[0..],
+        prog[0..],
     )) orelse {
         try testing.expect(false);
         return;
@@ -381,7 +362,7 @@ test "execAt() should correctly handle an anchored lowercase character class rep
         "abc123",
         0,
         0,
-        inst_list[0..],
+        prog[0..],
     );
     try testing.expect(no_match == null);
 }

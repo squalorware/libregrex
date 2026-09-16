@@ -1,7 +1,6 @@
-//! AST-to-bytecode compiler.
-//! 
-//! Consumes the AST produced by parser and emits 
-//! an `InstructionList` for the VM to execute.
+//! Bytecode emitter
+//!
+//! Consumes parsed syntax nodes and emits corresponding bytecode instructions to the program buffer
 const std = @import("std");
 const types = @import("types");
 const AST = @import("./syntax.zig");
@@ -12,11 +11,9 @@ const Instruction = Bytecode.Instruction;
 const InstructionSet = Bytecode.InstructionSet;
 const RegrexError = types.errors.ErrorSet;
 
-/// Deep-copies a character class into bytecode memory.
-/// 
-/// Prevents bytecode from pointing into the temporary `Parser` AST arena
-/// 
-/// Returns `RegrexError.MemoryError` if failed to allocate memory on heap for copy
+// Deep-copies a character class into bytecode memory
+///
+// Prevents an emitted `Instruction` from pointing into the temporary `Parser` AST arena
 fn cloneCharClass(alloc: std.mem.Allocator, cls: AST.CharClass) RegrexError!AST.CharClass {
     const ranges = alloc.dupe(AST.RuneRange, cls.ranges) catch {
         return RegrexError.MemoryError;
@@ -42,13 +39,10 @@ pub const Compiler = @This();
 buffer: *InstructionSet,
 flags: Flags,
 
-/// Initializes a compiler state and 
-/// allocates bytecode dynamic buffer
-pub fn init(bytecode: *InstructionSet, flags: Flags) Compiler {
-    return .{ .buffer = bytecode, .flags = flags };
+pub fn init(prog: *InstructionSet, flags: Flags) Compiler {
+    return .{ .buffer = prog, .flags = flags };
 }
 
-/// Appends an `Instruction` and returns its bytecode index 
 fn emit(self: Compiler, inst: Instruction) RegrexError!usize {
     const idx = self.buffer.len();
     try self.buffer.append(inst);
@@ -57,7 +51,7 @@ fn emit(self: Compiler, inst: Instruction) RegrexError!usize {
 }
 
 /// Replaces a previously emitted placeholder `Instruction`.
-/// 
+///
 /// Used for forward jumps where the target address is unknown
 /// until after compiling a branch or repeating body
 fn patch(self: Compiler, idx: usize, inst: Instruction) RegrexError!void {
@@ -74,14 +68,11 @@ fn compileNode(self: Compiler, alloc: std.mem.Allocator, node: *const AST.Node) 
                     .ignore_case = self.flags.ignore_case,
                 },
             });
-
         },
         .AnyChar => {
-            _ = try self.emit(.{
-                .Any = .{
-                    .dot_all = self.flags.dot_all,
-                }
-            });
+            _ = try self.emit(.{ .Any = .{
+                .dot_all = self.flags.dot_all,
+            } });
         },
         .StartAnchor => {
             _ = try self.emit(.{
@@ -91,7 +82,7 @@ fn compileNode(self: Compiler, alloc: std.mem.Allocator, node: *const AST.Node) 
             });
         },
         .EndAnchor => {
-            _ =try self.emit(.{
+            _ = try self.emit(.{
                 .AssertEnd = .{
                     .multiline = self.flags.multiline,
                 },
@@ -140,13 +131,6 @@ fn compileNode(self: Compiler, alloc: std.mem.Allocator, node: *const AST.Node) 
 }
 
 /// Emits bytecode for supported postfix quantifiers.
-/// 
-/// The supported forms are:
-/// - `*` (zero or more)
-/// - `+` (one to more)
-/// - `?` (zero to one)
-/// 
-/// Returns `RegrexError.InvalidRepeat` for unsupported repeat patterns.
 fn compileRepeat(self: Compiler, alloc: std.mem.Allocator, rep: AST.Repeat) RegrexError!void {
     if (rep.min == 0 and rep.max == null) {
         const split_idx = try self.emit(.Hold);
@@ -201,7 +185,7 @@ fn compileRepeat(self: Compiler, alloc: std.mem.Allocator, rep: AST.Repeat) Regr
 }
 
 /// Emits bytecode for branching (alternation).
-/// 
+///
 /// The produced control flow is:
 /// - `Split(left, right)`
 /// - left branch
@@ -232,14 +216,7 @@ fn compileBranch(self: Compiler, alloc: std.mem.Allocator, branch: AST.Branch) R
     });
 }
 
-/// Top-level callable. Compiles the AST into an owned bytecode slice.
-/// 
-/// The compiler wraps the whole pattern in capture slot 0/1 for the full match, 
-/// then emits `Match` as a terminal instruction.
-/// 
-/// The caller owns the returned slice and must free it. 
-/// If bytecode contains `Class` instructions, their internal slices 
-/// must be freed by the owner as well.  
+/// Recursively consumes the AST produced by `Parser` emitting corresponding bytecode instructions
 pub fn compile(self: Compiler, alloc: std.mem.Allocator, node: *const AST.Node) RegrexError!void {
     _ = try self.emit(.{ .Save = 0 });
     _ = try self.compileNode(alloc, node);
@@ -259,7 +236,7 @@ test "Should compile a sequence of literals `abc`" {
     defer buffer.deinit();
 
     const tree = try ast_alloc.alloc(*AST.Node, 3);
-    const chars = [_]u21 {'a', 'b', 'c'};
+    const chars = [_]u21{ 'a', 'b', 'c' };
     for (chars, 0..) |ch, i| {
         const node = try ast_alloc.create(AST.Node);
         node.* = .{ .Literal = .{ .value = ch } };
@@ -327,13 +304,11 @@ test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
     };
 
     const repeat = try ast_alloc.create(AST.Node);
-    repeat.* = .{
-        .Repeat = .{
-            .node = class_node,
-            .min = 0,
-            .max = null,
-        }
-    };
+    repeat.* = .{ .Repeat = .{
+        .node = class_node,
+        .min = 0,
+        .max = null,
+    } };
 
     const end = try ast_alloc.create(AST.Node);
     end.* = .{ .EndAnchor = .{} };
@@ -609,7 +584,7 @@ test "Should apply pattern flags to emitted instructions" {
             .dot_all = true,
         },
     );
-    try compiler.compile(allocator,root);
+    try compiler.compile(allocator, root);
 
     var instruction = try buffer.get(1);
     try testing.expect(std.meta.activeTag(instruction.*) == .AssertStart);
@@ -655,12 +630,12 @@ test "Should compile zero-width assertions" {
 
     const compiler = Compiler.init(&buffer, .{});
 
-    try compiler.compile(allocator,node);
-    try testing.expectEqual(@as(usize, 4),buffer.len());
+    try compiler.compile(allocator, node);
+    try testing.expectEqual(@as(usize, 4), buffer.len());
 
     const instruction = try buffer.get(1);
     try testing.expect(std.meta.activeTag(instruction.*) == .Assert);
-    try testing.expectEqual(AST.AssertionType.word_bounds,instruction.Assert);
+    try testing.expectEqual(AST.AssertionType.word_bounds, instruction.Assert);
 }
 
 test "Should preserve preset character classes" {

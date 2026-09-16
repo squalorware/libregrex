@@ -14,20 +14,18 @@ val: u21,
 /// belongs within valid range of UTF-8 characters
 /// and is not in the range of surrogates
 pub fn byteLength(literal: u21) ?u4 {
-    return switch(literal) {
+    return switch (literal) {
         0x0000...0x007F => @as(u4, 1),
         0x0080...0x07FF => @as(u4, 2),
-        0x0800...0xD7FF,
-        0xE000...0xFFFF => @as(u4, 3),
+        0x0800...0xD7FF, 0xE000...0xFFFF => @as(u4, 3),
         0x10000...0x10FFFF => @as(u4, 4),
         else => null,
     };
 }
 
 pub fn isLineBreak(self: Rune) bool {
-    return switch(self.val) {
-        '\n', '\r',
-        0x2028, 0x2029 => true,
+    return switch (self.val) {
+        '\n', '\r', 0x2028, 0x2029 => true,
         else => false,
     };
 }
@@ -45,7 +43,7 @@ pub fn equals(self: Rune, to: u21, ignore_case: bool) bool {
 pub fn from(literal: u21) Error!Rune {
     const byte_length = byteLength(literal) orelse return Error.InvalidUnicode;
 
-    return Rune { .len = byte_length, .val = literal };
+    return Rune{ .len = byte_length, .val = literal };
 }
 
 pub fn raw(self: Rune) u21 {
@@ -99,4 +97,3 @@ test "Rune.raw should return the original scalar value" {
         rune.raw(),
     );
 }
-

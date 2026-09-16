@@ -12,16 +12,15 @@ const TokenType = tokens.TokenType;
 /// Parser state instance for a single token stream
 pub const Parser = @This();
 
-/// Controls AST lifetime.
 alloc: std.mem.Allocator,
 group_count: usize = 0,
 pos: usize = 0,
 /// Borrowed slice representing lexical token stream
 token_list: []const Token,
 
-/// `alloc`: controls AST nodes and owned child slices. 
-/// 
-/// Prefer an `ArenaAllocator`and release the whole 
+/// `alloc`: controls AST nodes and owned child slices.
+///
+/// Prefer an `ArenaAllocator`and release the whole
 /// AST after compiling to bytecode
 pub fn init(
     alloc: std.mem.Allocator,
@@ -38,8 +37,7 @@ fn current(self: Parser) Token {
     return self.token_list[self.pos];
 }
 
-/// Returns a token at `pos + offset` or `null` 
-/// if index out of range
+/// Returns a token at `pos + offset` or `null` if index out of range
 fn peek(self: Parser, offset: usize) ?Token {
     const idx = self.pos + offset;
 
@@ -57,8 +55,7 @@ fn advance(self: *Parser) Token {
     return token;
 }
 
-/// Takes `TokenType` and checks if current token 
-/// has matching type
+/// Checks if current token's type matches the expected one
 fn match(self: *Parser, typ: TokenType) bool {
     if (self.current().typ == typ) {
         _ = self.advance();
@@ -67,11 +64,7 @@ fn match(self: *Parser, typ: TokenType) bool {
     return false;
 }
 
-/// Takes `TokenType` and checks if current token 
-/// has matching type.
-/// 
-/// Returns `Error.UnexpectedToken` if type mismatch -
-/// current token doesn't match context
+/// Returns a compilation error if token type doesn't match the expected one
 fn expect(self: *Parser, typ: TokenType) RegrexError!Token {
     if (self.current().typ != typ) {
         return RegrexError.UnexpectedToken;
@@ -90,20 +83,12 @@ fn createNode(self: *Parser, node: AST.Node) RegrexError!*AST.Node {
 
 /// Applies a predefined Unicode character-class escape to its corresponding
 /// regular or negated class set.
-///
-/// Recognized escapes (regular, negated):
-///
-/// - `\d`, `\D` - any Unicode digit
-/// - `\w`, `\W` - any Unicode word
-/// - `\s`, `\S` - any Unicode whitespace
-///
-/// Returns `true` when `value` represents a predefined class.
 fn applyPresetEscape(
     value: u21,
     preset: *AST.PresetClassSet,
     negated_preset: *AST.PresetClassSet,
 ) bool {
-    switch(value) {
+    switch (value) {
         'd' => preset.insert(.digit),
         'D' => negated_preset.insert(.digit),
         'w' => preset.insert(.word),
@@ -119,7 +104,7 @@ fn applyPresetEscape(
 ///
 /// Returns `null` when the escape is not an assertion.
 fn assertionEscape(value: u21) ?AST.AssertionType {
-    return switch(value) {
+    return switch (value) {
         'A' => .start_abs,
         'Z' => .end_abs,
         'b' => .word_bounds,
@@ -133,25 +118,14 @@ fn assertionEscape(value: u21) ?AST.AssertionType {
 ///
 /// Most regex metacharacters lose their special meaning inside `[...]`.
 fn charClassLiteral(token: Token) ?u21 {
-    return switch(token.typ) {
-        .CHAR,
-        .ESCAPED_CHAR,
-        .DOT,
-        .CARET,
-        .DOLLAR,
-        .STAR,
-        .PLUS,
-        .QUESTION,
-        .PIPE,
-        .LPAREN,
-        .RPAREN,
-        .LBRACKET => token.val.?.raw(),
+    return switch (token.typ) {
+        .CHAR, .ESCAPED_CHAR, .DOT, .CARET, .DOLLAR, .STAR, .PLUS, .QUESTION, .PIPE, .LPAREN, .RPAREN, .LBRACKET => token.val.?.raw(),
         else => null,
     };
 }
 
 /// Parses branching.
-/// 
+///
 /// Alteration has the lowest precedence in this grammar
 fn parseBranch(self: *Parser) RegrexError!*AST.Node {
     var left = try self.parseSequence();
@@ -173,11 +147,10 @@ fn parseSequence(self: *Parser) RegrexError!*AST.Node {
     var nodes = std.ArrayList(*AST.Node).empty;
     errdefer nodes.deinit(self.alloc);
 
-    while(
-        self.current().typ != .EOF and
+    while (self.current().typ != .EOF and
         self.current().typ != .RPAREN and
-        self.current().typ != .PIPE
-    ) {
+        self.current().typ != .PIPE)
+    {
         const node = try self.parseQuantifier();
         nodes.append(self.alloc, node) catch {
             return RegrexError.MemoryError;
@@ -262,14 +235,12 @@ fn parseEscapedAtom(self: *Parser, token: Token) RegrexError!*AST.Node {
     var negated_preset: AST.PresetClassSet = .{};
 
     if (applyPresetEscape(value, &preset, &negated_preset)) {
-        return self.createNode(.{
-            .CharClass = .{
-                .ranges = &.{},
-                .chars = &.{},
-                .preset = preset,
-                .negated_preset = negated_preset,
-            }
-        });
+        return self.createNode(.{ .CharClass = .{
+            .ranges = &.{},
+            .chars = &.{},
+            .preset = preset,
+            .negated_preset = negated_preset,
+        } });
     }
 
     if (assertionEscape(value)) |assert| {
@@ -291,7 +262,7 @@ fn parseEscapedAtom(self: *Parser, token: Token) RegrexError!*AST.Node {
 fn parseAtom(self: *Parser) RegrexError!*AST.Node {
     const token = self.current();
 
-     switch (token.typ) {
+    switch (token.typ) {
         .CHAR => {
             _ = self.advance();
             return self.createNode(.{
@@ -337,17 +308,16 @@ fn parseGroup(self: *Parser) RegrexError!*AST.Node {
     const next = self.peek(1);
 
     // Parse a non-capturing group
-    if (
-        first != null and 
+    if (first != null and
         next != null and
         first.?.typ == .QUESTION and
         next.?.typ == .CHAR and
-        next.?.val.?.raw() == ':'
-    ) {
+        next.?.val.?.raw() == ':')
+    {
         _ = self.advance(); // QUESTION
         _ = self.advance(); // CHAR ':'
 
-        const node= try self.parseBranch();
+        const node = try self.parseBranch();
 
         if (!self.match(.RPAREN)) {
             return RegrexError.UnmatchedParen;
@@ -378,18 +348,6 @@ fn parseGroup(self: *Parser) RegrexError!*AST.Node {
 }
 
 /// Parses a character class after the opening `LBRACKET`
-/// 
-/// Supports:
-/// - literal characters
-/// - inclusive ranges (e.g. `a-z`, `0-9`)
-/// - preset Unicode character classes (`\d`, `\w`, `\s`)
-///  and their negated counterparts (`\D`, `\W`, `\S`)
-/// - escaped class members and literals (e.g. `\*`)
-/// - leading negation (`^`)
-///
-/// Assertions such as `\A` and `\b` do not act as assertions inside a
-/// character class. In the current feature set they are treated as escaped
-/// literal characters there.
 fn parseCharClass(self: *Parser) RegrexError!AST.CharClass {
     const negated = self.match(.CARET);
 
@@ -402,10 +360,9 @@ fn parseCharClass(self: *Parser) RegrexError!AST.CharClass {
     var preset: AST.PresetClassSet = .{};
     var negated_preset: AST.PresetClassSet = .{};
 
-    while (
-        self.current().typ != .RBRACKET and 
-        self.current().typ != .EOF
-    ) {
+    while (self.current().typ != .RBRACKET and
+        self.current().typ != .EOF)
+    {
         const start_token = self.current();
 
         // A leading or otherwise standalone unescaped '-' is a literal.
@@ -465,10 +422,9 @@ fn parseCharClass(self: *Parser) RegrexError!AST.CharClass {
 
         // Preset classes cannot be range endpoints. Expressions such as
         // `[a-\d]` have no meaningful scalar endpoint.
-        if (
-            end_token.typ == .ESCAPED_CHAR and
-            Lexer.isSemanticEscape(end_token.val.?.raw())
-        ) {
+        if (end_token.typ == .ESCAPED_CHAR and
+            Lexer.isSemanticEscape(end_token.val.?.raw()))
+        {
             return RegrexError.UnexpectedToken;
         }
 
@@ -502,13 +458,7 @@ fn parseCharClass(self: *Parser) RegrexError!AST.CharClass {
     };
 }
 
-/// Top-level callable.
-/// 
-/// Parses the whole `Token` stream and returns the whole AST
-/// starting with root Node.
-/// 
-/// Returns `RegrexError.UnexpectedToken` if the `Token` stream
-/// does not end with `EOF`
+/// Parses the lexical Token buffer into an abstract tree representation of a regular expression
 pub fn parse(self: *Parser) RegrexError!*AST.Node {
     const ast = try self.parseBranch();
 

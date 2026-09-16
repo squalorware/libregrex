@@ -1,4 +1,3 @@
-/// Flags to tell regex compiler how to modify pattern behaviour
 pub const CompileFlags = packed struct(u8) {
     /// Pattern matching become case-insensitive
     ignore_case: bool = false,
@@ -19,4 +18,3 @@ pub const LookupOrder = enum {
 pub const RangeOptions = struct {
     extern_compat: bool = false,
 };
-

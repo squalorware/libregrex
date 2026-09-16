@@ -1,4 +1,4 @@
-//! The Abstract Syntax Tree representation 
+//! The Abstract Syntax Tree representation
 //! of the regular expression pattern.
 const unicode = @import("unicode");
 
@@ -22,7 +22,7 @@ pub const Node = union(enum) {
     Sequence: Sequence,
     /// `|` Alternation
     Branch: Branch,
-    /// Quantifier node (`*`, `+` or `?`) 
+    /// Quantifier node (`*`, `+` or `?`)
     Repeat: Repeat,
     /// Capturing group `(...)`
     CaptureGroup: CaptureGroup,
@@ -72,7 +72,7 @@ pub const RuneRange = unicode.ranges.RuneRange;
 pub const PresetClass = unicode.ranges.CharClassType;
 
 /// Set of predefined Unicode character classes.
-pub const PresetClassSet = packed struct (u8) {
+pub const PresetClassSet = packed struct(u8) {
     digit: bool = false,
     word: bool = false,
     whitespace: bool = false,
@@ -116,9 +116,9 @@ pub const PresetClassSet = packed struct (u8) {
 /// Character-class expression.
 ///
 /// `ranges`: inclusive ranges such as `a-z` or `0-9`.
-/// 
-/// `chars`: individual literal members. 
-/// 
+///
+/// `chars`: individual literal members.
+///
 /// `negated`: classes beginning with `^`, such as `[^0-9]`.
 pub const CharClass = struct {
     ranges: []const RuneRange,
@@ -140,7 +140,7 @@ pub const Branch = struct {
 };
 
 /// Repetition Node
-/// 
+///
 /// If `max`is `null` the repetition is without limit
 pub const Repeat = struct {
     node: *Node,
@@ -150,7 +150,7 @@ pub const Repeat = struct {
 
 /// Capturing group
 pub const CaptureGroup = struct {
-    /// Base-1 capture group index. 
+    /// Base-1 capture group index.
     /// Group 0 is reserved for the whole match
     pos: usize,
     node: *Node,

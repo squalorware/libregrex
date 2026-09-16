@@ -63,14 +63,14 @@ pub fn commonMatchImpl(
     const m = if (comptime M == .pattern) blk: {
         const pattern: *RegrexPattern = subject orelse return RegrexError.InvalidArgument;
 
-        break :blk try switch(Fn) {
+        break :blk try switch (Fn) {
             .match => pattern.match(std.mem.span(input)),
             .search => pattern.search(std.mem.span(input)),
         } orelse return RegrexError.NoMatch;
     } else blk: {
         const pattern: C.StaticString = subject.pattern orelse return RegrexError.InvalidArgument;
 
-        break :blk try switch(Fn) {
+        break :blk try switch (Fn) {
             .match => regrexMatch(alloc, std.mem.span(pattern), std.mem.span(input), toCompileFlags(subject.flags)),
             .search => regrexSearch(alloc, std.mem.span(pattern), std.mem.span(input), toCompileFlags(subject.flags)),
         } orelse return RegrexError.NoMatch;
@@ -78,4 +78,3 @@ pub fn commonMatchImpl(
 
     out.* = try C.Match.create(alloc, m);
 }
-

@@ -2,8 +2,7 @@
 const conv = @import("./conv.zig");
 const C_ReturnCode = @import("./ext.zig").C_ReturnCode;
 
-/// Common parsing and compilation errors
-pub const ErrorSet = error {
+pub const ErrorSet = error{
     /// Invalid argument
     InvalidArgument,
     /// No matching group

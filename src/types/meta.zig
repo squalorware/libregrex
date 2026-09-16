@@ -10,17 +10,14 @@ const LookupOrder = misc.LookupOrder;
 const RangeOptions = misc.RangeOptions;
 
 pub fn hasDeinit(comptime T: type) bool {
-    return switch(@typeInfo(T)) {
-        .@"struct",
-        .@"union",
-        .@"enum",
-        .@"opaque" => @hasDecl(T, "deinit"),
+    return switch (@typeInfo(T)) {
+        .@"struct", .@"union", .@"enum", .@"opaque" => @hasDecl(T, "deinit"),
         else => false,
     };
 }
 
 pub fn hasLength(comptime T: type) bool {
-    return switch(@typeInfo(T)) {
+    return switch (@typeInfo(T)) {
         .array => true,
         .pointer => @hasDecl(T, "len"),
         else => false,
@@ -59,23 +56,23 @@ pub fn T_MergedInt(comptime First: type, comptime Second: type) type {
     // e.g. if First is u16, and Second is i8, the result will be u24
     const sign = if (first.bits > second.bits)
         first.signedness
-    // First: u8, Second: i16 - result i24
+            // First: u8, Second: i16 - result i24
     else if (second.bits > first.bits)
-            second.signedness
-    // If bits are equal but any of the pair is unsigned, then result is unsigned
-        else if (first.signedness == .unsigned or second.signedness == .unsigned)
-                std.builtin.Signedness.unsigned
-    // Exhausted all options; both integers must be signed so result is signed
-            else
-                std.builtin.Signedness.signed;
+        second.signedness
+            // If bits are equal but any of the pair is unsigned, then result is unsigned
+    else if (first.signedness == .unsigned or second.signedness == .unsigned)
+        std.builtin.Signedness.unsigned
+            // Exhausted all options; both integers must be signed so result is signed
+    else
+        std.builtin.Signedness.signed;
 
     return @Int(sign, bits);
 }
 
 // Merges two generic structs into one.
 //
-// Merges only `struct` fields. 
-// Does not copy member functions or associated constants. 
+// Merges only `struct` fields.
+// Does not copy member functions or associated constants.
 // The created type is a regular unpacked struct by default.
 // If either of types is packed, while other is unpacked, its `BackingInt` is discarded.
 // If both structures' layout is packed, a new `packed struct` is created,
@@ -86,7 +83,7 @@ pub fn T_MergedStruct(comptime T_Base: type, comptime T_Extra: type) type {
         const extra_t = @typeInfo(T_Extra).@"struct";
         const both_packed =
             base_t.layout == .@"packed" and
-                extra_t.layout == .@"packed";
+            extra_t.layout == .@"packed";
 
         // Unique field counter
         var ufc: usize = base_t.fields.len;
@@ -133,7 +130,7 @@ pub fn T_MergedStruct(comptime T_Base: type, comptime T_Extra: type) type {
                     };
                 }
                 continue;
-            // Skip other duplicates
+                // Skip other duplicates
             } else if (is_dup) continue;
 
             names[i] = field.name;
@@ -158,7 +155,7 @@ pub fn T_MergedStruct(comptime T_Base: type, comptime T_Extra: type) type {
 }
 
 /// Generic representation of a range offset
-/// 
+///
 /// `T` must be an integer type, otherwise compilation fails; accepts optional flag
 /// to create a structure with C-compatible memory layout (default: false)
 pub fn T_Range(comptime T: type, opts: RangeOptions) type {
@@ -177,7 +174,7 @@ pub fn T_Range(comptime T: type, opts: RangeOptions) type {
             start: T,
             end: T,
             /// Compares an integer `T` against an inclusive range `[tail..head]` of same type
-            pub fn compare(tail: T, head: T,item: T) LookupOrder {
+            pub fn compare(tail: T, head: T, item: T) LookupOrder {
                 if (item < tail) return .before;
                 if (item > head) return .after;
 
@@ -196,7 +193,7 @@ pub fn T_Range(comptime T: type, opts: RangeOptions) type {
         start: T,
         end: T,
         /// Compares an integer `T` against an inclusive range `[tail..head]` of same type
-        pub fn compare(tail: T, head: T,item: T) LookupOrder {
+        pub fn compare(tail: T, head: T, item: T) LookupOrder {
             if (item < tail) return .before;
             if (item > head) return .after;
 
@@ -211,11 +208,11 @@ pub fn T_Range(comptime T: type, opts: RangeOptions) type {
 }
 
 pub fn T_DestructorCallback(comptime T: type) type {
-    return ?*const fn(std.mem.Allocator, *T) void;
+    return ?*const fn (std.mem.Allocator, *T) void;
 }
 
 pub fn T_Closure(comptime T: type, comptime O: type, comptime R: type) type {
-    return *const fn(ctx: *const T, opts: O) ErrorSet!R;
+    return *const fn (ctx: *const T, opts: O) ErrorSet!R;
 }
 
 pub fn T_FreeOptions(comptime T: type) type {
@@ -225,7 +222,7 @@ pub fn T_FreeOptions(comptime T: type) type {
     };
 }
 
-pub fn ArrayListInitOptions(comptime T: type) type {
+pub fn T_InitOptions(comptime T: type) type {
     return struct {
         buffer: ?[]const T = null,
     };
@@ -254,7 +251,7 @@ pub fn T_ManagedArrayList(
         inner: std.ArrayList(T),
 
         /// If buffer is supplied, the values are copied to the list which assumes ownership over them
-        pub fn init(alloc: std.mem.Allocator, opts: ArrayListInitOptions(T)) ErrorSet!Self {
+        pub fn init(alloc: std.mem.Allocator, opts: T_InitOptions(T)) ErrorSet!Self {
             var inner: std.ArrayList(T) = .empty;
 
             if (opts.buffer) |buf| {
@@ -271,7 +268,7 @@ pub fn T_ManagedArrayList(
 
         /// If the contained type requires some custom deinitialization logic,
         ///  it can be called within the body of `destroy_cb` callback
-        pub fn deinitItem(self: Self, item: *T) void {
+        fn deinitItem(self: Self, item: *T) void {
             if (destroy_cb) |deinit_fn| {
                 deinit_fn(self.allocator, item);
             } else if (comptime hasDeinit(T)) {
@@ -323,9 +320,9 @@ pub fn T_ManagedArrayList(
         /// Returns a borrowed pointer to the value at `i`.
         ///
         /// Returns `Error.InvalidArgument` if `i` is outside the list.
-        pub fn get(self: *const Self, i: usize) ErrorSet! *const T {
+        pub fn get(self: *const Self, i: usize) ErrorSet!*const T {
             if (i >= self.inner.items.len) {
-                return ErrorSet.OutOfRange;
+                return ErrorSet.InvalidArgument;
             }
 
             return &self.inner.items[i];
@@ -362,16 +359,11 @@ pub fn T_ManagedArrayList(
     };
 }
 
-pub fn freeAny(
-    comptime T: type, 
-    alloc: std.mem.Allocator, 
-    sequence: []T, 
-    destroy_cb: T_DestructorCallback(T) 
-) void {
+pub fn freeAny(comptime T: type, alloc: std.mem.Allocator, sequence: []T, destroy_cb: T_DestructorCallback(T)) void {
     for (sequence) |*item| {
         if (destroy_cb) |deinit_fn| {
             deinit_fn(alloc, item);
-        } 
+        }
     }
     alloc.free(sequence);
 }
@@ -434,13 +426,13 @@ test "MergedStruct keeps Foo version of duplicate fields" {
     try std.testing.expectEqual(u8, info.fields[0].type);
 
     try std.testing.expectEqualStrings("foo", info.fields[1].name);
-    try std.testing.expectEqualStrings("bar",info.fields[2].name);
+    try std.testing.expectEqualStrings("bar", info.fields[2].name);
 
     const value: Merged = .{};
 
     try std.testing.expectEqual(@as(u8, 42), value.shared);
     try std.testing.expectEqual(true, value.foo);
-    try std.testing.expectEqual(@as(u16, 7),value.bar);
+    try std.testing.expectEqual(@as(u16, 7), value.bar);
 }
 
 test "MergedStruct merges two packed structs" {
@@ -463,25 +455,25 @@ test "MergedStruct merges two packed structs" {
         info.layout,
     );
 
-    try std.testing.expectEqual(u8,info.backing_integer.?);
+    try std.testing.expectEqual(u8, info.backing_integer.?);
     try std.testing.expectEqual(
         @as(usize, 4),
         info.fields.len,
     );
 
-    try std.testing.expectEqualStrings("foo",info.fields[0].name);
-    try std.testing.expectEqual(bool,info.fields[0].type);
+    try std.testing.expectEqualStrings("foo", info.fields[0].name);
+    try std.testing.expectEqual(bool, info.fields[0].type);
 
-    try std.testing.expectEqualStrings("_padding",info.fields[1].name);
-    try std.testing.expectEqual(u5,info.fields[1].type);
+    try std.testing.expectEqualStrings("_padding", info.fields[1].name);
+    try std.testing.expectEqual(u5, info.fields[1].type);
 
-    try std.testing.expectEqualStrings("bar",info.fields[2].name);
-    try std.testing.expectEqual(bool,info.fields[2].type);
+    try std.testing.expectEqualStrings("bar", info.fields[2].name);
+    try std.testing.expectEqual(bool, info.fields[2].type);
 
     try std.testing.expectEqualStrings("baz", info.fields[3].name);
-    try std.testing.expectEqual(bool,info.fields[3].type);
+    try std.testing.expectEqual(bool, info.fields[3].type);
 
-    try std.testing.expectEqual(@as(usize, 8),@bitSizeOf(Merged));
+    try std.testing.expectEqual(@as(usize, 8), @bitSizeOf(Merged));
 
     const value: Merged = .{
         .foo = true,
@@ -501,11 +493,7 @@ const TestItem = struct {
     deinit_count: *usize,
 
     pub fn init(alloc: std.mem.Allocator, id: usize, deinit_count: *usize) !TestItem {
-        return .{ 
-            .id = id, 
-            .data = try alloc.dupe(u8, "test"),
-            .deinit_count = deinit_count 
-        };
+        return .{ .id = id, .data = try alloc.dupe(u8, "test"), .deinit_count = deinit_count };
     }
 
     pub fn deinit(self: *TestItem, alloc: std.mem.Allocator) void {
@@ -600,7 +588,7 @@ test "ManagedArrayList init empty and appendSlice" {
 
         try list.appendSlice(appended[0..]);
 
-        try expectTestItemIds(&list,&.{ 13, 42, 67 });
+        try expectTestItemIds(&list, &.{ 13, 42, 67 });
     }
 
     try std.testing.expectEqual(
@@ -638,7 +626,7 @@ test "ManagedArrayList init with slice and appendSlice" {
         try expectTestItemIds(&list, &.{ 13, 42, 67, 69, 420, 666 });
     }
 
-    try std.testing.expectEqual(@as(usize, 6),deinit_count);
+    try std.testing.expectEqual(@as(usize, 6), deinit_count);
 }
 
 test "ManagedArrayList set" {
@@ -678,7 +666,7 @@ test "ManagedArrayList set error" {
         try std.testing.expectError(ErrorSet.OutOfRange, list.set(1, item));
         item.deinit(allocator);
     }
-    try std.testing.expectEqual(@as(usize, 1), deinit_count);    
+    try std.testing.expectEqual(@as(usize, 1), deinit_count);
 }
 
 test "ManagedArrayList pop" {
@@ -704,13 +692,11 @@ test "ManagedArrayList toOwnedSlice" {
     const allocator = std.testing.allocator;
     var deinit_count: usize = 0;
 
-    var initial = [_]TestItem {
+    var initial = [_]TestItem{
         try TestItem.init(allocator, 67, &deinit_count),
         try TestItem.init(allocator, 420, &deinit_count),
     };
-    var list = try TestItemList.init(allocator, .{
-        .buffer = initial[0..]
-    });
+    var list = try TestItemList.init(allocator, .{ .buffer = initial[0..] });
     defer list.deinit();
 
     try std.testing.expectEqual(@as(usize, 2), list.len());
