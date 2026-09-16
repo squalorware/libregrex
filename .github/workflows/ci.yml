@@ -3,9 +3,9 @@ on:
   push:
     branches:
       - master
-    pull_request:
-      branches:
-        - master
+  pull_request:
+    branches:
+      - master
 jobs:
   test:
     strategy:
@@ -20,5 +20,7 @@ jobs:
           version: "0.16.0"
       - name: Build
         run: zig build
-      - name: Test
-        run: zig build test --summary all --verbose
+      - name: Run unit tests
+        run: zig build test_unit --summary all --verbose
+      - name: Run integration tests
+        run: zig build test_lib --summary all --verbose

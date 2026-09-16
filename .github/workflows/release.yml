@@ -71,6 +71,12 @@ jobs:
           with:
             version: ${{ env.ZIG_VERSION }}
 
+        - name: Run unit tests
+          run: zig build test_unit --summary all
+
+        - name: Run integration tests
+          run: zig build test_lib --summary all
+
         - name: Build (Linux)
           if: ${{ contains(matrix.target, 'linux') }}
           run: |
