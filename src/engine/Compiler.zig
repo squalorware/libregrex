@@ -5,11 +5,11 @@
 const std = @import("std");
 const types = @import("types");
 const AST = @import("./syntax.zig");
-const bytecode = @import("./bytecode.zig");
+const Bytecode = @import("./bytecode.zig");
 const testing = std.testing;
 const Flags = types.CompileFlags;
-const Instruction = bytecode.Instruction;
-const BytecodeBuffer = bytecode.BytecodeBuffer;
+const Instruction = Bytecode.Instruction;
+const InstructionSet = Bytecode.InstructionSet;
 const RegrexError = types.errors.ErrorSet;
 
 /// Deep-copies a character class into bytecode memory.
@@ -39,19 +39,19 @@ fn cloneCharClass(alloc: std.mem.Allocator, cls: AST.CharClass) RegrexError!AST.
 
 pub const Compiler = @This();
 
-instructions: *BytecodeBuffer,
+buffer: *InstructionSet,
 flags: Flags,
 
 /// Initializes a compiler state and 
 /// allocates bytecode dynamic buffer
-pub fn init(inst_list: *BytecodeBuffer, flags: Flags) Compiler {
-    return .{ .instructions = inst_list, .flags = flags };
+pub fn init(bytecode: *InstructionSet, flags: Flags) Compiler {
+    return .{ .buffer = bytecode, .flags = flags };
 }
 
 /// Appends an `Instruction` and returns its bytecode index 
 fn emit(self: Compiler, inst: Instruction) RegrexError!usize {
-    const idx = self.instructions.len();
-    try self.instructions.append(inst);
+    const idx = self.buffer.len();
+    try self.buffer.append(inst);
 
     return idx;
 }
@@ -61,7 +61,7 @@ fn emit(self: Compiler, inst: Instruction) RegrexError!usize {
 /// Used for forward jumps where the target address is unknown
 /// until after compiling a branch or repeating body
 fn patch(self: Compiler, idx: usize, inst: Instruction) RegrexError!void {
-    try self.instructions.set(idx, inst);
+    try self.buffer.set(idx, inst);
 }
 
 /// Emit bytecode for an AST Node
@@ -151,12 +151,12 @@ fn compileRepeat(self: Compiler, alloc: std.mem.Allocator, rep: AST.Repeat) Regr
     if (rep.min == 0 and rep.max == null) {
         const split_idx = try self.emit(.Hold);
 
-        const body_start = self.instructions.len();
+        const body_start = self.buffer.len();
         try self.compileNode(alloc, rep.node);
 
         _ = try self.emit(.{ .Jump = split_idx });
 
-        const after = self.instructions.len();
+        const after = self.buffer.len();
 
         try self.patch(split_idx, .{
             .Split = .{
@@ -168,14 +168,14 @@ fn compileRepeat(self: Compiler, alloc: std.mem.Allocator, rep: AST.Repeat) Regr
     }
 
     if (rep.min == 1 and rep.max == null) {
-        const body_start = self.instructions.len();
+        const body_start = self.buffer.len();
 
         try self.compileNode(alloc, rep.node);
 
         _ = try self.emit(.{
             .Split = .{
                 .first = body_start,
-                .second = self.instructions.len() + 1,
+                .second = self.buffer.len() + 1,
             },
         });
         return;
@@ -184,10 +184,10 @@ fn compileRepeat(self: Compiler, alloc: std.mem.Allocator, rep: AST.Repeat) Regr
     if (rep.min == 0 and rep.max.? == 1) {
         const split_idx = try self.emit(.Hold);
 
-        const body_start = self.instructions.len();
+        const body_start = self.buffer.len();
         try self.compileNode(alloc, rep.node);
 
-        const after = self.instructions.len();
+        const after = self.buffer.len();
 
         try self.patch(split_idx, .{
             .Split = .{
@@ -210,15 +210,15 @@ fn compileRepeat(self: Compiler, alloc: std.mem.Allocator, rep: AST.Repeat) Regr
 fn compileBranch(self: Compiler, alloc: std.mem.Allocator, branch: AST.Branch) RegrexError!void {
     const split_idx = try self.emit(.Hold);
 
-    const left_start = self.instructions.len();
+    const left_start = self.buffer.len();
     try self.compileNode(alloc, branch.left);
 
     const jump_idx = try self.emit(.Hold);
 
-    const right_start = self.instructions.len();
+    const right_start = self.buffer.len();
     try self.compileNode(alloc, branch.right);
 
-    const after = self.instructions.len();
+    const after = self.buffer.len();
 
     try self.patch(split_idx, .{
         .Split = .{
@@ -255,8 +255,8 @@ test "Should compile a sequence of literals `abc`" {
 
     const ast_alloc = arena.allocator();
 
-    var inst_list = try BytecodeBuffer.init(allocator, .{});
-    defer inst_list.deinit();
+    var buffer = try InstructionSet.init(allocator, .{});
+    defer buffer.deinit();
 
     const tree = try ast_alloc.alloc(*AST.Node, 3);
     const chars = [_]u21 {'a', 'b', 'c'};
@@ -273,27 +273,27 @@ test "Should compile a sequence of literals `abc`" {
         },
     };
 
-    const compiler = Compiler.init(&inst_list, .{});
+    const compiler = Compiler.init(&buffer, .{});
     try compiler.compile(allocator, root);
 
-    try testing.expectEqual(@as(usize, 6), inst_list.len());
+    try testing.expectEqual(@as(usize, 6), buffer.len());
 
-    var instruction = try inst_list.get(0);
+    var instruction = try buffer.get(0);
     try testing.expect(std.meta.activeTag(instruction.*) == Instruction.Save);
     try testing.expectEqual(@as(usize, 0), instruction.Save);
 
     for (chars, 0..) |ch, i| {
         const pos = i + 1;
-        instruction = try inst_list.get(pos);
+        instruction = try buffer.get(pos);
         try testing.expect(std.meta.activeTag(instruction.*) == Instruction.Rune);
         try testing.expectEqual(@as(u21, ch), instruction.Rune.value);
     }
 
-    instruction = try inst_list.get(4);
+    instruction = try buffer.get(4);
     try testing.expect(std.meta.activeTag(instruction.*) == Instruction.Save);
     try testing.expectEqual(@as(usize, 1), instruction.Save);
 
-    const last_inst = try inst_list.get(5);
+    const last_inst = try buffer.get(5);
     try testing.expect(std.meta.activeTag(last_inst.*) == Instruction.Match);
 }
 
@@ -304,8 +304,8 @@ test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
 
     const ast_alloc = arena.allocator();
 
-    var inst_list = try BytecodeBuffer.init(allocator, .{});
-    defer inst_list.deinit();
+    var buffer = try InstructionSet.init(allocator, .{});
+    defer buffer.deinit();
 
     const start = try ast_alloc.create(AST.Node);
     start.* = .{ .StartAnchor = .{} };
@@ -350,43 +350,43 @@ test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
         },
     };
 
-    const compiler = Compiler.init(&inst_list, .{});
+    const compiler = Compiler.init(&buffer, .{});
     try compiler.compile(allocator, root);
 
-    try testing.expectEqual(@as(usize, 8), inst_list.len());
+    try testing.expectEqual(@as(usize, 8), buffer.len());
 
-    var instruction = try inst_list.get(0);
+    var instruction = try buffer.get(0);
     try testing.expect(std.meta.activeTag(instruction.*) == .Save);
     try testing.expectEqual(@as(usize, 0), instruction.Save);
 
-    instruction = try inst_list.get(1);
+    instruction = try buffer.get(1);
     try testing.expect(std.meta.activeTag(instruction.*) == .AssertStart);
     try testing.expect(!instruction.AssertStart.multiline);
 
-    instruction = try inst_list.get(2);
+    instruction = try buffer.get(2);
     try testing.expect(std.meta.activeTag(instruction.*) == .Split);
     try testing.expectEqual(@as(usize, 3), instruction.Split.first);
     try testing.expectEqual(@as(usize, 5), instruction.Split.second);
 
-    instruction = try inst_list.get(3);
+    instruction = try buffer.get(3);
     try testing.expect(std.meta.activeTag(instruction.*) == .Class);
     try testing.expectEqual(false, instruction.Class.class.negated);
     try testing.expectEqual(@as(usize, 1), instruction.Class.class.ranges.len);
     try testing.expectEqual(@as(u21, 'a'), instruction.Class.class.ranges[0].start);
     try testing.expectEqual(@as(u21, 'z'), instruction.Class.class.ranges[0].end);
 
-    instruction = try inst_list.get(4);
+    instruction = try buffer.get(4);
     try testing.expect(std.meta.activeTag(instruction.*) == .Jump);
     try testing.expectEqual(@as(usize, 2), instruction.Jump);
 
-    instruction = try inst_list.get(5);
+    instruction = try buffer.get(5);
     try testing.expect(std.meta.activeTag(instruction.*) == .AssertEnd);
 
-    instruction = try inst_list.get(6);
+    instruction = try buffer.get(6);
     try testing.expect(std.meta.activeTag(instruction.*) == .Save);
     try testing.expectEqual(@as(usize, 1), instruction.Save);
 
-    instruction = try inst_list.get(7);
+    instruction = try buffer.get(7);
     try testing.expect(std.meta.activeTag(instruction.*) == .Match);
 }
 
@@ -398,8 +398,8 @@ test "Should compile branching `a|b`" {
 
     const ast_alloc = arena.allocator();
 
-    var inst_list = try BytecodeBuffer.init(allocator, .{});
-    defer inst_list.deinit();
+    var buffer = try InstructionSet.init(allocator, .{});
+    defer buffer.deinit();
 
     const left = try ast_alloc.create(AST.Node);
     left.* = .{ .Literal = .{ .value = 'a' } };
@@ -414,37 +414,37 @@ test "Should compile branching `a|b`" {
         },
     };
 
-    const compiler = Compiler.init(&inst_list, .{});
+    const compiler = Compiler.init(&buffer, .{});
     try compiler.compile(allocator, root);
 
-    try testing.expectEqual(@as(usize, 7), inst_list.len());
+    try testing.expectEqual(@as(usize, 7), buffer.len());
 
-    var instruction = try inst_list.get(0);
+    var instruction = try buffer.get(0);
     try testing.expect(std.meta.activeTag(instruction.*) == .Save);
     try testing.expectEqual(@as(usize, 0), instruction.Save);
 
-    instruction = try inst_list.get(1);
+    instruction = try buffer.get(1);
     try testing.expect(std.meta.activeTag(instruction.*) == .Split);
     try testing.expectEqual(@as(usize, 2), instruction.Split.first);
     try testing.expectEqual(@as(usize, 4), instruction.Split.second);
 
-    instruction = try inst_list.get(2);
+    instruction = try buffer.get(2);
     try testing.expect(std.meta.activeTag(instruction.*) == .Rune);
     try testing.expectEqual(@as(u21, 'a'), instruction.Rune.value);
 
-    instruction = try inst_list.get(3);
+    instruction = try buffer.get(3);
     try testing.expect(std.meta.activeTag(instruction.*) == .Jump);
     try testing.expectEqual(@as(usize, 5), instruction.Jump);
 
-    instruction = try inst_list.get(4);
+    instruction = try buffer.get(4);
     try testing.expect(std.meta.activeTag(instruction.*) == .Rune);
     try testing.expectEqual(@as(u21, 'b'), instruction.Rune.value);
 
-    instruction = try inst_list.get(5);
+    instruction = try buffer.get(5);
     try testing.expect(std.meta.activeTag(instruction.*) == .Save);
     try testing.expectEqual(@as(usize, 1), instruction.Save);
 
-    instruction = try inst_list.get(6);
+    instruction = try buffer.get(6);
     try testing.expect(std.meta.activeTag(instruction.*) == .Match);
 }
 
@@ -456,8 +456,8 @@ test "Should compile a capture group `(a)`" {
 
     const ast_alloc = arena.allocator();
 
-    var inst_list = try BytecodeBuffer.init(allocator, .{});
-    defer inst_list.deinit();
+    var buffer = try InstructionSet.init(allocator, .{});
+    defer buffer.deinit();
 
     const lit = try ast_alloc.create(AST.Node);
     lit.* = .{ .Literal = .{ .value = 'a' } };
@@ -470,32 +470,32 @@ test "Should compile a capture group `(a)`" {
         },
     };
 
-    const compiler = Compiler.init(&inst_list, .{});
+    const compiler = Compiler.init(&buffer, .{});
     try compiler.compile(allocator, root);
 
-    try testing.expectEqual(@as(usize, 6), inst_list.len());
+    try testing.expectEqual(@as(usize, 6), buffer.len());
 
-    var instruction = try inst_list.get(0);
+    var instruction = try buffer.get(0);
     try testing.expect(std.meta.activeTag(instruction.*) == .Save);
     try testing.expectEqual(@as(usize, 0), instruction.Save);
 
-    instruction = try inst_list.get(1);
+    instruction = try buffer.get(1);
     try testing.expect(std.meta.activeTag(instruction.*) == .Save);
     try testing.expectEqual(@as(usize, 2), instruction.Save);
 
-    instruction = try inst_list.get(2);
+    instruction = try buffer.get(2);
     try testing.expect(std.meta.activeTag(instruction.*) == .Rune);
     try testing.expectEqual(@as(u21, 'a'), instruction.Rune.value);
 
-    instruction = try inst_list.get(3);
+    instruction = try buffer.get(3);
     try testing.expect(std.meta.activeTag(instruction.*) == .Save);
     try testing.expectEqual(@as(usize, 3), instruction.Save);
 
-    instruction = try inst_list.get(4);
+    instruction = try buffer.get(4);
     try testing.expect(std.meta.activeTag(instruction.*) == .Save);
     try testing.expectEqual(@as(usize, 1), instruction.Save);
 
-    instruction = try inst_list.get(5);
+    instruction = try buffer.get(5);
     try testing.expect(std.meta.activeTag(instruction.*) == .Match);
 }
 
@@ -507,8 +507,8 @@ test "Should compile an optional repeat `a?`" {
 
     const ast_alloc = arena.allocator();
 
-    var inst_list = try BytecodeBuffer.init(allocator, .{});
-    defer inst_list.deinit();
+    var buffer = try InstructionSet.init(allocator, .{});
+    defer buffer.deinit();
 
     const lit = try ast_alloc.create(AST.Node);
     lit.* = .{ .Literal = .{ .value = 'a' } };
@@ -522,29 +522,29 @@ test "Should compile an optional repeat `a?`" {
         },
     };
 
-    const compiler = Compiler.init(&inst_list, .{});
+    const compiler = Compiler.init(&buffer, .{});
     try compiler.compile(allocator, root);
 
-    try testing.expectEqual(@as(usize, 5), inst_list.len());
+    try testing.expectEqual(@as(usize, 5), buffer.len());
 
-    var instruction = try inst_list.get(0);
+    var instruction = try buffer.get(0);
     try testing.expect(std.meta.activeTag(instruction.*) == .Save);
     try testing.expectEqual(@as(usize, 0), instruction.Save);
 
-    instruction = try inst_list.get(1);
+    instruction = try buffer.get(1);
     try testing.expect(std.meta.activeTag(instruction.*) == .Split);
     try testing.expectEqual(@as(usize, 2), instruction.Split.first);
     try testing.expectEqual(@as(usize, 3), instruction.Split.second);
 
-    instruction = try inst_list.get(2);
+    instruction = try buffer.get(2);
     try testing.expect(std.meta.activeTag(instruction.*) == .Rune);
     try testing.expectEqual(@as(u21, 'a'), instruction.Rune.value);
 
-    instruction = try inst_list.get(3);
+    instruction = try buffer.get(3);
     try testing.expect(std.meta.activeTag(instruction.*) == .Save);
     try testing.expectEqual(@as(usize, 1), instruction.Save);
 
-    instruction = try inst_list.get(4);
+    instruction = try buffer.get(4);
     try testing.expect(std.meta.activeTag(instruction.*) == .Match);
 }
 
@@ -556,11 +556,11 @@ test "Should apply pattern flags to emitted instructions" {
 
     const ast_alloc = arena.allocator();
 
-    var inst_list = try BytecodeBuffer.init(
+    var buffer = try InstructionSet.init(
         allocator,
         .{},
     );
-    defer inst_list.deinit();
+    defer buffer.deinit();
 
     const literal = try ast_alloc.create(AST.Node);
     literal.* = .{
@@ -602,7 +602,7 @@ test "Should apply pattern flags to emitted instructions" {
     };
 
     const compiler = Compiler.init(
-        &inst_list,
+        &buffer,
         .{
             .ignore_case = true,
             .multiline = true,
@@ -611,11 +611,11 @@ test "Should apply pattern flags to emitted instructions" {
     );
     try compiler.compile(allocator,root);
 
-    var instruction = try inst_list.get(1);
+    var instruction = try buffer.get(1);
     try testing.expect(std.meta.activeTag(instruction.*) == .AssertStart);
     try testing.expect(instruction.AssertStart.multiline);
 
-    instruction = try inst_list.get(2);
+    instruction = try buffer.get(2);
     try testing.expect(std.meta.activeTag(instruction.*) == .Rune);
     try testing.expectEqual(
         @as(u21, 'A'),
@@ -623,11 +623,11 @@ test "Should apply pattern flags to emitted instructions" {
     );
     try testing.expect(instruction.Rune.ignore_case);
 
-    instruction = try inst_list.get(3);
+    instruction = try buffer.get(3);
     try testing.expect(std.meta.activeTag(instruction.*) == .Any);
     try testing.expect(instruction.Any.dot_all);
 
-    instruction = try inst_list.get(4);
+    instruction = try buffer.get(4);
     try testing.expect(std.meta.activeTag(instruction.*) == .AssertEnd);
     try testing.expect(instruction.AssertEnd.multiline);
 }
@@ -639,11 +639,11 @@ test "Should compile zero-width assertions" {
     defer arena.deinit();
 
     const ast_alloc = arena.allocator();
-    var inst_list = try BytecodeBuffer.init(
+    var buffer = try InstructionSet.init(
         allocator,
         .{},
     );
-    defer inst_list.deinit();
+    defer buffer.deinit();
 
     const node = try ast_alloc.create(AST.Node);
 
@@ -653,12 +653,12 @@ test "Should compile zero-width assertions" {
         },
     };
 
-    const compiler = Compiler.init(&inst_list, .{});
+    const compiler = Compiler.init(&buffer, .{});
 
     try compiler.compile(allocator,node);
-    try testing.expectEqual(@as(usize, 4),inst_list.len());
+    try testing.expectEqual(@as(usize, 4),buffer.len());
 
-    const instruction = try inst_list.get(1);
+    const instruction = try buffer.get(1);
     try testing.expect(std.meta.activeTag(instruction.*) == .Assert);
     try testing.expectEqual(AST.AssertionType.word_bounds,instruction.Assert);
 }
@@ -670,11 +670,11 @@ test "Should preserve preset character classes" {
     defer arena.deinit();
 
     const ast_alloc = arena.allocator();
-    var inst_list = try bytecode.BytecodeBuffer.init(
+    var buffer = try Bytecode.InstructionSet.init(
         allocator,
         .{},
     );
-    defer inst_list.deinit();
+    defer buffer.deinit();
 
     const node = try ast_alloc.create(AST.Node);
     var preset: AST.PresetClassSet = .{};
@@ -688,11 +688,11 @@ test "Should preserve preset character classes" {
         },
     };
 
-    const compiler = Compiler.init(&inst_list, .{});
+    const compiler = Compiler.init(&buffer, .{});
 
     try compiler.compile(allocator, node);
 
-    const instruction = try inst_list.get(1);
+    const instruction = try buffer.get(1);
     try testing.expect(std.meta.activeTag(instruction.*) == .Class);
     try testing.expect(instruction.Class.class.preset.contains(.digit));
     try testing.expect(!instruction.Class.class.negated_preset.contains(.digit));

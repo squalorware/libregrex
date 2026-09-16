@@ -3,44 +3,41 @@ const types = @import("types");
 const unicode = @import("unicode");
 
 const AST = @import("./syntax.zig");
-const bytecode = @import("./bytecode.zig");
+const Bytecode = @import("./bytecode.zig");
 const utils = @import("./utils.zig");
 
 const testing = std.testing;
 
-const Instruction = bytecode.Instruction;
+const Instruction = Bytecode.Instruction;
 const RegrexError = types.errors.ErrorSet;
 const Match = types.Match;
 const T_DestructorCallback = types.meta.T_DestructorCallback;
 const CurrentRuneMatcher = utils.CurrentRuneMatcher;
 const matchRune = utils.matchRune;
 
-/// A saved alternative execution state used by the backtracking VM.
-///
-/// Frames are pushed to the VM stack by `Split` instructions. If the current frame fails, 
-/// the VM retrieves the last saved frame from the stack
-/// and resumes execution from its program counter and input position.
+/// Represents a snapshot of alternative VM state produced by `Split` instruction
+/// 
+/// Used by VM to try backtracking if current execution failed - `Frame` is loaded from the `Stack` 
 const Frame = struct {
-    /// Keeps track of the next Instruction to execute
+    /// Program counter - keeps track of executed `Instruction`s
     pc: usize,
-    /// Keeps track of the input byte offset to resume from.
+    /// Position to which VM should backtrack to and try resuming from
     pos: usize,
     /// Snapshot of capture slots at the time the alternative path was saved.
     captures: []?usize,
 
-    /// Releases the capture-slot snapshot owned by this Frame
     pub fn deinit(self: *Frame, alloc: std.mem.Allocator) void {
         alloc.free(self.captures);
         self.* = undefined;
     }
 };
 
-fn frameDeinitCallback(alloc: std.mem.Allocator, self: *Frame) void {
-    self.deinit(alloc);
+fn freeCapturesCallback(alloc: std.mem.Allocator, ptr: *Frame) void {
+    ptr.deinit(alloc);
 }
 
 /// Backtracking VM execution stack for saving alternative execution states.
-const Stack = types.T_ManagedArrayList(Frame, frameDeinitCallback);
+const Stack = types.T_ManagedArrayList(Frame, freeCapturesCallback);
 
 pub const ExecutionContext = struct {
     input: []const u8,

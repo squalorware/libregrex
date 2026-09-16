@@ -362,14 +362,16 @@ pub fn T_ManagedArrayList(
     };
 }
 
-/// Generic destructor for allocated data types like arrays
-pub fn freeAllocated(alloc: std.mem.Allocator, comptime T: type, sequence: []const T, options: T_FreeOptions(T)) void {
-    if (options.managed) {
-        for (sequence) |*elem| {
-            if (options.destructor) |destroy| {
-                destroy(alloc, @constCast(elem));
-            }
-        }
+pub fn freeAny(
+    comptime T: type, 
+    alloc: std.mem.Allocator, 
+    sequence: []T, 
+    destroy_cb: T_DestructorCallback(T) 
+) void {
+    for (sequence) |*item| {
+        if (destroy_cb) |deinit_fn| {
+            deinit_fn(alloc, item);
+        } 
     }
     alloc.free(sequence);
 }

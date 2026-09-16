@@ -117,6 +117,7 @@ pub fn build(b: *std.Build) void {
     const lib_test_step = b.step("test_lib", "Build library and run integration tests");
 
     lib_test_step.dependOn(&b.addRunArtifact(integration_tests).step);
+
     // Compile library (C-compatible)
     //
     // Default linkage is dynamic, can be changed with build options,
@@ -188,7 +189,6 @@ fn buildLibrary(
         .root_module = mod,
         .version = version,
     });
-
     lib.installHeader(b.path("include/regrex.h"), "regrex.h");
 
     return lib;

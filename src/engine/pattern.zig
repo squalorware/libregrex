@@ -1,8 +1,10 @@
 const std = @import("std");
 const types = @import("types");
 const unicode = @import("unicode");
-const bytecode = @import("./bytecode.zig");
+const Bytecode = @import("./bytecode.zig");
 const LazyIterator = @import("./Iterator.zig").LazyIterator;
+const Instruction = Bytecode.Instruction;
+const InstructionSet = Bytecode.InstructionSet;
 const vm = @import("./VM.zig");
 const ErrorSet = types.errors.ErrorSet;
 const StringBuffer = types.StringBuffer;
@@ -13,7 +15,7 @@ const ExecutionContext = vm.ExecutionContext;
 const _Pattern = struct {
     alloc: std.mem.Allocator,
     pattern: []const u8,
-    instructions: []bytecode.Instruction,
+    instructions: []Instruction,
     group_count: usize,
 };
 
@@ -22,21 +24,23 @@ pub const PatternSubOptions = struct {
     count: usize = 0,
 };
 
-/// A pointer type to encapsulate compiled pattern buffer and execution state
+/// Data structure produced by `regrex.compile()` representing a compiled pattern.
 /// 
-/// Exposes a public-facing interface for lookups within a string input
+/// Points to a private structure which stores the runtime context. Fields `.pattern`, `.instructions`, 
+/// `.group_count` and `.allocator` are private and accessed only by exposed public interface.
+///  Owned and released by caller.
 pub const Pattern = opaque {
     pub fn init(
         alloc: std.mem.Allocator,
         pattern: []const u8,
-        inst_list: *bytecode.BytecodeBuffer,
+        bytecode: *InstructionSet,
         group_count: usize,
     ) ErrorSet!*Pattern {
         const self: *_Pattern = alloc.create(_Pattern) catch {
             return ErrorSet.MemoryError;
         };
 
-        var instructions = try inst_list.toOwnedSlice();
+        var instructions = try bytecode.toOwnedSlice();
         errdefer alloc.free(&instructions);
 
         self.* = .{
@@ -48,13 +52,13 @@ pub const Pattern = opaque {
         return @ptrCast(self);
     }
 
-    /// Releases the bytecode instruction set and dereferences its buffer
+    /// Releases bytecode buffer and dereferences itself
     pub fn deinit(ptr: *Pattern) void {
         const self: *_Pattern = @ptrCast(@alignCast(ptr));
         const alloc = self.alloc;
 
         for (self.instructions) |*inst| {
-            bytecode.deinitInstruction(self.alloc, inst);
+            Bytecode.freeInstructionCallback(self.alloc, inst);
         }
         alloc.free(self.instructions);
         self.* = undefined;
@@ -93,11 +97,8 @@ pub const Pattern = opaque {
         return null;
     }
 
-
-
-    /// Creates an interface for `vm.execAt` to be called from inside the `FindGenerator`
-    /// while being within current `Pattern` context
-    fn execAdapter(
+    /// Closure function which shares current execution context and Pattern state with LazyIterator
+    fn vmExecClosure(
         ctx: *const anyopaque,
         opts: ExecutionContext,
     ) ErrorSet!?Match {
@@ -112,7 +113,9 @@ pub const Pattern = opaque {
         );
     }
 
-    /// Initializes and returns an instance of the lazy iterator
+    /// Initializes and returns an instance of the lazy iterator to perform lookups
+    /// 
+    /// The caller owns the instance and must release it explicitly by calling `iter.deinit(alloc)`
     pub fn findIter(ptr: *Pattern, input: []const u8) ErrorSet!*LazyIterator {
         const self: *_Pattern = @ptrCast(@alignCast(ptr));
 
@@ -120,7 +123,7 @@ pub const Pattern = opaque {
             self.alloc,
             self,
             input,
-            execAdapter,
+            vmExecClosure,
         );
     }
 
@@ -133,8 +136,6 @@ pub const Pattern = opaque {
         var iter = try findIter(ptr, input);
         defer iter.deinit(self.alloc);
 
-        // var matches: std.ArrayList(*Match) = .empty;
-        // errdefer matches.deinit(self.alloc);
         var matches = try MatchListBuffer.init(self.alloc, .{});
         defer matches.deinit();
 

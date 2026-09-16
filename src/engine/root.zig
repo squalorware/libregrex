@@ -2,7 +2,7 @@ const testing = @import("std").testing;
 const pattern = @import("./pattern.zig");
 const iter = @import("./Iterator.zig");
 
-pub const bytecode = @import("./bytecode.zig");
+pub const Bytecode = @import("./bytecode.zig");
 pub const tokens = @import("./tokens.zig");
 pub const Compiler = @import("./Compiler.zig");
 pub const LazyIterator = iter.LazyIterator;

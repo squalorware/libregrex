@@ -93,14 +93,15 @@ pub const C_Match = extern struct {
 };
 
 /// Generic destructor for allocated data types like arrays
-pub fn c_freeAllocated(
-    alloc: std.mem.Allocator, 
-    comptime T: type, ptr: ?[*]T, 
-    len: usize, 
-    options: meta.T_FreeOptions(T)
+pub fn c_freeBuffer(
+    comptime T: type,
+    alloc: std.mem.Allocator,
+    ptr: ?[*]T,
+    len: usize,
+    destroy_cb: meta.T_DestructorCallback(T),
 ) void {
-    const array = ptr orelse return;
+    const buf = ptr orelse return;
 
-    _ = meta.freeAllocated(alloc, T, array[0..len], options);
+    _ = meta.freeAny(T, alloc, buf[0..len], destroy_cb);
 }
 

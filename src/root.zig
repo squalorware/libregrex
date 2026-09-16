@@ -1,7 +1,7 @@
 const std = @import("std");
 const types = @import("types");
 const engine = @import("engine");
-const bytecode = engine.bytecode;
+const Bytecode = engine.Bytecode;
 const tokens = engine.tokens;
 const errors = types.errors;
 const meta = types.meta;
@@ -35,13 +35,13 @@ pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: CompileFlag
     var parser = engine.Parser.init(arena.allocator(), token_list.items());
     const ast = try parser.parse();
 
-    var bcode = try bytecode.BytecodeBuffer.init(alloc, .{});
-    defer bcode.deinit();
+    var bytecode = try Bytecode.InstructionSet.init(alloc, .{});
+    defer bytecode.deinit();
 
-    const compiler = engine.Compiler.init(&bcode, flags);
+    const compiler = engine.Compiler.init(&bytecode, flags);
     try compiler.compile(alloc, ast);
 
-    return try Pattern.init(alloc, pattern, &bcode, parser.group_count);
+    return try Pattern.init(alloc, pattern, &bytecode, parser.group_count);
 }
 
 /// Returns the first match encountered at the beginning of the input

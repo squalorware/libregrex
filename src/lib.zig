@@ -11,8 +11,7 @@ const root = @import("./root.zig");
 const T_MergedStruct = types.meta.T_MergedStruct;
 
 pub const C = struct {
-    pub const alloc = std.heap.c_allocator;
-    pub const freeAllocated = types.ext.c_freeAllocated;
+    pub const freeBuffer = types.ext.c_freeBuffer;
     pub const Match = types.ext.C_Match;
     pub const ReturnCode = types.ext.C_ReturnCode;
     pub const StaticString = types.ext.C_StaticString;
@@ -26,7 +25,7 @@ pub const C = struct {
     }
 };
 
-pub const freeAllocated = types.meta.freeAllocated;
+pub const freeAny = types.meta.freeAny;
 pub const freeMatchCallback = types.freeMatchCallback;
 // Allows common interface between calling `Pattern.match`/`Pattern.search` and root `match`/`search`
 pub const LookupCtx = struct {

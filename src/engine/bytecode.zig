@@ -1,7 +1,7 @@
 //! Intermediate Code Representation.
 //! 
-//! Provides bytecode instruction definitions
-//! for the virtual machine executing regular expressions
+//! Defines instructions and the shape of bytecode produced by the `Compiler`
+//! and consumed by the `VM`
 const Allocator = @import("std").mem.Allocator;
 const T_ManagedArrayList = @import("types").T_ManagedArrayList;
 const AST = @import("./syntax.zig");
@@ -70,8 +70,8 @@ pub const Instruction = union(enum) {
 };
 
 /// Callback to release memory allocated for CharClass fields
-pub fn deinitInstruction(allocator: Allocator, item: ?*Instruction) void {
-    const inst = item orelse return;
+pub fn freeInstructionCallback(allocator: Allocator, ptr: ?*Instruction) void {
+    const inst = ptr orelse return;
     switch (inst.*) {
         .Class => |cls| {
             allocator.free(cls.class.ranges);
@@ -82,4 +82,4 @@ pub fn deinitInstruction(allocator: Allocator, item: ?*Instruction) void {
 }
 
 /// Managed buffer containing compiled VM instructions.
-pub const BytecodeBuffer = T_ManagedArrayList(Instruction, deinitInstruction);
+pub const InstructionSet = T_ManagedArrayList(Instruction, freeInstructionCallback);
