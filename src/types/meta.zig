@@ -70,85 +70,82 @@ pub fn T_MergedInt(comptime T_BaseInt: type, comptime T_ExtraInt: type) type {
 
 /// Merges two generic structs into one
 ///
-/// Merges only structure fields. Does not copy functions or associated variables. 
+/// Merges only structure fields. Does not copy functions or associated variables.
 /// If a field in `T_Extra` has the same name as one already copied from `T_Base` it is skipped.
-/// 
+///
 /// Creates a packed struct with an extended backing integer if both `T_Base` and `T_Extra` are packed
 pub fn T_MergedStruct(comptime T_Base: type, comptime T_Extra: type) type {
-    // comptime {
+    const base_t = @typeInfo(T_Base).@"struct";
+    const extra_t = @typeInfo(T_Extra).@"struct";
+    const both_packed =
+        base_t.layout == .@"packed" and
+        extra_t.layout == .@"packed";
 
-    // }
-        const base_t = @typeInfo(T_Base).@"struct";
-        const extra_t = @typeInfo(T_Extra).@"struct";
-        const both_packed =
-            base_t.layout == .@"packed" and
-            extra_t.layout == .@"packed";
+    // Unique field counter
+    comptime var ufc: usize = base_t.fields.len;
+    // Count unique fields in Extra
+    inline for (extra_t.fields) |field| {
+        if (uniq(base_t.fields, field.name)) ufc += 1;
+    }
 
-        // Unique field counter
-        comptime var ufc: usize = base_t.fields.len;
-        // Count unique fields in Extra
-        inline for (extra_t.fields) |field| {
-            if (uniq(base_t.fields, field.name)) ufc += 1;
-        }
+    comptime var names: [ufc][]const u8 = undefined;
+    comptime var types: [ufc]type = undefined;
+    comptime var attrs: [ufc]Attributes = undefined;
 
-        comptime var names: [ufc][]const u8 = undefined;
-        comptime var types: [ufc]type = undefined;
-        comptime var attrs: [ufc]Attributes = undefined;
+    // Copy counter
+    var i: usize = 0;
+    // `T_Base` takes precedence; its fields are copied first so are assumed unique by default
+    inline for (base_t.fields) |field| {
+        names[i] = field.name;
+        types[i] = field.type;
+        attrs[i] = @as(Attributes, .{
+            .@"comptime" = field.is_comptime,
+            .@"align" = field.alignment,
+            .default_value_ptr = field.default_value_ptr,
+        });
+        i += 1;
+    }
+    // Deduplicate and copy fields from `T_Extra`
+    inline for (extra_t.fields) |field| {
+        const is_dup = !uniq(base_t.fields, field.name);
+        const is_padding = std.mem.eql(u8, field.name, "_padding");
 
-        // Copy counter
-        var i: usize = 0;
-        // `T_Base` takes precedence; its fields are copied first so are assumed unique by default
-        inline for (base_t.fields) |field| {
-            names[i] = field.name;
-            types[i] = field.type;
-            attrs[i] = @as(Attributes, .{
-                .@"comptime" = field.is_comptime,
-                .@"align" = field.alignment,
-                .default_value_ptr = field.default_value_ptr,
-            });
-            i += 1;
-        }
-        // Deduplicate and copy fields from `T_Extra`
-        inline for (extra_t.fields) |field| {
-            const is_dup = !uniq(base_t.fields, field.name);
-            const is_padding = std.mem.eql(u8, field.name, "_padding");
+        // Padding is present in both types; layout of both must be packed
+        // Merge T_Extra._padding with copied from T_Base
+        if (is_dup and is_padding) {
+            // Get index of ._padding in Base
+            if (fieldIndex(base_t.fields, "_padding")) |base_i| {
+                const base_pad = base_t.fields[base_i];
+                const T_Padding = T_MergedInt(base_pad.type, field.type);
 
-            // Padding is present in both types; layout of both must be packed
-            // Merge T_Extra._padding with copied from T_Base
-            if (is_dup and is_padding) {
-                // Get index of ._padding in Base
-                if (fieldIndex(base_t.fields, "_padding")) |base_i| {
-                    const base_pad = base_t.fields[base_i];
-                    const T_Padding = T_MergedInt(base_pad.type, field.type);
+                types[base_i] = T_Padding;
+                attrs[base_i] = .{
+                    .@"comptime" = field.is_comptime,
+                    .@"align" = null,
+                    .default_value_ptr = &@as(T_Padding, 0),
+                };
+            }
+            continue;
+            // Skip other duplicates
+        } else if (is_dup) continue;
 
-                    types[base_i] = T_Padding;
-                    attrs[base_i] = .{
-                        .@"comptime" = field.is_comptime,
-                        .@"align" = null,
-                        .default_value_ptr = &@as(T_Padding, 0),
-                    };
-                }
-                continue;
-                // Skip other duplicates
-            } else if (is_dup) continue;
+        names[i] = field.name;
+        types[i] = field.type;
+        attrs[i] = @as(Attributes, .{
+            .@"comptime" = field.is_comptime,
+            .@"align" = field.alignment,
+            .default_value_ptr = field.default_value_ptr,
+        });
+        i += 1;
+    }
 
-            names[i] = field.name;
-            types[i] = field.type;
-            attrs[i] = @as(Attributes, .{
-                .@"comptime" = field.is_comptime,
-                .@"align" = field.alignment,
-                .default_value_ptr = field.default_value_ptr,
-            });
-            i += 1;
-        }
+    const layout: Type.ContainerLayout = if (both_packed) .@"packed" else .auto;
+    const backing_int: ?type = if (both_packed) T_MergedInt(
+        base_t.backing_integer.?,
+        extra_t.backing_integer.?,
+    ) else null;
 
-        const layout: Type.ContainerLayout = if (both_packed) .@"packed" else .auto;
-        const backing_int: ?type = if (both_packed) T_MergedInt(
-            base_t.backing_integer.?,
-            extra_t.backing_integer.?,
-        ) else null;
-
-        return @Struct(layout, backing_int, &names, &types, &attrs);    
+    return @Struct(layout, backing_int, &names, &types, &attrs);
 }
 
 /// Generic representation of a range offset
@@ -209,8 +206,8 @@ pub fn T_DestructorCallback(comptime T: type) type {
     return *const fn (std.mem.Allocator, *T) void;
 }
 
-/// Generic wrapper over a closure function 
-/// 
+/// Generic wrapper over a closure function
+///
 /// Allows interfacing between two types without one explicitly being a field of another
 pub fn T_Closure(comptime T: type, comptime O: type, comptime R: type) type {
     return *const fn (ctx: *const T, opts: O) ErrorSet!R;
@@ -250,10 +247,10 @@ pub fn T_OpaqueInterface(comptime T: type, comptime OT: type, destroy_cb: ?T_Des
     };
 }
 
-/// Wraps over `std.ArrayList` allowing it owning values it stores. 
-/// 
+/// Wraps over `std.ArrayList` allowing it owning values it stores.
+///
 /// Released with `Self.deinit` using allocator saved on initializing.
-/// If stored items need explicit deinit, optional `destroy_cb` must receive 
+/// If stored items need explicit deinit, optional `destroy_cb` must receive
 /// `*const fn(std.mem.Allocator, *T) void` when the wrapper is called to create a list.
 pub fn T_ManagedArrayList(
     comptime T: type,
@@ -334,7 +331,7 @@ pub fn T_ManagedArrayList(
 
         /// Replaces the value at `i`
         ///
-        /// Releases the previous value and takes ownership of `val` on success. 
+        /// Releases the previous value and takes ownership of `val` on success.
         /// If `i` is invalid, ownership of `val` remains with the caller.
         pub fn set(self: *Self, i: usize, val: T) ErrorSet!void {
             if (i >= self.inner.items.len) {
@@ -389,7 +386,7 @@ test "MergeInt merges to the sign of the one with wider bit size" {
         const extra = i8;
 
         expected = @typeInfo(base).int.bits + @typeInfo(extra).int.bits;
-        
+
         const my_int = T_MergedInt(base, extra);
         const info = @typeInfo(my_int).int;
 
@@ -403,7 +400,7 @@ test "MergeInt merges to the sign of the one with wider bit size" {
         const extra = i16;
 
         expected = @typeInfo(base).int.bits + @typeInfo(extra).int.bits;
-        
+
         const my_int = T_MergedInt(base, extra);
         const info = @typeInfo(my_int).int;
 

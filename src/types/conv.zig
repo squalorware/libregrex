@@ -132,7 +132,7 @@ pub fn toErrorMsg(rcode: ReturnCode) [*:0]const u8 {
 }
 
 /// Casts string to equivalent of `char*` in C
-/// 
+///
 /// Returns a raw pointer to a null-terminated buffer owned by the caller
 pub fn toC_String(alloc: std.mem.Allocator, input: ?[]const u8) ErrorSet![*:0]u8 {
     const slice = input orelse return ErrorSet.InvalidArgument;

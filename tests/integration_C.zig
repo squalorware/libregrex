@@ -19,7 +19,7 @@ test "regx_pattern_search() and regx_pattern_match() should use different match 
     var search_match: ?*clib.regx_match_t = null;
     try testing.expectEqual(
         .OK,
-        clib.regx_pattern_search(p, "xxfoo",&search_match),
+        clib.regx_pattern_search(p, "xxfoo", &search_match),
     );
     const m = search_match orelse {
         try testing.expect(false);
@@ -100,10 +100,10 @@ test "regx_pattern_sub() should write replacement output buffer" {
 
     var out_buf: ?[*:0]u8 = null;
     var out_len: usize = 0;
-    
+
     try testing.expectEqual(
         .OK,
-        clib.regx_pattern_sub(p, "a12b34","#", 0, &out_buf, &out_len),
+        clib.regx_pattern_sub(p, "a12b34", "#", 0, &out_buf, &out_len),
     );
     const result = out_buf orelse {
         try testing.expect(false);
@@ -213,7 +213,7 @@ test "regrex_find_all() should return an array of matches" {
     };
     defer clib.regx_match_buffer_free(&out_buf, out_len);
 
-    try testing.expectEqual(@as(usize, 2), out_len);   
+    try testing.expectEqual(@as(usize, 2), out_len);
 
     var span: clib.regx_span_t = undefined;
     try testing.expectEqual(.OK, clib.regx_match_span(list[1], 0, &span));
@@ -222,11 +222,8 @@ test "regrex_find_all() should return an array of matches" {
 
     var group_buf: ?[*:0]u8 = null;
     var group_len: usize = 0;
-    try testing.expectEqual(
-        .OK,
-        clib.regx_match_group(list[1], 1, &group_buf, &group_len)
-    );
-    
+    try testing.expectEqual(.OK, clib.regx_match_group(list[1], 1, &group_buf, &group_len));
+
     const group = group_buf orelse {
         try testing.expect(false);
         return;

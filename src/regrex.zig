@@ -6,6 +6,12 @@ const helpers = lib.helpers;
 const mem = lib.mem;
 const c_alloc = std.heap.c_allocator;
 
+/// A helper to release matches and their capture groups in array of opaques
+fn freeCMatchCallback(alloc: std.mem.Allocator, ptr: **regx_match_t) void {
+    const m = ptr.*;
+    MatchInterface.destroy(m, alloc);
+}
+
 /// Return codes used within the library
 pub const regx_rcode_t = ctypes.Rcode;
 
@@ -30,13 +36,6 @@ const MatchInterface = helpers.initOpaqueInterface(lib.RegrexMatch, regx_match_t
 pub export fn regx_match_destroy(match: ?*regx_match_t) callconv(.c) void {
     const ptr = match orelse return;
     MatchInterface.destroy(ptr, c_alloc);
-}
-
-/// A helper to release matches and their capture groups in array of opaques
-fn freeCMatchCallback(allocator: std.mem.Allocator, ptr: **regx_match_t) void {
-    _ = allocator;
-    const m = ptr.*;
-    MatchInterface.destroy(m, c_alloc);
 }
 
 /// Releases an array of matches and their capture groups
@@ -160,7 +159,7 @@ pub export fn regx_pattern_destroy(pattern: ?*regx_pattern_t) callconv(.c) void 
     p.deinit();
 }
 
-/// Retrieves the first match encountered at the start of `in_str` 
+/// Retrieves the first match encountered at the start of `in_str`
 pub export fn regx_pattern_match(
     pattern: ?*regx_pattern_t,
     in_str: ?ctypes.ConstStr,
@@ -168,10 +167,10 @@ pub export fn regx_pattern_match(
 ) callconv(.c) regx_rcode_t {
     const out = out_p orelse return .REGREX_EARG;
     const m = helpers.commonMatchImpl(
-        .match, 
-        .pattern, 
-        c_alloc, 
-        pattern, 
+        .match,
+        .pattern,
+        c_alloc,
+        pattern,
         in_str
     ) catch |err| return cast.toReturnCode(err);
 
@@ -189,10 +188,10 @@ pub export fn regx_pattern_search(
 ) callconv(.c) regx_rcode_t {
     const out = out_p orelse return .REGREX_EARG;
     const m = helpers.commonMatchImpl(
-        .search, 
-        .pattern, 
-        c_alloc, 
-        pattern, 
+        .search,
+        .pattern,
+        c_alloc,
+        pattern,
         in_str
     ) catch |err| return cast.toReturnCode(err);
 
@@ -280,13 +279,10 @@ pub export fn regx_pattern_sub(
     out.* = null;
     len.* = 0;
 
-    const replaced: []u8 = p.sub(
-        std.mem.span(input),
-        std.mem.span(repl),
-        .{ .count = count },
-    ) catch |err| {
-        return cast.toReturnCode(err);
-    };
+    const replaced: []u8 = p.sub(std.mem.span(input), std.mem.span(repl),.{ 
+        .count = count 
+    }) catch |err| return cast.toReturnCode(err);
+
     const repl_len = replaced.len;
     defer mem.freeAlloc(u8, c_alloc, replaced, null);
 
@@ -336,15 +332,15 @@ pub export fn regrex_match(
     cflags: regx_flags_t, 
     out_p: ?*?*regx_match_t
 ) callconv(.c) regx_rcode_t {
+
     const out = out_p orelse return .REGREX_EARG;
     const flags = lib.RegrexFlags.fromIntBitmask(cflags);
-        
 
     const m = helpers.commonMatchImpl(
-        .match, 
-        .root, 
-        c_alloc, 
-        .{ .pattern = pattern, .flags = flags }, 
+        .match,
+        .root,
+        c_alloc,
+        .{ .pattern = pattern, .flags = flags },
         in_str
     ) catch |err| return cast.toReturnCode(err);
 
@@ -361,14 +357,15 @@ pub export fn regrex_search(
     cflags: regx_flags_t, 
     out_p: ?*?*regx_match_t
 ) callconv(.c) regx_rcode_t {
+
     const out = out_p orelse return .REGREX_EARG;
     const flags = lib.RegrexFlags.fromIntBitmask(cflags);
 
     const m = helpers.commonMatchImpl(
-        .search, 
-        .root, 
-        c_alloc, 
-        .{ .pattern = pattern, .flags = flags }, 
+        .match,
+        .root,
+        c_alloc,
+        .{ .pattern = pattern, .flags = flags },
         in_str
     ) catch |err| return cast.toReturnCode(err);
 

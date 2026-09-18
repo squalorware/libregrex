@@ -72,8 +72,8 @@ pub const helpers = struct {
             const pattern: ctypes.ConstStr = subject.pattern orelse return RegrexError.InvalidArgument;
 
             break :blk try switch (Fn) {
-                .match => regrexMatch(alloc,  std.mem.span(pattern), std.mem.span(input), subject.flags),
-                .search => regrexSearch(alloc,  std.mem.span(pattern), std.mem.span(input), subject.flags),
+                .match => regrexMatch(alloc, std.mem.span(pattern), std.mem.span(input), subject.flags),
+                .search => regrexSearch(alloc, std.mem.span(pattern), std.mem.span(input), subject.flags),
             } orelse return RegrexError.NoMatch;
         };
 
@@ -93,5 +93,3 @@ pub const regrexMatch = root.match;
 pub const regrexSearch = root.match;
 pub const regrexSub = root.sub;
 pub const SubOptions = T_MergedStruct(RegrexFlags, engine.PatternSubOptions);
-
-

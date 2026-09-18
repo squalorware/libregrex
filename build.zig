@@ -106,17 +106,17 @@ pub fn build(b: *std.Build) void {
     zig_lib_tests_mod.addImport("regrex", root_mod);
 
     const c_lib_imports = [_]ModuleMap{
-        ModuleMap { .name = "types", .root = types_mod, },
-        ModuleMap { .name = "engine", .root = engine_mod, },
+        ModuleMap{
+            .name = "types",
+            .root = types_mod,
+        },
+        ModuleMap{
+            .name = "engine",
+            .root = engine_mod,
+        },
     };
     // Initialize the library root module that will be used during build as well
-    const libroot_mod = buildLibraryRootModule(
-        b,
-        target,
-        optimize,
-        root_mod,
-        c_lib_imports[0..]
-    );
+    const libroot_mod = buildLibraryRootModule(b, target, optimize, root_mod, c_lib_imports[0..]);
     // Integration tests of the exported library
     const c_lib_tests_mod = b.createModule(.{
         .root_source_file = b.path("tests/integration_C.zig"),
@@ -159,7 +159,7 @@ const ModuleMap = struct {
 };
 
 /// Compiles the library root module used both for export and for integration testing
-/// 
+///
 /// Links `libc` for both static and dynamic linkage
 fn buildLibraryRootModule(
     b: *std.Build,

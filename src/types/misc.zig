@@ -29,4 +29,3 @@ pub const LookupSource = enum { root, pattern };
 pub const RangeOptions = struct {
     extern_compat: bool = false,
 };
-
