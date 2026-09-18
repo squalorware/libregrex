@@ -3,7 +3,6 @@ const std = @import("std");
 const ErrorSet = @import("./error.zig").ErrorSet;
 const matching = @import("./matching.zig");
 const meta = @import("./meta.zig");
-const Flags = @import("./misc.zig").CompileFlags;
 const testing = std.testing;
 
 /// Converts a UTF-8 codepoint into a hexadecimal digit

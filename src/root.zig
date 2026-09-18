@@ -10,7 +10,7 @@ const T_MergedStruct = meta.T_MergedStruct;
 /// Lazy iterator over matches
 pub const LazyIterator = engine.LazyIterator;
 /// Pattern behaviour modifiers. Passed to the compiler to produce corresponding instructions
-pub const CompileFlags = types.CompileFlags;
+pub const Flags = engine.Flags;
 /// Generic destructor for any owned slice of type `T`. Accepts optional destructor callback for complex deinit logic
 pub const freeAlloc = types.meta.freeAlloc;
 /// Data structure that stores the matching result as a buffer of byte offsets
@@ -28,10 +28,10 @@ pub const RegrexError = errors.ErrorSet;
 pub const Span = types.Span;
 
 pub const PatternSubOptions = engine.PatternSubOptions;
-pub const SubOptions = T_MergedStruct(CompileFlags, PatternSubOptions);
+pub const SubOptions = T_MergedStruct(Flags, PatternSubOptions);
 
 /// Compiles regular expression string and returns the compiled pattern
-pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: CompileFlags) RegrexError!*Pattern {
+pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: Flags) RegrexError!*Pattern {
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
 
@@ -54,7 +54,7 @@ pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: CompileFlag
 }
 
 /// Returns the first match encountered at the beginning of the input
-pub fn match(alloc: std.mem.Allocator, pattern: []const u8, input: []const u8, flags: CompileFlags) RegrexError!?Match {
+pub fn match(alloc: std.mem.Allocator, pattern: []const u8, input: []const u8, flags: Flags) RegrexError!?Match {
     const regex: *Pattern = try compile(alloc, pattern, flags);
     defer regex.deinit();
 
@@ -62,7 +62,7 @@ pub fn match(alloc: std.mem.Allocator, pattern: []const u8, input: []const u8, f
 }
 
 /// Returns the first match produced at any position within the input
-pub fn search(alloc: std.mem.Allocator, pattern: []const u8, input: []const u8, flags: CompileFlags) RegrexError!?Match {
+pub fn search(alloc: std.mem.Allocator, pattern: []const u8, input: []const u8, flags: Flags) RegrexError!?Match {
     const regex: *Pattern = try compile(alloc, pattern, flags);
     defer regex.deinit();
 
@@ -72,7 +72,7 @@ pub fn search(alloc: std.mem.Allocator, pattern: []const u8, input: []const u8, 
 /// Returns a slice containing all non-overlapping matches found in the input
 ///
 /// The caller owns the slice and must explicitly release it
-pub fn findAll(alloc: std.mem.Allocator, pattern: []const u8, input: []const u8, flags: CompileFlags) RegrexError![]Match {
+pub fn findAll(alloc: std.mem.Allocator, pattern: []const u8, input: []const u8, flags: Flags) RegrexError![]Match {
     const regex: *Pattern = try compile(alloc, pattern, flags);
     defer regex.deinit();
 
@@ -91,7 +91,7 @@ pub fn sub(
     repl: []const u8,
     option_set: SubOptions,
 ) RegrexError![]u8 {
-    const regex: *Pattern = try compile(alloc, pattern, @as(CompileFlags, .{
+    const regex: *Pattern = try compile(alloc, pattern, @as(Flags, .{
         .ignore_case = option_set.ignore_case,
         .multiline = option_set.multiline,
         .dot_all = option_set.dot_all,

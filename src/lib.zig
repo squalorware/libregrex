@@ -1,8 +1,7 @@
 //! Namespacing for the export module
 //!
-//! MUST NOT be importable or accessible from the root module
-//! to avoid mixing up with the public API definitions;
-//! When imported, MUST NOT be public
+//! MUST NOT be importable or accessible from the root module to avoid mixing up with the public API definitions;
+//! Best is to keep using it only inside `regrex.zig`
 const std = @import("std");
 const types = @import("types");
 const engine = @import("engine");
@@ -82,7 +81,7 @@ pub const helpers = struct {
 };
 
 pub const RegrexError = types.errors.ErrorSet;
-pub const RegrexFlags = types.CompileFlags;
+pub const RegrexFlags = engine.Flags;
 pub const RegrexIterator = engine.LazyIterator;
 pub const RegrexMatch = types.Match;
 pub const RegrexPattern = engine.Pattern;

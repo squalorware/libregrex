@@ -28,7 +28,7 @@ pub fn build(b: *std.Build) void {
     const test_mode = b.option(
         TestingMode,
         "type",
-        "Type of tests to build and run: unit, integration"
+        "Type of tests to build and run: unit, lib (integration)"
     ) orelse .lib;
 
     const types_mod = b.addModule("types", .{
@@ -44,12 +44,14 @@ pub fn build(b: *std.Build) void {
     });
     unicode_mod.addImport("types", types_mod);
 
-    const engine_imports: []const Import = &.{
-        .{ .name = "types", .module = types_mod },
-        .{ .name = "unicode", .module = unicode_mod },
-    };
-
-    const engine_mod = buildEngineModule(b, target, optimize, engine_imports);
+    const engine_mod = b.addModule("engine", .{
+        .root_source_file = b.path("src/engine/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    // engine_mod.addImport("parsing", engine_parsing_mod);
+    engine_mod.addImport("types", types_mod);
+    engine_mod.addImport("unicode", unicode_mod);
 
     // Root module for Zig package
     const pkgroot_mod = b.addModule("regrex", .{ 
@@ -165,30 +167,6 @@ pub fn build(b: *std.Build) void {
 fn fatal(comptime format: []const u8, args: anytype) noreturn {
     std.debug.print(format, args);
     std.process.exit(1);
-}
-
-fn buildEngineModule(
-    b: *std.Build,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-    imports: []const Import,
-) *std.Build.Module {
-    // const engine_parsing_mod = b.addModule("parsing", .{
-    //     .root_source_file = b.path("src/engine/parsing/root.zig"),
-    //     .target = target,
-    //     .optimize = optimize,
-    //     .imports = imports,
-    // });
-
-    const engine_mod = b.addModule("engine", .{
-        .root_source_file = b.path("src/engine/root.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = imports,
-    });
-    // engine_mod.addImport("parsing", engine_parsing_mod);
-
-    return engine_mod;
 }
 
 fn buildTestRunners(b: *std.Build, opts: []const std.Build.TestOptions) []*Compile {

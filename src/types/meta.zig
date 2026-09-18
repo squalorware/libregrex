@@ -278,8 +278,8 @@ pub fn T_ManagedArrayList(
         }
 
         fn deinitItem(self: Self, item: *T) void {
-            if (destroy_cb) |deinit_fn| {
-                deinit_fn(self.allocator, item);
+            if (destroy_cb) |callback| {
+                callback(self.allocator, item);
             } else if (comptime hasDeinit(T)) {
                 item.deinit(self.allocator);
             }
@@ -290,6 +290,7 @@ pub fn T_ManagedArrayList(
             for (self.inner.items) |*item| {
                 self.deinitItem(item);
             }
+
             self.inner.deinit(self.allocator);
             self.* = undefined;
         }
@@ -357,11 +358,12 @@ pub fn T_ManagedArrayList(
 }
 
 pub fn freeAlloc(comptime T: type, alloc: std.mem.Allocator, sequence: []T, destroy_cb: ?T_DestructorCallback(T)) void {
-    for (sequence) |*item| {
-        if (destroy_cb) |deinit_fn| {
-            deinit_fn(alloc, item);
+    if (destroy_cb) |callback| {
+        for (sequence) |*item| {
+            callback(alloc, item);
         }
-    }
+    }    
+
     alloc.free(sequence);
 }
 

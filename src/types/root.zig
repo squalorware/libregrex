@@ -4,7 +4,6 @@ pub const conv = @import("./conv.zig");
 pub const meta = @import("./meta.zig");
 pub const misc = @import("./misc.zig");
 pub const errors = @import("./error.zig");
-pub const CompileFlags = misc.CompileFlags;
 pub const freeMatchCallback = matching.freeMatchCallback;
 pub const T_ManagedArrayList = meta.T_ManagedArrayList;
 pub const Match = matching.Match;
