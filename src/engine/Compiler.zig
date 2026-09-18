@@ -232,7 +232,7 @@ test "Should compile a sequence of literals `abc`" {
 
     const ast_alloc = arena.allocator();
 
-    var buffer = try InstructionSet.init(allocator, .{});
+    var buffer = try InstructionSet.init(allocator, null);
     defer buffer.deinit();
 
     const tree = try ast_alloc.alloc(*AST.Node, 3);
@@ -281,7 +281,7 @@ test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
 
     const ast_alloc = arena.allocator();
 
-    var buffer = try InstructionSet.init(allocator, .{});
+    var buffer = try InstructionSet.init(allocator, null);
     defer buffer.deinit();
 
     const start = try ast_alloc.create(AST.Node);
@@ -373,7 +373,7 @@ test "Should compile branching `a|b`" {
 
     const ast_alloc = arena.allocator();
 
-    var buffer = try InstructionSet.init(allocator, .{});
+    var buffer = try InstructionSet.init(allocator, null);
     defer buffer.deinit();
 
     const left = try ast_alloc.create(AST.Node);
@@ -431,7 +431,7 @@ test "Should compile a capture group `(a)`" {
 
     const ast_alloc = arena.allocator();
 
-    var buffer = try InstructionSet.init(allocator, .{});
+    var buffer = try InstructionSet.init(allocator, null);
     defer buffer.deinit();
 
     const lit = try ast_alloc.create(AST.Node);
@@ -482,7 +482,7 @@ test "Should compile an optional repeat `a?`" {
 
     const ast_alloc = arena.allocator();
 
-    var buffer = try InstructionSet.init(allocator, .{});
+    var buffer = try InstructionSet.init(allocator, null);
     defer buffer.deinit();
 
     const lit = try ast_alloc.create(AST.Node);
@@ -533,7 +533,7 @@ test "Should apply pattern flags to emitted instructions" {
 
     var buffer = try InstructionSet.init(
         allocator,
-        .{},
+        null,
     );
     defer buffer.deinit();
 
@@ -616,7 +616,7 @@ test "Should compile zero-width assertions" {
     const ast_alloc = arena.allocator();
     var buffer = try InstructionSet.init(
         allocator,
-        .{},
+        null,
     );
     defer buffer.deinit();
 
@@ -647,7 +647,7 @@ test "Should preserve preset character classes" {
     const ast_alloc = arena.allocator();
     var buffer = try Bytecode.InstructionSet.init(
         allocator,
-        .{},
+        null,
     );
     defer buffer.deinit();
 

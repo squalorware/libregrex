@@ -1,5 +1,4 @@
 const std = @import("std");
-const ext = @import("./ext.zig");
 const ErrorSet = @import("./error.zig").ErrorSet;
 const meta = @import("./meta.zig");
 const T_Range = meta.T_Range;
@@ -341,7 +340,7 @@ test "Match.subgroups() should return captures excluding full match" {
 test "MatchListBuffer.init() should create an empty array" {
     const allocator = testing.allocator;
 
-    var matches = try MatchListBuffer.init(allocator, .{});
+    var matches = try MatchListBuffer.init(allocator, null);
     defer matches.deinit();
 
     try testing.expectEqual(@as(usize, 0), matches.len());
@@ -350,7 +349,7 @@ test "MatchListBuffer.init() should create an empty array" {
 test "MatchListBuffer.append() should store owned matches" {
     const allocator = testing.allocator;
 
-    var matches = try MatchListBuffer.init(allocator, .{});
+    var matches = try MatchListBuffer.init(allocator, null);
     defer matches.deinit();
 
     const slots = [_]?usize{ 4, 7 };

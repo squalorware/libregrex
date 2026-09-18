@@ -102,7 +102,7 @@ pub fn execAt(
         slot.* = null;
     }
 
-    var stack = try Stack.init(allocator, .{});
+    var stack = try Stack.init(allocator, null);
     defer stack.deinit();
 
     // Initialize the program execution counter

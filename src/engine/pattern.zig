@@ -119,7 +119,7 @@ pub const Pattern = opaque {
         var iter = try findIter(ptr, input);
         defer iter.deinit(self.alloc);
 
-        var matches = try MatchListBuffer.init(self.alloc, .{});
+        var matches = try MatchListBuffer.init(self.alloc, null);
         defer matches.deinit();
 
         while (try iter.next()) |m| try matches.append(m);
@@ -138,7 +138,7 @@ pub const Pattern = opaque {
     ) ErrorSet![]u8 {
         const self: *_Pattern = @ptrCast(@alignCast(ptr));
 
-        var out_buf = try StringBuffer.init(self.alloc, .{});
+        var out_buf = try StringBuffer.init(self.alloc, null);
         defer out_buf.deinit();
 
         var iter = try findIter(ptr, input);

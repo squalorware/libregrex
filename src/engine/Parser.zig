@@ -17,11 +17,9 @@ group_count: usize = 0,
 pos: usize = 0,
 /// Borrowed slice representing lexical token stream
 token_list: []const Token,
+inline_flags: types.CompileFlags = .{},
 
-/// `alloc`: controls AST nodes and owned child slices.
-///
-/// Prefer an `ArenaAllocator`and release the whole
-/// AST after compiling to bytecode
+/// Prefer an `ArenaAllocator` and release the whole AST after compiling to bytecode
 pub fn init(
     alloc: std.mem.Allocator,
     tlist: []const Token,
@@ -474,7 +472,7 @@ test "Should parse anchored lowercase character class repeat" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    var token_buffer = try tokens.TokenListBuffer.init(alloc, .{});
+    var token_buffer = try tokens.TokenListBuffer.init(alloc, null);
     defer token_buffer.deinit();
 
     var lexer = Lexer.init("^[a-z]*$");
@@ -516,7 +514,7 @@ test "Should parse non-capturing group" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    var token_buffer = try tokens.TokenListBuffer.init(alloc, .{});
+    var token_buffer = try tokens.TokenListBuffer.init(alloc, null);
     defer token_buffer.deinit();
 
     var lexer = Lexer.init("(?:ab)+");
@@ -565,7 +563,7 @@ test "Should parse predefined Unicode character classes" {
 
     var token_buffer = try tokens.TokenListBuffer.init(
         alloc,
-        .{},
+        null,
     );
     defer token_buffer.deinit();
 
@@ -649,7 +647,7 @@ test "Should parse predefined classes inside bracket character class" {
 
     var token_buffer = try tokens.TokenListBuffer.init(
         alloc,
-        .{},
+        null,
     );
     defer token_buffer.deinit();
 
@@ -713,7 +711,7 @@ test "Should parse absolute and word-boundary assertions" {
 
     var token_buffer = try tokens.TokenListBuffer.init(
         alloc,
-        .{},
+        null,
     );
     defer token_buffer.deinit();
 
@@ -799,7 +797,7 @@ test "Should preserve decoded escaped literals as literal AST nodes" {
 
     var token_buffer = try tokens.TokenListBuffer.init(
         alloc,
-        .{},
+        null,
     );
     defer token_buffer.deinit();
 

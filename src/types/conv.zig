@@ -1,7 +1,6 @@
 //! Various type casting/conversion utility functions
 const std = @import("std");
 const ErrorSet = @import("./error.zig").ErrorSet;
-const ext = @import("./ext.zig");
 const matching = @import("./matching.zig");
 const meta = @import("./meta.zig");
 const Flags = @import("./misc.zig").CompileFlags;
@@ -25,7 +24,47 @@ pub fn toOctDigit(val: u21) ?u21 {
     };
 }
 
-pub fn toErrorCode(err: anyerror) ext.C_ReturnCode {
+/// Explicitly use signed 8-bit integer to ensure memory layout compatibility with C ABI
+pub const ReturnCode = enum(i8) {
+    /// Shouldn't ever return; invalid syscall or not implemented
+    ENOSYS = -1,
+    /// Success
+    OK = 0,
+    /// Non-specific generic error
+    ERR = 1,
+    /// Invalid argument
+    REGREX_EARG = 2,
+    /// No matching group
+    REGREX_ENOMATCH = 3,
+    /// Memory allocation error
+    REGREX_EMALLOC = 4,
+    /// Index is out of range
+    REGREX_ERANGE = 5,
+    /// Exceeded maximum group count limit
+    REGREX_EMAXGRP = 6,
+    /// Invalid or malformed UTF-8
+    REGREX_EBADUTF8 = 7,
+    /// Unexpected Token
+    REGREX_ETOKEN = 8,
+    /// Unexpected end of pattern
+    REGREX_EEND = 9,
+    /// Expected expression
+    REGREX_EEXPR = 10,
+    /// Malformed escape sequence
+    REGREX_EBADESC = 11,
+    /// Trailing backslash
+    REGREX_ETRAILESC = 12,
+    /// Invalid repetition operator
+    REGREX_EBADREP = 13,
+    /// Closing parenthesis missing
+    REGREX_ERPAREN = 14,
+    /// Closing bracket missing
+    REGREX_ERBRACK = 15,
+    /// Unexpected bytecode instruction
+    REGREX_EINSTERR = 16,
+};
+
+pub fn toErrorCode(err: anyerror) ReturnCode {
     return switch (err) {
         ErrorSet.InvalidArgument => .REGREX_EARG,
         ErrorSet.NoMatch => .REGREX_ENOMATCH,
@@ -47,7 +86,7 @@ pub fn toErrorCode(err: anyerror) ext.C_ReturnCode {
     };
 }
 
-pub fn toErrorSet(rc: ext.C_ReturnCode) ErrorSet {
+pub fn toErrorSet(rc: ReturnCode) ErrorSet {
     return switch (rc) {
         .OK => null,
         .REGREX_EARG => ErrorSet.InvalidArgument,
@@ -69,7 +108,7 @@ pub fn toErrorSet(rc: ext.C_ReturnCode) ErrorSet {
     };
 }
 
-pub fn toErrorMsg(rcode: ext.C_ReturnCode) ext.C_StaticString {
+pub fn toErrorMsg(rcode: ReturnCode) [*:0]const u8 {
     return switch (rcode) {
         .OK => "OK",
         .ERR => "Internal error",
@@ -92,58 +131,14 @@ pub fn toErrorMsg(rcode: ext.C_ReturnCode) ext.C_StaticString {
     };
 }
 
-pub fn toC_Array(
-    allocator: std.mem.Allocator,
-    comptime T: type,
-    sequence: []const T,
-    options: meta.T_FreeOptions(T),
-) ErrorSet!?[*]T {
-    if (sequence.len == 0) return null;
-    defer allocator.free(sequence);
-
-    if (!options.managed) {
-        const result = allocator.dupe(T, sequence) catch return ErrorSet.MemoryError;
-        return result.ptr;
-    } else {
-        var result = allocator.alloc(T, sequence.len) catch {
-            for (sequence) |*item| {
-                var owned = @constCast(item);
-                if (options.destructor) |destroy| {
-                    destroy(allocator, owned);
-                } else if (comptime meta.hasDeinit(T)) {
-                    owned.deinit(allocator);
-                }
-            }
-            return ErrorSet.MemoryError;
-        };
-        var i: usize = 0;
-        while (i < sequence.len) : (i += 1) {
-            result[i] = allocator.create(T) catch {
-                _ = ext.c_freeAllocated(T, allocator, result.ptr, result.len, .{
-                    .destructor = options.destructor,
-                    .managed = options.managed,
-                });
-                return ErrorSet.MemoryError;
-            };
-            result[i].* = sequence[i];
-        }
-        return result.ptr;
-    }
-}
-
-pub fn toC_String(alloc: std.mem.Allocator, input: ?[]const u8) ErrorSet!ext.C_String {
+/// Casts string to equivalent of `char*` in C
+/// 
+/// Returns a raw pointer to a null-terminated buffer owned by the caller
+pub fn toC_String(alloc: std.mem.Allocator, input: ?[]const u8) ErrorSet![*:0]u8 {
     const slice = input orelse return ErrorSet.InvalidArgument;
 
     const out = alloc.dupeSentinel(u8, slice, 0) catch {
         return ErrorSet.MemoryError;
     };
     return out.ptr;
-}
-
-pub fn toCompileFlags(mask: u8) Flags {
-    return .{
-        .ignore_case = mask & (1 << 0) != 0,
-        .multiline = mask & (1 << 1) != 0,
-        .dot_all = mask & (1 << 2) != 0,
-    };
 }

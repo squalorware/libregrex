@@ -12,7 +12,7 @@ pub const LazyIterator = engine.LazyIterator;
 /// Pattern behaviour modifiers. Passed to the compiler to produce corresponding instructions
 pub const CompileFlags = types.CompileFlags;
 /// Generic destructor for any owned slice of type `T`. Accepts optional destructor callback for complex deinit logic
-pub const freeAny = types.meta.freeAny;
+pub const freeAlloc = types.meta.freeAlloc;
 /// Data structure that stores the matching result as a buffer of byte offsets
 pub const Match = types.Match;
 /// Data structure produced by `regrex.compile()` representing a compiled pattern.
@@ -35,7 +35,7 @@ pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: CompileFlag
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
 
-    var token_list = try tokens.TokenListBuffer.init(alloc, .{});
+    var token_list = try tokens.TokenListBuffer.init(alloc, null);
     defer token_list.deinit();
 
     var lexer = engine.Lexer.init(pattern);
@@ -44,7 +44,7 @@ pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: CompileFlag
     var parser = engine.Parser.init(arena.allocator(), token_list.items());
     const ast = try parser.parse();
 
-    var prog = try Bytecode.InstructionSet.init(alloc, .{});
+    var prog = try Bytecode.InstructionSet.init(alloc, null);
     defer prog.deinit();
 
     const compiler = engine.Compiler.init(&prog, flags);

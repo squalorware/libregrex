@@ -141,7 +141,7 @@ pub fn tokenize(self: *Lexer, tlist: *TokenListBuffer) RegrexError!void {
 test "Should break up a pattern into a valid token stream" {
     const allocator = testing.allocator;
 
-    var token_buffer = try tokens.TokenListBuffer.init(allocator, .{});
+    var token_buffer = try tokens.TokenListBuffer.init(allocator, null);
     defer token_buffer.deinit();
 
     var lexer = Lexer.init("a\\.b*c");

@@ -1,6 +1,5 @@
 //! Shared error set for the regex frontend and compiler.
 const conv = @import("./conv.zig");
-const C_ReturnCode = @import("./ext.zig").C_ReturnCode;
 
 pub const ErrorSet = error{
     /// Invalid argument
@@ -41,5 +40,5 @@ const ErrorTypeTag = enum { zig, c };
 
 pub const ErrorType = union(ErrorTypeTag) {
     zig: ErrorSet,
-    c: C_ReturnCode,
+    c: conv.ReturnCode,
 };

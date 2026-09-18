@@ -60,7 +60,10 @@ pub const LazyIterator = opaque {
         if (self.done) return null;
 
         while (!self.done) {
-            const maybe_match = try self.func(self.ctx, .{ .input = self.input, .pos = self.pos });
+            const maybe_match = try self.func(self.ctx, .{ 
+                .input = self.input, 
+                .pos = self.pos 
+            });
 
             if (maybe_match) |found| {
                 var match = found;
