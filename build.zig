@@ -74,19 +74,19 @@ pub fn build(b: *std.Build) void {
 
     // Build and run unit tests
     const root_unit_tests = b.addTest(.{
-        .name = "[unit] - <regrex :: root>",
+        .name = "Unit_root",
         .root_module = root_mod,
     });
     const types_unit_tests = b.addTest(.{
-        .name = "[unit] - <regrex :: types>",
+        .name = "Unit_types",
         .root_module = types_mod,
     });
     const engine_unit_tests = b.addTest(.{
-        .name = "[unit] - <regrex :: engine>",
+        .name = "Unit_engine",
         .root_module = engine_mod,
     });
     const unicode_unit_tests = b.addTest(.{
-        .name = "[unit] - <regrex :: unicode>",
+        .name = "Unit_unicode",
         .root_module = unicode_mod,
     });
 
@@ -114,11 +114,10 @@ pub fn build(b: *std.Build) void {
         b,
         target,
         optimize,
-        // make sure the library root includes the package root module
         root_mod,
         c_lib_imports[0..]
     );
-    // Test module for integrated testing of the exported library
+    // Integration tests of the exported library
     const c_lib_tests_mod = b.createModule(.{
         .root_source_file = b.path("tests/integration_C.zig"),
         .target = target,
@@ -127,11 +126,11 @@ pub fn build(b: *std.Build) void {
     c_lib_tests_mod.addImport("libregrex", libroot_mod);
 
     const zig_lib_tests = b.addTest(.{
-        .name = "[integration] - <regrex :: root>",
+        .name = "Integration_Zig",
         .root_module = zig_lib_tests_mod,
     });
     const c_lib_tests = b.addTest(.{
-        .name = "[integration] - <regrex :: libregrex (C ABI)>",
+        .name = "Integration_C_ABI",
         .root_module = c_lib_tests_mod,
     });
 
