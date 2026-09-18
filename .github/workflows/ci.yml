@@ -19,8 +19,8 @@ jobs:
         with:
           version: "0.16.0"
       - name: Build
-        run: zig build
+        run: zig build --verbose
       - name: Run unit tests
-        run: zig build test_unit --summary all --verbose
+        run: zig build test -Dtype=unit --verbose
       - name: Run integration tests
-        run: zig build test_lib --summary all --verbose
+        run: zig build test -Dtype=lib --verbose
