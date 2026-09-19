@@ -3,6 +3,76 @@ const std = @import("std");
 const regrex = @import("regrex");
 const testing = std.testing;
 
+test "Should recognize a global inline flag for ignore case" {
+    const allocator = testing.allocator;
+
+    const pattern = try regrex.compile(allocator, "(?i)foo", .{});
+    defer pattern.deinit();
+
+    var result = try pattern.match("FOO");
+
+    try testing.expect(result != null);
+    result.?.deinit();
+}
+
+test "Should recognize a global inline flag for multiline" {
+    const allocator = testing.allocator;
+
+    const pattern = try regrex.compile(allocator, "(?m)^foo$", .{});
+    defer pattern.deinit();
+
+    const input = 
+        \\bar
+        \\foo
+        \\baz
+    ;
+    var match = try (pattern.search(input)) orelse {
+        try testing.expect(false);
+        return;
+    };
+    defer match.deinit();
+
+    try testing.expectEqualStrings("foo", try match.full());
+}
+
+test "Should recognize a global inline dot-all flag (include newline characters in matching)" {
+    const allocator = testing.allocator;
+
+    const pattern = try regrex.compile(allocator, "(?s)a.b", .{});
+    defer pattern.deinit();
+
+    const input = 
+        \\a
+        \\b
+    ;
+    var match = try (pattern.match(input)) orelse {
+        try testing.expect(false);
+        return;
+    };
+    defer match.deinit();
+
+    try testing.expectEqualStrings(input, try match.full());
+}
+
+test "Should recognize combined global inline flags" {
+    const allocator = testing.allocator;
+
+    const pattern = try regrex.compile(allocator, "(?ims)^[a-z]*$.^[a-z]*$", .{});
+    defer pattern.deinit();
+
+    const input = 
+        \\foo
+        \\BAR
+    ;
+    var match = try (pattern.match(input)) orelse {
+        try testing.expect(false);
+        return;
+    };
+    defer match.deinit();
+
+    try testing.expectEqualStrings(input, try match.full());
+}
+
 test "regrex.compile() should return a reusable *Pattern" {
     const allocator = testing.allocator;
 
