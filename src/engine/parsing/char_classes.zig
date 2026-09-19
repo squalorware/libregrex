@@ -2,7 +2,7 @@ const std = @import("std");
 const types = @import("types");
 const unicode = @import("unicode");
 const Lexer = @import("../Lexer.zig");
-const Parser = @import("./Parser.zig");
+const Parser = @import("./Parser.zig").Parser;
 const syntax = @import("../syntax.zig");
 const tokens = @import("../tokens.zig");
 const ErrorSet = types.errors.ErrorSet;
@@ -57,10 +57,10 @@ pub fn parseCharClass(ptr: *Parser) ErrorSet!syntax.CharClass {
     const negated = ptr.match(.CARET);
 
     var ranges = try RangeList.init(ptr.alloc, null);
-    errdefer ranges.deinit();
+    defer ranges.deinit();
 
     var chars = try RuneList.init(ptr.alloc, null);
-    errdefer chars.deinit();
+    defer chars.deinit();
 
     var preset: syntax.PresetClassSet = .{};
     var negated_preset: syntax.PresetClassSet = .{};
@@ -140,21 +140,25 @@ pub fn parseCharClass(ptr: *Parser) ErrorSet!syntax.CharClass {
     };
 }
 
+const initTestParser = @import("./Parser.zig").initTestParser;
+
 test "Should parse anchored lowercase character class repeat" {
     const allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
-    const alloc = arena.allocator();
+    // const alloc = arena.allocator();
 
-    var token_buffer = try tokens.TokenListBuffer.init(alloc, null);
-    defer token_buffer.deinit();
+    // var token_buffer = try tokens.TokenListBuffer.init(alloc, null);
+    // defer token_buffer.deinit();
 
-    var lexer = Lexer.init("^[a-z]*$");
-    try lexer.tokenize(&token_buffer);
+    // var lexer = Lexer.init();
+    // try lexer.tokenize(&token_buffer);
 
-    var parser = Parser.init(alloc, token_buffer.items());
+    // var parser = Parser.init(alloc, token_buffer.items());
+    var parser = try initTestParser(arena.allocator(), "^[a-z]*$");
+    defer parser.deinit();
+
     const ast = try parser.parse();
-
     switch (ast.*) {
         .Sequence => |seq| {
             try std.testing.expectEqual(@as(usize, 3), seq.nodes.len);
@@ -184,28 +188,32 @@ test "Should parse anchored lowercase character class repeat" {
 
 test "Should parse predefined Unicode character classes" {
     const allocator = std.testing.allocator;
-
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const alloc = arena.allocator();
+    // const alloc = arena.allocator();
+    // var arena = std.heap.ArenaAllocator.init(allocator);
+    // defer arena.deinit();
 
-    var token_buffer = try tokens.TokenListBuffer.init(
-        alloc,
-        null,
-    );
-    defer token_buffer.deinit();
+    // const alloc = arena.allocator();
 
-    var lexer = Lexer.init("\\d\\D\\w\\W\\s\\S");
-    try lexer.tokenize(&token_buffer);
+    // var token_buffer = try tokens.TokenListBuffer.init(
+    //     alloc,
+    //     null,
+    // );
+    // defer token_buffer.deinit();
 
-    var parser = Parser.init(
-        alloc,
-        token_buffer.items(),
-    );
+    // var lexer = Lexer.init();
+    // try lexer.tokenize(&token_buffer);
+
+    // var parser = Parser.init(
+    //     alloc,
+    //     token_buffer.items(),
+    // );
+    var parser = try initTestParser(arena.allocator(), "\\d\\D\\w\\W\\s\\S");
+    defer parser.deinit();
 
     const ast = try parser.parse();
-
     switch (ast.*) {
         .Sequence => |seq| {
             try std.testing.expectEqual(
@@ -268,28 +276,30 @@ test "Should parse predefined Unicode character classes" {
 
 test "Should parse predefined classes inside bracket character class" {
     const allocator = std.testing.allocator;
-
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
+    // var arena = std.heap.ArenaAllocator.init(allocator);
+    // defer arena.deinit();
 
-    const alloc = arena.allocator();
+    // const alloc = arena.allocator();
 
-    var token_buffer = try tokens.TokenListBuffer.init(
-        alloc,
-        null,
-    );
-    defer token_buffer.deinit();
+    // var token_buffer = try tokens.TokenListBuffer.init(
+    //     alloc,
+    //     null,
+    // );
+    // defer token_buffer.deinit();
 
-    var lexer = Lexer.init("[a-z\\d_\\S]");
-    try lexer.tokenize(&token_buffer);
+    // var lexer = Lexer.init();
+    // try lexer.tokenize(&token_buffer);
 
-    var parser = Parser.init(
-        alloc,
-        token_buffer.items(),
-    );
+    // var parser = Parser.init(
+    //     alloc,
+    //     token_buffer.items(),
+    // );
+    var parser = try initTestParser(arena.allocator(), "[a-z\\d_\\S]");
+    defer parser.deinit();
 
     const ast = try parser.parse();
-
     switch (ast.*) {
         .CharClass => |cls| {
             try std.testing.expectEqual(

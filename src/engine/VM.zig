@@ -193,14 +193,14 @@ pub fn execAt(
                 const alt_captures = try cloneCaptures(allocator, captures);
 
                 stack.append(.{
-                    .pc = split.second,
+                    .pc = split.right,
                     .pos = pos,
                     .captures = alt_captures,
                 }) catch {
                     return RegrexError.MemoryError;
                 };
                 // Resume execution from the program counter of the "left" `Frame`
-                pc = split.first;
+                pc = split.left;
             },
             // Unconditional jump to instruction at specified index
             .Jump => |target| {
@@ -328,8 +328,8 @@ test "execAt() should correctly handle an anchored lowercase character class rep
         .{ .AssertStart = .{} },
         .{
             .Split = .{
-                .first = 3,
-                .second = 5,
+                .left = 3,
+                .right = 5,
             },
         },
         .{

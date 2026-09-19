@@ -1,7 +1,7 @@
 const std = @import("std");
 const types = @import("types");
 const Lexer = @import("../Lexer.zig");
-const Parser = @import("./Parser.zig");
+const Parser = @import("./Parser.zig").Parser;
 const syntax = @import("../syntax.zig");
 const tokens = @import("../tokens.zig");
 const ErrorSet = types.errors.ErrorSet;
@@ -72,30 +72,34 @@ pub fn parseEscapedAtom(ptr: *Parser, token: Token) ErrorSet!*syntax.Node {
     });
 }
 
+const initTestParser = @import("./Parser.zig").initTestParser;
+
 test "Should parse absolute and word-boundary assertions" {
     const allocator = std.testing.allocator;
-
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
+    // var arena = std.heap.ArenaAllocator.init(allocator);
+    // defer arena.deinit();
 
-    const alloc = arena.allocator();
+    // const alloc = arena.allocator();
 
-    var token_buffer = try tokens.TokenListBuffer.init(
-        alloc,
-        null,
-    );
-    defer token_buffer.deinit();
+    // var token_buffer = try tokens.TokenListBuffer.init(
+    //     alloc,
+    //     null,
+    // );
+    // defer token_buffer.deinit();
 
-    var lexer = Lexer.init("\\A\\bX\\B\\Z");
-    try lexer.tokenize(&token_buffer);
+    // var lexer = Lexer.init();
+    // try lexer.tokenize(&token_buffer);
 
-    var parser = Parser.init(
-        alloc,
-        token_buffer.items(),
-    );
+    // var parser = Parser.init(
+    //     alloc,
+    //     token_buffer.items(),
+    // );
+    var parser = try initTestParser(arena.allocator(), "\\A\\bX\\B\\Z");
+    defer parser.deinit();
 
     const ast = try parser.parse();
-
     switch (ast.*) {
         .Sequence => |seq| {
             try std.testing.expectEqual(
@@ -160,28 +164,30 @@ test "Should parse absolute and word-boundary assertions" {
 
 test "Should preserve decoded escaped literals as literal AST nodes" {
     const allocator = std.testing.allocator;
-
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
+    // var arena = std.heap.ArenaAllocator.init(allocator);
+    // defer arena.deinit();
 
-    const alloc = arena.allocator();
+    // const alloc = arena.allocator();
 
-    var token_buffer = try tokens.TokenListBuffer.init(
-        alloc,
-        null,
-    );
-    defer token_buffer.deinit();
+    // var token_buffer = try tokens.TokenListBuffer.init(
+    //     alloc,
+    //     null,
+    // );
+    // defer token_buffer.deinit();
 
-    var lexer = Lexer.init("\\n\\r\\t\\x41\\101");
-    try lexer.tokenize(&token_buffer);
+    // var lexer = Lexer.init();
+    // try lexer.tokenize(&token_buffer);
 
-    var parser = Parser.init(
-        alloc,
-        token_buffer.items(),
-    );
+    // var parser = Parser.init(
+    //     alloc,
+    //     token_buffer.items(),
+    // );
+    var parser = try initTestParser(arena.allocator(), "\\n\\r\\t\\x41\\101");
+    defer parser.deinit();
 
     const ast = try parser.parse();
-
     const expected = [_]u21{
         '\n',
         '\r',

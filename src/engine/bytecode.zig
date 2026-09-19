@@ -4,12 +4,12 @@
 //! and consumed by the `VM`
 const Allocator = @import("std").mem.Allocator;
 const T_ManagedArrayList = @import("types").T_ManagedArrayList;
-const AST = @import("./syntax.zig");
+const syntax = @import("./syntax.zig");
 
 /// A pair of bytecode addresses used by `Instruction.Split`
 pub const Split = struct {
-    first: usize,
-    second: usize,
+    left: usize,
+    right: usize,
 };
 
 /// Matcher for an exact Unicode code point.
@@ -25,7 +25,7 @@ pub const AnyMatcher = struct {
 
 /// Matcher for a character class.
 pub const ClassMatcher = struct {
-    class: AST.CharClass,
+    class: syntax.CharClass,
     ignore_case: bool = false,
 };
 
@@ -47,7 +47,7 @@ pub const Instruction = union(enum) {
     /// Assert the current input position is the input end
     AssertEnd: AnchorMatcher,
     /// Assert `\A`, `\Z`, `\b` or `\B`
-    Assert: AST.AssertionType,
+    Assert: syntax.AssertionType,
     /// Save the current input position into a capture slot.
     ///
     /// Slots are arranged as pairs:
@@ -55,13 +55,12 @@ pub const Instruction = union(enum) {
     /// - slot 2 / 3: group 1 start/end
     /// - slot 4 / 5: group 2 start/end
     Save: usize,
-    /// Temporary instruction that holds current input position
-    /// until patched (replaced at index) by another instruction like Split or Jump
+    /// Placeholder instruction to reserve a position until patched (replaced at index) 
+    /// by another instruction like Split or Jump
     Hold,
-    /// Backtracking branch.
+    /// Branching instruction
     ///
-    /// The VM continues with `first` and pushes `second` onto the backtracking
-    /// stack.
+    /// Execution proceeds with `.left` while `.right` is pushed onto the backtracking stack.
     Split: Split,
     /// An unconditional jump to another bytecode offset
     Jump: usize,

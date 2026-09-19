@@ -7,19 +7,15 @@ const errors = types.errors;
 const meta = types.meta;
 const T_MergedStruct = meta.T_MergedStruct;
 
-/// Lazy iterator over matches
+/// Lazy iterator over matches. Initialized by `Pattern`, then ownership is transferred to caller.
 pub const LazyIterator = engine.LazyIterator;
-/// Pattern behaviour modifiers. Passed to the compiler to produce corresponding instructions
+/// Pattern behaviour modifiers. Can be inline as special characters in the pattern or passed to `compile` as an argument 
 pub const Flags = engine.Flags;
 /// Generic destructor for any owned slice of type `T`. Accepts optional destructor callback for complex deinit logic
 pub const freeAlloc = types.meta.freeAlloc;
-/// Data structure that stores the matching result as a buffer of byte offsets
+/// Data structure that stores the matching result as a buffer of byte offsets. Owned by caller.
 pub const Match = types.Match;
-/// Data structure produced by `regrex.compile()` representing a compiled pattern.
-///
-/// Points to a private structure which stores the runtime context. Fields `.pattern`, `.instructions`,
-/// `.group_count` and `.allocator` are private and accessed only by exposed public interface.
-///  Owned and released by caller.
+/// Opaque type which encapsulates the compiled regex pattern and provides API. Owned by caller.
 pub const Pattern = engine.Pattern;
 /// Common parsing and compilation errors
 pub const RegrexError = errors.ErrorSet;
@@ -42,12 +38,15 @@ pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: Flags) Regr
     try lexer.tokenize(&token_list);
 
     var parser = engine.Parser.init(arena.allocator(), token_list.items());
+    defer parser.deinit();
+    
     const ast = try parser.parse();
+    const combined = flags.merge(parser.inlineFlags());
 
     var prog = try Bytecode.InstructionSet.init(alloc, null);
     defer prog.deinit();
 
-    const compiler = engine.Compiler.init(&prog, flags);
+    const compiler = engine.Compiler.init(&prog, combined);
     try compiler.compile(alloc, ast);
 
     return try Pattern.init(alloc, pattern, &prog, parser.group_count);
@@ -69,9 +68,7 @@ pub fn search(alloc: std.mem.Allocator, pattern: []const u8, input: []const u8, 
     return try regex.search(input);
 }
 
-/// Returns a slice containing all non-overlapping matches found in the input
-///
-/// The caller owns the slice and must explicitly release it
+/// Returns a slice containing all non-overlapping matches found in the input. Caller owns returned value
 pub fn findAll(alloc: std.mem.Allocator, pattern: []const u8, input: []const u8, flags: Flags) RegrexError![]Match {
     const regex: *Pattern = try compile(alloc, pattern, flags);
     defer regex.deinit();
@@ -80,10 +77,9 @@ pub fn findAll(alloc: std.mem.Allocator, pattern: []const u8, input: []const u8,
 }
 
 /// Copies the input string and replaces matches with `repl`;
-/// Optional `SubOptions.count` controls number of substitutions
-/// (default `.count = 0`, which means replacing all matches)
+/// Optional `SubOptions.count` controls number of substitutions (default - 0 (replace all matches))
 ///
-/// Returned mutated is owned by caller and must be released
+/// Caller owns returned value
 pub fn sub(
     alloc: std.mem.Allocator,
     pattern: []const u8,

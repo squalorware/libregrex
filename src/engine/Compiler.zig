@@ -3,25 +3,23 @@
 //! Consumes parsed syntax nodes and emits corresponding bytecode instructions to the program buffer
 const std = @import("std");
 const types = @import("types");
-const AST = @import("./syntax.zig");
+const syntax = @import("./syntax.zig");
 const Bytecode = @import("./bytecode.zig");
+const Flags = @import("./syntax.zig").Flags;
 const testing = std.testing;
-const Flags = @import("./parsing/groups.zig").Flags;
 const Instruction = Bytecode.Instruction;
 const InstructionSet = Bytecode.InstructionSet;
-const RegrexError = types.errors.ErrorSet;
+const ErrorSet = types.errors.ErrorSet;
 
-// Deep-copies a character class into bytecode memory
-///
-// Prevents an emitted `Instruction` from pointing into the temporary `Parser` AST arena
-fn cloneCharClass(alloc: std.mem.Allocator, cls: AST.CharClass) RegrexError!AST.CharClass {
-    const ranges = alloc.dupe(AST.RuneRange, cls.ranges) catch {
-        return RegrexError.MemoryError;
+/// Deep-copies a char class into memory owned by compiler to avoid emitted bytecode pointing into `Parser` arena 
+fn cloneCharClass(alloc: std.mem.Allocator, cls: syntax.CharClass) ErrorSet!syntax.CharClass {
+    const ranges = alloc.dupe(syntax.RuneRange, cls.ranges) catch {
+        return ErrorSet.MemoryError;
     };
     errdefer alloc.free(ranges);
 
     const chars = alloc.dupe(u21, cls.chars) catch {
-        return RegrexError.MemoryError;
+        return ErrorSet.MemoryError;
     };
     errdefer alloc.free(chars);
 
@@ -32,6 +30,17 @@ fn cloneCharClass(alloc: std.mem.Allocator, cls: AST.CharClass) RegrexError!AST.
         .negated_preset = cls.negated_preset,
         .negated = cls.negated,
     };
+
+}
+
+/// Deep-copies a sequence into memory owned by compiler to avoid emitted bytecode pointing into `Parser` arena 
+fn cloneSequence(alloc: std.mem.Allocator, seq: syntax.Sequence) ErrorSet!syntax.Sequence {
+    const nodes = alloc.dupe(*syntax.Node, seq.nodes) catch {
+        return ErrorSet.MemoryError;
+    };
+    errdefer alloc.free(nodes);
+
+    return .{ .nodes = nodes };
 }
 
 pub const Compiler = @This();
@@ -43,7 +52,7 @@ pub fn init(prog: *InstructionSet, flags: Flags) Compiler {
     return .{ .buffer = prog, .flags = flags };
 }
 
-fn emit(self: Compiler, inst: Instruction) RegrexError!usize {
+fn emit(self: Compiler, inst: Instruction) ErrorSet!usize {
     const idx = self.buffer.len();
     try self.buffer.append(inst);
 
@@ -54,12 +63,12 @@ fn emit(self: Compiler, inst: Instruction) RegrexError!usize {
 ///
 /// Used for forward jumps where the target address is unknown
 /// until after compiling a branch or repeating body
-fn patch(self: Compiler, idx: usize, inst: Instruction) RegrexError!void {
+fn patch(self: Compiler, idx: usize, inst: Instruction) ErrorSet!void {
     try self.buffer.set(idx, inst);
 }
 
-/// Emit bytecode for an AST Node
-fn compileNode(self: Compiler, alloc: std.mem.Allocator, node: *const AST.Node) RegrexError!void {
+/// Emit bytecode for the syntactic Node
+fn compileNode(self: Compiler, alloc: std.mem.Allocator, node: *const syntax.Node) ErrorSet!void {
     switch (node.*) {
         .Literal => |lit| {
             _ = try self.emit(.{
@@ -109,7 +118,11 @@ fn compileNode(self: Compiler, alloc: std.mem.Allocator, node: *const AST.Node) 
             });
         },
         .Sequence => |seq| {
-            for (seq.nodes) |child| {
+            const owned = try cloneSequence(alloc, seq);
+
+            defer alloc.free(owned.nodes);
+
+            for (owned.nodes) |child| {
                 try self.compileNode(alloc, child);
             }
         },
@@ -131,7 +144,7 @@ fn compileNode(self: Compiler, alloc: std.mem.Allocator, node: *const AST.Node) 
 }
 
 /// Emits bytecode for supported postfix quantifiers.
-fn compileRepeat(self: Compiler, alloc: std.mem.Allocator, rep: AST.Repeat) RegrexError!void {
+fn compileRepeat(self: Compiler, alloc: std.mem.Allocator, rep: syntax.Repeat) ErrorSet!void {
     if (rep.min == 0 and rep.max == null) {
         const split_idx = try self.emit(.Hold);
 
@@ -144,8 +157,8 @@ fn compileRepeat(self: Compiler, alloc: std.mem.Allocator, rep: AST.Repeat) Regr
 
         try self.patch(split_idx, .{
             .Split = .{
-                .first = body_start,
-                .second = after,
+                .left = body_start,
+                .right = after,
             },
         });
         return;
@@ -158,8 +171,8 @@ fn compileRepeat(self: Compiler, alloc: std.mem.Allocator, rep: AST.Repeat) Regr
 
         _ = try self.emit(.{
             .Split = .{
-                .first = body_start,
-                .second = self.buffer.len() + 1,
+                .left = body_start,
+                .right = self.buffer.len() + 1,
             },
         });
         return;
@@ -175,23 +188,16 @@ fn compileRepeat(self: Compiler, alloc: std.mem.Allocator, rep: AST.Repeat) Regr
 
         try self.patch(split_idx, .{
             .Split = .{
-                .first = body_start,
-                .second = after,
+                .left = body_start,
+                .right = after,
             },
         });
         return;
     }
-    return RegrexError.InvalidRepeat;
+    return ErrorSet.InvalidRepeat;
 }
 
-/// Emits bytecode for branching (alternation).
-///
-/// The produced control flow is:
-/// - `Split(left, right)`
-/// - left branch
-/// - `Jump(after)`
-/// - right branch
-fn compileBranch(self: Compiler, alloc: std.mem.Allocator, branch: AST.Branch) RegrexError!void {
+fn compileBranch(self: Compiler, alloc: std.mem.Allocator, branch: syntax.Branch) ErrorSet!void {
     const split_idx = try self.emit(.Hold);
 
     const left_start = self.buffer.len();
@@ -206,8 +212,8 @@ fn compileBranch(self: Compiler, alloc: std.mem.Allocator, branch: AST.Branch) R
 
     try self.patch(split_idx, .{
         .Split = .{
-            .first = left_start,
-            .second = right_start,
+            .left = left_start,
+            .right = right_start,
         },
     });
 
@@ -216,8 +222,8 @@ fn compileBranch(self: Compiler, alloc: std.mem.Allocator, branch: AST.Branch) R
     });
 }
 
-/// Recursively consumes the AST produced by `Parser` emitting corresponding bytecode instructions
-pub fn compile(self: Compiler, alloc: std.mem.Allocator, node: *const AST.Node) RegrexError!void {
+/// Recursively consumes the syntax produced by `Parser` emitting corresponding bytecode instructions
+pub fn compile(self: Compiler, alloc: std.mem.Allocator, node: *const syntax.Node) ErrorSet!void {
     _ = try self.emit(.{ .Save = 0 });
     _ = try self.compileNode(alloc, node);
     _ = try self.emit(.{ .Save = 1 });
@@ -235,15 +241,15 @@ test "Should compile a sequence of literals `abc`" {
     var buffer = try InstructionSet.init(allocator, null);
     defer buffer.deinit();
 
-    const tree = try ast_alloc.alloc(*AST.Node, 3);
+    const tree = try ast_alloc.alloc(*syntax.Node, 3);
     const chars = [_]u21{ 'a', 'b', 'c' };
     for (chars, 0..) |ch, i| {
-        const node = try ast_alloc.create(AST.Node);
+        const node = try ast_alloc.create(syntax.Node);
         node.* = .{ .Literal = .{ .value = ch } };
         tree[i] = node;
     }
 
-    const root = try ast_alloc.create(AST.Node);
+    const root = try ast_alloc.create(syntax.Node);
     root.* = .{
         .Sequence = .{
             .nodes = tree,
@@ -284,17 +290,17 @@ test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
     var buffer = try InstructionSet.init(allocator, null);
     defer buffer.deinit();
 
-    const start = try ast_alloc.create(AST.Node);
+    const start = try ast_alloc.create(syntax.Node);
     start.* = .{ .StartAnchor = .{} };
 
-    const ranges = try ast_alloc.alloc(AST.RuneRange, 1);
+    const ranges = try ast_alloc.alloc(syntax.RuneRange, 1);
     ranges[0] = .{
         .start = 'a',
         .end = 'z',
     };
     const chars = try ast_alloc.alloc(u21, 0);
 
-    const class_node = try ast_alloc.create(AST.Node);
+    const class_node = try ast_alloc.create(syntax.Node);
     class_node.* = .{
         .CharClass = .{
             .ranges = ranges,
@@ -303,22 +309,22 @@ test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
         },
     };
 
-    const repeat = try ast_alloc.create(AST.Node);
+    const repeat = try ast_alloc.create(syntax.Node);
     repeat.* = .{ .Repeat = .{
         .node = class_node,
         .min = 0,
         .max = null,
     } };
 
-    const end = try ast_alloc.create(AST.Node);
+    const end = try ast_alloc.create(syntax.Node);
     end.* = .{ .EndAnchor = .{} };
 
-    const tree = try ast_alloc.alloc(*AST.Node, 3);
+    const tree = try ast_alloc.alloc(*syntax.Node, 3);
     tree[0] = start;
     tree[1] = repeat;
     tree[2] = end;
 
-    const root = try ast_alloc.create(AST.Node);
+    const root = try ast_alloc.create(syntax.Node);
     root.* = .{
         .Sequence = .{
             .nodes = tree,
@@ -340,8 +346,8 @@ test "Should compile an anchored lowercase character class repeat `^[a-z]*$`" {
 
     instruction = try buffer.get(2);
     try testing.expect(std.meta.activeTag(instruction.*) == .Split);
-    try testing.expectEqual(@as(usize, 3), instruction.Split.first);
-    try testing.expectEqual(@as(usize, 5), instruction.Split.second);
+    try testing.expectEqual(@as(usize, 3), instruction.Split.left);
+    try testing.expectEqual(@as(usize, 5), instruction.Split.right);
 
     instruction = try buffer.get(3);
     try testing.expect(std.meta.activeTag(instruction.*) == .Class);
@@ -376,12 +382,12 @@ test "Should compile branching `a|b`" {
     var buffer = try InstructionSet.init(allocator, null);
     defer buffer.deinit();
 
-    const left = try ast_alloc.create(AST.Node);
+    const left = try ast_alloc.create(syntax.Node);
     left.* = .{ .Literal = .{ .value = 'a' } };
-    const right = try ast_alloc.create(AST.Node);
+    const right = try ast_alloc.create(syntax.Node);
     right.* = .{ .Literal = .{ .value = 'b' } };
 
-    const root = try ast_alloc.create(AST.Node);
+    const root = try ast_alloc.create(syntax.Node);
     root.* = .{
         .Branch = .{
             .left = left,
@@ -400,8 +406,8 @@ test "Should compile branching `a|b`" {
 
     instruction = try buffer.get(1);
     try testing.expect(std.meta.activeTag(instruction.*) == .Split);
-    try testing.expectEqual(@as(usize, 2), instruction.Split.first);
-    try testing.expectEqual(@as(usize, 4), instruction.Split.second);
+    try testing.expectEqual(@as(usize, 2), instruction.Split.left);
+    try testing.expectEqual(@as(usize, 4), instruction.Split.right);
 
     instruction = try buffer.get(2);
     try testing.expect(std.meta.activeTag(instruction.*) == .Rune);
@@ -434,10 +440,10 @@ test "Should compile a capture group `(a)`" {
     var buffer = try InstructionSet.init(allocator, null);
     defer buffer.deinit();
 
-    const lit = try ast_alloc.create(AST.Node);
+    const lit = try ast_alloc.create(syntax.Node);
     lit.* = .{ .Literal = .{ .value = 'a' } };
 
-    const root = try ast_alloc.create(AST.Node);
+    const root = try ast_alloc.create(syntax.Node);
     root.* = .{
         .CaptureGroup = .{
             .pos = 1,
@@ -485,10 +491,10 @@ test "Should compile an optional repeat `a?`" {
     var buffer = try InstructionSet.init(allocator, null);
     defer buffer.deinit();
 
-    const lit = try ast_alloc.create(AST.Node);
+    const lit = try ast_alloc.create(syntax.Node);
     lit.* = .{ .Literal = .{ .value = 'a' } };
 
-    const root = try ast_alloc.create(AST.Node);
+    const root = try ast_alloc.create(syntax.Node);
     root.* = .{
         .Repeat = .{
             .node = lit,
@@ -508,8 +514,8 @@ test "Should compile an optional repeat `a?`" {
 
     instruction = try buffer.get(1);
     try testing.expect(std.meta.activeTag(instruction.*) == .Split);
-    try testing.expectEqual(@as(usize, 2), instruction.Split.first);
-    try testing.expectEqual(@as(usize, 3), instruction.Split.second);
+    try testing.expectEqual(@as(usize, 2), instruction.Split.left);
+    try testing.expectEqual(@as(usize, 3), instruction.Split.right);
 
     instruction = try buffer.get(2);
     try testing.expect(std.meta.activeTag(instruction.*) == .Rune);
@@ -537,30 +543,30 @@ test "Should apply pattern flags to emitted instructions" {
     );
     defer buffer.deinit();
 
-    const literal = try ast_alloc.create(AST.Node);
+    const literal = try ast_alloc.create(syntax.Node);
     literal.* = .{
         .Literal = .{
             .value = 'A',
         },
     };
 
-    const wildcard = try ast_alloc.create(AST.Node);
+    const wildcard = try ast_alloc.create(syntax.Node);
     wildcard.* = .{
         .AnyChar = .{},
     };
 
-    const start = try ast_alloc.create(AST.Node);
+    const start = try ast_alloc.create(syntax.Node);
     start.* = .{
         .StartAnchor = .{},
     };
 
-    const end = try ast_alloc.create(AST.Node);
+    const end = try ast_alloc.create(syntax.Node);
     end.* = .{
         .EndAnchor = .{},
     };
 
     const nodes = try ast_alloc.alloc(
-        *AST.Node,
+        *syntax.Node,
         4,
     );
 
@@ -569,7 +575,7 @@ test "Should apply pattern flags to emitted instructions" {
     nodes[2] = wildcard;
     nodes[3] = end;
 
-    const root = try ast_alloc.create(AST.Node);
+    const root = try ast_alloc.create(syntax.Node);
     root.* = .{
         .Sequence = .{
             .nodes = nodes,
@@ -620,7 +626,7 @@ test "Should compile zero-width assertions" {
     );
     defer buffer.deinit();
 
-    const node = try ast_alloc.create(AST.Node);
+    const node = try ast_alloc.create(syntax.Node);
 
     node.* = .{
         .Assertion = .{
@@ -635,7 +641,7 @@ test "Should compile zero-width assertions" {
 
     const instruction = try buffer.get(1);
     try testing.expect(std.meta.activeTag(instruction.*) == .Assert);
-    try testing.expectEqual(AST.AssertionType.word_bounds, instruction.Assert);
+    try testing.expectEqual(syntax.AssertionType.word_bounds, instruction.Assert);
 }
 
 test "Should preserve preset character classes" {
@@ -651,8 +657,8 @@ test "Should preserve preset character classes" {
     );
     defer buffer.deinit();
 
-    const node = try ast_alloc.create(AST.Node);
-    var preset: AST.PresetClassSet = .{};
+    const node = try ast_alloc.create(syntax.Node);
+    var preset: syntax.PresetClassSet = .{};
     preset.insert(.digit);
 
     node.* = .{

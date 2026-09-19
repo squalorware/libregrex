@@ -1,45 +1,15 @@
 const std = @import("std");
 const types = @import("types");
 const Lexer = @import("../Lexer.zig");
-const Parser = @import("./Parser.zig");
+const Parser = @import("./Parser.zig").Parser;
 const syntax = @import("../syntax.zig");
 const tokens = @import("../tokens.zig");
+const Flags = syntax.Flags;
 const ErrorSet = types.errors.ErrorSet;
+const Token = tokens.Token;
 const TokenType = tokens.TokenType;
 
-pub const Flags = packed struct(u8) {
-    /// Pattern matching becomes case-insensitive
-    ignore_case: bool = false,
-    /// `^` and `$` mark start and end of a line
-    multiline: bool = false,
-    /// Wildcards match newline characters
-    dot_all: bool = false,
-    _padding: u5 = 0,
-
-    /// Converts an unsigned 8-bit integer bitmask to internal flag type
-    pub fn fromIntBitmask(bitmask: u8) Flags {
-        return .{
-            .ignore_case = bitmask & (1 << 0) != 0,
-            .multiline = bitmask & (1 << 1) != 0,
-            .dot_all = bitmask & (1 << 2) != 0,
-        };
-    }
-
-    /// Add up flags received at various stages, e.g. inline flags + flags as args to compile
-    pub fn merge(self: Flags, other: Flags) Flags {
-        return .{
-            .ignore_case = self.ignore_case or other.ignore_case,
-            .multiline = self.multiline or other.multiline,
-            .dot_all = self.dot_all or other.dot_all,
-        };
-    }
-};
-
-pub fn inlineFlags(ptr: Parser) Flags {
-    return ptr.inline_flags;
-}
-
-pub fn applyInlineFlag(flags: *Flags, rune: u21) bool {
+pub fn applyInlineFlag(flags: *syntax.Flags, rune: u21) bool {
     switch (rune) {
         'i' => flags.ignore_case = true,
         'm' => flags.multiline = true,
@@ -49,32 +19,75 @@ pub fn applyInlineFlag(flags: *Flags, rune: u21) bool {
     return true;
 }
 
+pub fn startsInlineFlags(ptr: *Parser) bool {
+    const lparen = ptr.peek(0) orelse return false;
+    const question = ptr.peek(1) orelse return false;
+    const flag = ptr.peek(2) orelse return false;
+
+    if (lparen.typ != .LPAREN or
+        question.typ != .QUESTION or
+        flag.typ != .CHAR) 
+    {
+        return false;
+    }
+
+    return switch(flag.val.?.raw()) {
+        'i', 'm', 's' => true,
+        else => false,
+    };
+}
+
+pub fn parseInlineFlags(ptr: *Parser) ErrorSet!void {
+    _ = try ptr.expect(.LPAREN);
+    _ = try ptr.expect(.QUESTION);
+
+    var found = false;
+
+    while (ptr.current().typ == .CHAR) {
+        const rune = ptr.current().val.?.raw();
+
+        if (!applyInlineFlag(&ptr.inline_flags, rune)) break;
+        
+        found = true;
+        _ = ptr.advance();
+    }
+
+    if (!found) return ErrorSet.UnexpectedToken;
+
+    if (ptr.current().typ == .EOF) return ErrorSet.UnmatchedParen;
+    _ = try ptr.expect(.RPAREN);
+}
+
 /// Parses a capturing `(...)` or non-capturing `(?:...)` group
 pub fn parseGroup(ptr: *Parser) ErrorSet!*syntax.Node {
     const first = ptr.peek(0);
     const next = ptr.peek(1);
 
-    // Parse a non-capturing group
-    if (first != null and
-        next != null and
-        first.?.typ == .QUESTION and
-        next.?.typ == .CHAR and
-        next.?.val.?.raw() == ':')
-    {
-        _ = ptr.advance(); // QUESTION
-        _ = ptr.advance(); // CHAR ':'
+    // Parse inline flags or a non-capturing group
+    if (first != null and first.?.typ == .QUESTION) {
+        if (next == null) return ErrorSet.UnmatchedParen;
+        if (next.?.typ != .CHAR) return ErrorSet.UnexpectedToken;
 
-        const node = try ptr.parseBranch();
+        const rune = next.?.val.?.raw();
 
-        if (!ptr.match(.RPAREN)) {
-            return ErrorSet.UnmatchedParen;
+        if (rune == ':') {
+            _ = ptr.advance();
+            _ = ptr.advance();
+
+            const node = try ptr.parseBranch();
+
+            if (!ptr.match(.RPAREN)) return ErrorSet.UnmatchedParen;
+
+            return ptr.createNode(.{
+                .NonCaptureGroup = .{ .node = node },
+            });
+        }
+        // TODO: for now inline flags are accepted only at beginning
+        if (rune == 'i' or rune == 'm' or rune == 's') {
+            return ErrorSet.UnexpectedToken;
         }
 
-        return ptr.createNode(.{
-            .NonCaptureGroup = .{
-                .node = node,
-            },
-        });
+        return ErrorSet.UnexpectedToken;
     }
     // Parse a capturing group
     ptr.group_count += 1;
@@ -94,21 +107,17 @@ pub fn parseGroup(ptr: *Parser) ErrorSet!*syntax.Node {
     });
 }
 
+const initTestParser = @import("./Parser.zig").initTestParser;
+
 test "Should parse non-capturing group" {
     const allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
-    const alloc = arena.allocator();
 
-    var token_buffer = try tokens.TokenListBuffer.init(alloc, null);
-    defer token_buffer.deinit();
+    var parser = try initTestParser(arena.allocator(), "(?:ab)+");
+    defer parser.deinit();
 
-    var lexer = Lexer.init("(?:ab)+");
-    try lexer.tokenize(&token_buffer);
-
-    var parser = Parser.init(alloc, token_buffer.items());
     const ast = try parser.parse();
-
     switch (ast.*) {
         .Repeat => |rep| {
             try std.testing.expectEqual(@as(usize, 1), rep.min);
@@ -134,6 +143,52 @@ test "Should parse non-capturing group" {
                 },
                 else => try std.testing.expect(false),
             }
+        },
+        else => try std.testing.expect(false),
+    }
+}
+
+test "Should parse global inline ignore-case flag" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var parser = try initTestParser(arena.allocator(), "(?i)foo");
+    defer parser.deinit();
+
+    const ast = try parser.parse();
+    const flags = parser.inlineFlags();
+
+    try std.testing.expect(flags.ignore_case);
+    try std.testing.expect(!flags.multiline);
+    try std.testing.expect(!flags.dot_all);
+
+    switch (ast.*) {
+        .Sequence => |seq| {
+            try std.testing.expectEqual(@as(usize, 3), seq.nodes.len);
+        },
+        else => try std.testing.expect(false),
+    }
+}
+
+test "Should parse combined global inline flags" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var parser = try initTestParser(arena.allocator(), "(?ims)foo");
+    defer parser.deinit();
+
+    const ast = try parser.parse();
+    const flags = parser.inlineFlags();
+
+    try std.testing.expect(flags.ignore_case);
+    try std.testing.expect(flags.multiline);
+    try std.testing.expect(flags.dot_all);
+
+    switch (ast.*) {
+        .Sequence => |seq| {
+            try std.testing.expectEqual(@as(usize, 3), seq.nodes.len);
         },
         else => try std.testing.expect(false),
     }

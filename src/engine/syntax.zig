@@ -2,6 +2,34 @@
 //! of the regular expression pattern.
 const unicode = @import("unicode");
 
+pub const Flags = packed struct(u8) {
+    /// Pattern matching becomes case-insensitive
+    ignore_case: bool = false,
+    /// `^` and `$` mark start and end of a line
+    multiline: bool = false,
+    /// Wildcards match newline characters
+    dot_all: bool = false,
+    _padding: u5 = 0,
+
+    /// Converts an unsigned 8-bit integer bitmask to internal flag type
+    pub fn fromIntBitmask(bitmask: u8) Flags {
+        return .{
+            .ignore_case = bitmask & (1 << 0) != 0,
+            .multiline = bitmask & (1 << 1) != 0,
+            .dot_all = bitmask & (1 << 2) != 0,
+        };
+    }
+
+    /// Add up flags received at various stages, e.g. inline flags + flags as args to compile
+    pub fn merge(self: Flags, other: Flags) Flags {
+        return .{
+            .ignore_case = self.ignore_case or other.ignore_case,
+            .multiline = self.multiline or other.multiline,
+            .dot_all = self.dot_all or other.dot_all,
+        };
+    }
+};
+
 /// Regular Expression AST Node.
 ///
 /// Forms a recursive tree structure with pointers to another Nodes

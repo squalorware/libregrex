@@ -3,7 +3,7 @@ const types = @import("types");
 const classes = @import("./char_classes.zig");
 const escapes = @import("./escapes.zig");
 const groups = @import("./groups.zig");
-const Parser = @import("./Parser.zig");
+const Parser = @import("./Parser.zig").Parser;
 const syntax = @import("../syntax.zig");
 
 const ErrorSet = types.errors.ErrorSet;
@@ -14,7 +14,7 @@ const NodeList = T_ManagedArrayList(*syntax.Node, null);
 /// Parses a sequence of quantified Atoms until `EOF`, `RPAREN` or `PIPE`
 pub fn parseSequence(ptr: *Parser) ErrorSet!*syntax.Node {
     var nodes = try NodeList.init(ptr.alloc, null);
-    errdefer nodes.deinit();
+    defer nodes.deinit();
 
     while (ptr.current().typ != .EOF and ptr.current().typ != .RPAREN and ptr.current().typ != .PIPE) {
         const node = try parseQuantifier(ptr);
@@ -26,15 +26,14 @@ pub fn parseSequence(ptr: *Parser) ErrorSet!*syntax.Node {
     }
 
     if (nodes.len() == 1) {
-        const only = nodes.items()[0];
-        nodes.deinit();
-        return only;
+        return nodes.items()[0];
     }
+    
+    // const slice = try nodes.toOwnedSlice();
+    // errdefer ptr.alloc.free(slice);
 
     return ptr.createNode(.{
-        .Sequence = .{
-            .nodes = try nodes.toOwnedSlice(),
-        },
+        .Sequence = .{ .nodes = try nodes.toOwnedSlice() },
     });
 }
 
