@@ -1,6 +1,7 @@
 //! Bytecode emitter
 //!
-//! Consumes parsed syntax nodes and emits corresponding bytecode instructions to the program buffer
+//! Recursively consumes the abstract syntax tree produced by parser 
+//! and emits corresponding bytecode instructions to the program buffer
 const std = @import("std");
 const types = @import("types");
 const syntax = @import("./syntax.zig");
@@ -11,7 +12,7 @@ const Instruction = Bytecode.Instruction;
 const InstructionSet = Bytecode.InstructionSet;
 const ErrorSet = types.errors.ErrorSet;
 
-/// Deep-copies a char class into memory owned by compiler to avoid emitted bytecode pointing into `Parser` arena 
+/// Deep-copies a char class into memory owned by compiler to avoid emitted `Instruction` pointing into `Parser` arena 
 fn cloneCharClass(alloc: std.mem.Allocator, cls: syntax.CharClass) ErrorSet!syntax.CharClass {
     const ranges = alloc.dupe(syntax.RuneRange, cls.ranges) catch {
         return ErrorSet.MemoryError;
@@ -33,7 +34,7 @@ fn cloneCharClass(alloc: std.mem.Allocator, cls: syntax.CharClass) ErrorSet!synt
 
 }
 
-/// Deep-copies a sequence into memory owned by compiler to avoid emitted bytecode pointing into `Parser` arena 
+/// Deep-copies a sequence into memory owned by compiler to avoid emitted `Instruction` pointing into `Parser` arena 
 fn cloneSequence(alloc: std.mem.Allocator, seq: syntax.Sequence) ErrorSet!syntax.Sequence {
     const nodes = alloc.dupe(*syntax.Node, seq.nodes) catch {
         return ErrorSet.MemoryError;
@@ -61,13 +62,12 @@ fn emit(self: Compiler, inst: Instruction) ErrorSet!usize {
 
 /// Replaces a previously emitted placeholder `Instruction`.
 ///
-/// Used for forward jumps where the target address is unknown
-/// until after compiling a branch or repeating body
+/// Used for forward jumps where the target address is unknown until after compiling a branch or repeating body
 fn patch(self: Compiler, idx: usize, inst: Instruction) ErrorSet!void {
     try self.buffer.set(idx, inst);
 }
 
-/// Emit bytecode for the syntactic Node
+/// Consumes a node, emits a correspondent `Instruction` with modifiers
 fn compileNode(self: Compiler, alloc: std.mem.Allocator, node: *const syntax.Node) ErrorSet!void {
     switch (node.*) {
         .Literal => |lit| {
@@ -222,10 +222,10 @@ fn compileBranch(self: Compiler, alloc: std.mem.Allocator, branch: syntax.Branch
     });
 }
 
-/// Recursively consumes the syntax produced by `Parser` emitting corresponding bytecode instructions
-pub fn compile(self: Compiler, alloc: std.mem.Allocator, node: *const syntax.Node) ErrorSet!void {
+/// Consumes the AST produced by `Parser`, emits Instructions to the bytecode buffer
+pub fn compile(self: Compiler, alloc: std.mem.Allocator, tree: *const syntax.Node) ErrorSet!void {
     _ = try self.emit(.{ .Save = 0 });
-    _ = try self.compileNode(alloc, node);
+    _ = try self.compileNode(alloc, tree);
     _ = try self.emit(.{ .Save = 1 });
     _ = try self.emit(.Match);
 }

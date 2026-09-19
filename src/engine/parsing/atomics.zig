@@ -28,9 +28,6 @@ pub fn parseSequence(ptr: *Parser) ErrorSet!*syntax.Node {
     if (nodes.len() == 1) {
         return nodes.items()[0];
     }
-    
-    // const slice = try nodes.toOwnedSlice();
-    // errdefer ptr.alloc.free(slice);
 
     return ptr.createNode(.{
         .Sequence = .{ .nodes = try nodes.toOwnedSlice() },

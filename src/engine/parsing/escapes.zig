@@ -78,24 +78,7 @@ test "Should parse absolute and word-boundary assertions" {
     const allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
-    // var arena = std.heap.ArenaAllocator.init(allocator);
-    // defer arena.deinit();
 
-    // const alloc = arena.allocator();
-
-    // var token_buffer = try tokens.TokenListBuffer.init(
-    //     alloc,
-    //     null,
-    // );
-    // defer token_buffer.deinit();
-
-    // var lexer = Lexer.init();
-    // try lexer.tokenize(&token_buffer);
-
-    // var parser = Parser.init(
-    //     alloc,
-    //     token_buffer.items(),
-    // );
     var parser = try initTestParser(arena.allocator(), "\\A\\bX\\B\\Z");
     defer parser.deinit();
 
@@ -166,24 +149,7 @@ test "Should preserve decoded escaped literals as literal AST nodes" {
     const allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
-    // var arena = std.heap.ArenaAllocator.init(allocator);
-    // defer arena.deinit();
 
-    // const alloc = arena.allocator();
-
-    // var token_buffer = try tokens.TokenListBuffer.init(
-    //     alloc,
-    //     null,
-    // );
-    // defer token_buffer.deinit();
-
-    // var lexer = Lexer.init();
-    // try lexer.tokenize(&token_buffer);
-
-    // var parser = Parser.init(
-    //     alloc,
-    //     token_buffer.items(),
-    // );
     var parser = try initTestParser(arena.allocator(), "\\n\\r\\t\\x41\\101");
     defer parser.deinit();
 

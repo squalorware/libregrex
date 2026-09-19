@@ -146,15 +146,7 @@ test "Should parse anchored lowercase character class repeat" {
     const allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
-    // const alloc = arena.allocator();
 
-    // var token_buffer = try tokens.TokenListBuffer.init(alloc, null);
-    // defer token_buffer.deinit();
-
-    // var lexer = Lexer.init();
-    // try lexer.tokenize(&token_buffer);
-
-    // var parser = Parser.init(alloc, token_buffer.items());
     var parser = try initTestParser(arena.allocator(), "^[a-z]*$");
     defer parser.deinit();
 
@@ -191,25 +183,6 @@ test "Should parse predefined Unicode character classes" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    // const alloc = arena.allocator();
-    // var arena = std.heap.ArenaAllocator.init(allocator);
-    // defer arena.deinit();
-
-    // const alloc = arena.allocator();
-
-    // var token_buffer = try tokens.TokenListBuffer.init(
-    //     alloc,
-    //     null,
-    // );
-    // defer token_buffer.deinit();
-
-    // var lexer = Lexer.init();
-    // try lexer.tokenize(&token_buffer);
-
-    // var parser = Parser.init(
-    //     alloc,
-    //     token_buffer.items(),
-    // );
     var parser = try initTestParser(arena.allocator(), "\\d\\D\\w\\W\\s\\S");
     defer parser.deinit();
 
@@ -278,24 +251,7 @@ test "Should parse predefined classes inside bracket character class" {
     const allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
-    // var arena = std.heap.ArenaAllocator.init(allocator);
-    // defer arena.deinit();
 
-    // const alloc = arena.allocator();
-
-    // var token_buffer = try tokens.TokenListBuffer.init(
-    //     alloc,
-    //     null,
-    // );
-    // defer token_buffer.deinit();
-
-    // var lexer = Lexer.init();
-    // try lexer.tokenize(&token_buffer);
-
-    // var parser = Parser.init(
-    //     alloc,
-    //     token_buffer.items(),
-    // );
     var parser = try initTestParser(arena.allocator(), "[a-z\\d_\\S]");
     defer parser.deinit();
 

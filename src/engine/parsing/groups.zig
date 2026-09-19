@@ -58,7 +58,7 @@ pub fn parseInlineFlags(ptr: *Parser) ErrorSet!void {
     _ = try ptr.expect(.RPAREN);
 }
 
-/// Parses a capturing `(...)` or non-capturing `(?:...)` group
+/// Parses a capturing `(...)` and non-capturing `(?:...)` group or an inline flag `(?ims)` expressions
 pub fn parseGroup(ptr: *Parser) ErrorSet!*syntax.Node {
     const first = ptr.peek(0);
     const next = ptr.peek(1);
@@ -192,4 +192,38 @@ test "Should parse combined global inline flags" {
         },
         else => try std.testing.expect(false),
     }
+}
+
+test "Should parse consequently repeated global inline flags" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var parser = try initTestParser(arena.allocator(), "(?i)(?s)foo");
+    defer parser.deinit();
+
+    const ast = try parser.parse();
+    const flags = parser.inlineFlags();
+
+    try std.testing.expect(flags.ignore_case);
+    try std.testing.expect(!flags.multiline);
+    try std.testing.expect(flags.dot_all);
+
+    switch (ast.*) {
+        .Sequence => |seq| {
+            try std.testing.expectEqual(@as(usize, 3), seq.nodes.len);
+        },
+        else => try std.testing.expect(false),
+    }
+}
+
+test "Should return an Error in case of a misplaced global inline flag" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var parser = try initTestParser(arena.allocator(), "foo(?i)bar");
+    defer parser.deinit();
+
+    try std.testing.expectError(ErrorSet.UnexpectedToken, parser.parse());
 }
