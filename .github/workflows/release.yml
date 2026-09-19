@@ -71,12 +71,19 @@ jobs:
           with:
             version: ${{ env.ZIG_VERSION }}
 
+        - name: Run unit tests
+          run: zig build test -Dtype=unit -Dtarget=${{ matrix.target }} -Doptimize=ReleaseSafe --summary all
+
+        - name: Run integration tests
+          run: zig build test -Dtype=lib -Dtarget=${{ matrix.target }} -Doptimize=ReleaseSafe --summary all
+
         - name: Build (Linux)
           if: ${{ contains(matrix.target, 'linux') }}
           run: |
             zig build --prefix dist \
               -Dtarget=${{ matrix.target }} \
-              -Doptimize=ReleaseSafe
+              -Doptimize=ReleaseSafe \
+              --summary all
             ${{ matrix.strip_cmd }} dist/lib/libregrex.so.${{ env.VERSION }}
             cp LICENSE README.md dist/
 
@@ -85,7 +92,8 @@ jobs:
           run: |
             zig build --prefix dist \
               -Dtarget=${{ matrix.target }} \
-              -Doptimize=ReleaseSafe
+              -Doptimize=ReleaseSafe \
+              --summary all
             ${{ matrix.strip_cmd }} dist/lib/libregrex.${{ env.VERSION }}.dylib
             cp LICENSE README.md dist/
 
@@ -94,7 +102,8 @@ jobs:
           run: |
             zig build --prefix dist `
               -Dtarget=${{ matrix.target }} `
-              -Doptimize=ReleaseSafe
+              -Doptimize=ReleaseSafe `
+              --summary all
             Remove-Item -Path "dist\bin\regrex.pdb"
             Copy-Item -Path "LICENSE", "README.md" -Destination "dist" -Force
 
