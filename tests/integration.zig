@@ -9,10 +9,10 @@ test "Should recognize a global inline flag for ignore case" {
     const pattern = try regrex.compile(allocator, "(?i)foo", .{});
     defer pattern.deinit();
 
-    var result = try pattern.match("FOO");
+    var match = try pattern.match("FOO");
 
-    try testing.expect(result != null);
-    result.?.deinit();
+    try testing.expect(match != null);
+    match.?.deinit(allocator);
 }
 
 test "Should recognize a global inline flag for multiline" {
@@ -30,7 +30,7 @@ test "Should recognize a global inline flag for multiline" {
         try testing.expect(false);
         return;
     };
-    defer match.deinit();
+    defer match.deinit(allocator);
 
     try testing.expectEqualStrings("foo", try match.full());
 }
@@ -49,7 +49,7 @@ test "Should recognize a global inline dot-all flag (include newline characters 
         try testing.expect(false);
         return;
     };
-    defer match.deinit();
+    defer match.deinit(allocator);
 
     try testing.expectEqualStrings(input, try match.full());
 }
@@ -68,7 +68,7 @@ test "Should recognize combined global inline flags" {
         try testing.expect(false);
         return;
     };
-    defer match.deinit();
+    defer match.deinit(allocator);
 
     try testing.expectEqualStrings(input, try match.full());
 }
@@ -79,13 +79,13 @@ test "regrex.compile() should return a reusable *Pattern" {
     const pattern = try regrex.compile(allocator, "^[a-z]*$", .{});
     defer pattern.deinit();
 
-    var result = try (pattern.match("abc")) orelse {
+    var match = try (pattern.match("abc")) orelse {
         try testing.expect(false);
         return;
     };
-    defer result.deinit();
+    defer match.deinit(allocator);
 
-    try testing.expectEqualStrings("abc", try result.full());
+    try testing.expectEqualStrings("abc", try match.full());
 
     const no_match = try pattern.match("abc1");
     try testing.expect(no_match == null);
@@ -94,7 +94,7 @@ test "regrex.compile() should return a reusable *Pattern" {
 test "regrex.match() should try to match only at the input start" {
     const allocator = testing.allocator;
 
-    var result = (try regrex.match(
+    var match = (try regrex.match(
         allocator,
         "[0-9]+",
         "420 kek",
@@ -103,9 +103,9 @@ test "regrex.match() should try to match only at the input start" {
         try testing.expect(false);
         return;
     };
-    defer result.deinit();
+    defer match.deinit(allocator);
 
-    try testing.expectEqualStrings("420", try result.full());
+    try testing.expectEqualStrings("420", try match.full());
 
     const no_match = try regrex.match(allocator, "[0-9]+", "lol 420 kek", .{});
     try testing.expect(no_match == null);
@@ -114,7 +114,7 @@ test "regrex.match() should try to match only at the input start" {
 test "regrex.search() should return first match no matter its position in input" {
     const allocator = testing.allocator;
 
-    var result = (try regrex.search(
+    var match = (try regrex.search(
         allocator,
         "[0-9]+",
         "lol 420 kek",
@@ -123,17 +123,17 @@ test "regrex.search() should return first match no matter its position in input"
         try testing.expect(false);
         return;
     };
-    defer result.deinit();
+    defer match.deinit(allocator);
 
-    try testing.expectEqualStrings("420", try result.full());
-    try testing.expectEqual(@as(usize, 4), try result.start(0));
-    try testing.expectEqual(@as(usize, 7), try result.end(0));
+    try testing.expectEqualStrings("420", try match.full());
+    try testing.expectEqual(@as(usize, 4), try match.start(0));
+    try testing.expectEqual(@as(usize, 7), try match.end(0));
 }
 
 test "regrex.search() should support Unicode literal matching" {
     const allocator = testing.allocator;
 
-    var result = (try regrex.search(
+    var match = (try regrex.search(
         allocator,
         "う",
         "hうй",
@@ -142,9 +142,9 @@ test "regrex.search() should support Unicode literal matching" {
         try testing.expect(false);
         return;
     };
-    defer result.deinit();
+    defer match.deinit(allocator);
 
-    try testing.expectEqualStrings("う", try result.full());
+    try testing.expectEqualStrings("う", try match.full());
 }
 
 test "regrex.findAll() should return all non-overlapping matches" {
@@ -159,7 +159,7 @@ test "regrex.findAll() should return all non-overlapping matches" {
     defer {
         for (matches) |m| {
             var owned = m;
-            owned.deinit();
+            owned.deinit(allocator);
         }
         allocator.free(matches);
     }
@@ -178,38 +178,38 @@ test "regrex.findAll() should return all non-overlapping matches" {
 test "regrex.sub() replaces all occurences matching pattern" {
     const allocator = testing.allocator;
 
-    const result = try regrex.sub(allocator, "[0-9]+", "lol 420 kek 69", "SIXSEVEN", .{});
-    defer allocator.free(result);
+    const out = try regrex.sub(allocator, "[0-9]+", "lol 420 kek 69", "SIXSEVEN", .{});
+    defer allocator.free(out);
 
-    try testing.expectEqualStrings("lol SIXSEVEN kek SIXSEVEN", result);
+    try testing.expectEqualStrings("lol SIXSEVEN kek SIXSEVEN", out);
 }
 
 test "regrex.sub() acknowledges option.count and replaces exact number of occurences" {
     const allocator = testing.allocator;
 
-    const result = try regrex.sub(
+    const out = try regrex.sub(
         allocator,
         "[0-9]+",
         "lol 67 kek 420",
         "SIXSEVEN",
         .{ .count = 1 },
     );
-    defer allocator.free(result);
+    defer allocator.free(out);
 
-    try testing.expectEqualStrings("lol SIXSEVEN kek 420", result);
+    try testing.expectEqualStrings("lol SIXSEVEN kek 420", out);
 }
 
 test "regrex.sub() safely replaces all occurences if options.count is greater than actual matches count" {
     const allocator = testing.allocator;
 
-    const result = try regrex.sub(
+    const out = try regrex.sub(
         allocator,
         "[0-9]+",
         "lol 67 kek 420",
         "SIXSEVEN",
         .{ .count = 67 },
     );
-    defer allocator.free(result);
+    defer allocator.free(out);
 
-    try testing.expectEqualStrings("lol SIXSEVEN kek SIXSEVEN", result);
+    try testing.expectEqualStrings("lol SIXSEVEN kek SIXSEVEN", out);
 }

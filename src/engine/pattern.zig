@@ -16,7 +16,7 @@ const _Pattern = struct {
     alloc: std.mem.Allocator,
     pattern: []const u8,
     instructions: []Instruction,
-    group_count: usize,
+    captures_count: usize,
 };
 
 pub const PatternSubOptions = struct {
@@ -29,7 +29,7 @@ pub const Pattern = opaque {
         alloc: std.mem.Allocator,
         pattern: []const u8,
         bytecode: *InstructionSet,
-        group_count: usize,
+        captures_count: usize,
     ) ErrorSet!*Pattern {
         const self: *_Pattern = alloc.create(_Pattern) catch {
             return ErrorSet.MemoryError;
@@ -42,7 +42,7 @@ pub const Pattern = opaque {
             .alloc = alloc,
             .pattern = pattern,
             .instructions = instructions,
-            .group_count = group_count,
+            .captures_count = captures_count,
         };
         return @ptrCast(self);
     }
@@ -64,7 +64,7 @@ pub const Pattern = opaque {
     pub fn match(ptr: *Pattern, input: []const u8) ErrorSet!?Match {
         const self: *_Pattern = @ptrCast(@alignCast(ptr));
 
-        return try vm.execAt(self.alloc, input, 0, self.group_count, self.instructions);
+        return try vm.execAt(self.alloc, input, 0, self.captures_count, self.instructions);
     }
 
     /// Returns the first match produced at any position within the input
@@ -73,7 +73,7 @@ pub const Pattern = opaque {
         var pos: usize = 0;
 
         while (pos <= input.len) {
-            if (try vm.execAt(self.alloc, input, pos, self.group_count, self.instructions)) |m| return m;
+            if (try vm.execAt(self.alloc, input, pos, self.captures_count, self.instructions)) |m| return m;
 
             _ = unicode.advancePos(input, &pos) catch break;
         }
@@ -91,7 +91,7 @@ pub const Pattern = opaque {
             self.alloc,
             opts.input,
             opts.pos,
-            self.group_count,
+            self.captures_count,
             self.instructions,
         );
     }
@@ -122,7 +122,7 @@ pub const Pattern = opaque {
         var matches = try MatchListBuffer.init(self.alloc, null);
         defer matches.deinit();
 
-        while (try iter.next()) |m| try matches.append(m);
+        while (try iter.next(self.alloc)) |m| try matches.append(m);
 
         return try matches.toOwnedSlice();
     }
@@ -148,10 +148,10 @@ pub const Pattern = opaque {
         var repl_count: usize = 0;
 
         while (opts.count == 0 or opts.count > repl_count) {
-            const found = (try iter.next()) orelse break;
+            const found = (try iter.next(self.alloc)) orelse break;
 
             var matched = found;
-            defer matched.deinit();
+            defer matched.deinit(self.alloc);
 
             const start = try matched.start(0);
             const end = try matched.end(0);

@@ -9,7 +9,7 @@ pub const ErrorSet = error{
     /// Index is out of range
     OutOfRange,
     /// Exceeded maximum group count limit
-    GroupBufferOverflow,
+    ExceedsCapacity,
     /// Expected an expression; found an empty branch/sequence.
     ExpressionExpected,
     /// Invalid use of repetition operator `*`
@@ -34,11 +34,4 @@ pub const ErrorSet = error{
     UnmatchedBracket,
     /// Non-specific generic error
     InternalError,
-};
-
-const ErrorTypeTag = enum { zig, c };
-
-pub const ErrorType = union(ErrorTypeTag) {
-    zig: ErrorSet,
-    c: conv.ReturnCode,
 };

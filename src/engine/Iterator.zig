@@ -7,7 +7,7 @@ const ErrorSet = types.errors.ErrorSet;
 const T_Closure = types.meta.T_Closure;
 
 /// Iterator state representation. Shares context with compiled Pattern
-const _Iterator = struct {
+const IteratorContext = struct {
     ctx: *const anyopaque,
     done: bool = false,
     func: T_Closure(anyopaque, ExecutionContext, ?Match),
@@ -26,7 +26,7 @@ pub const LazyIterator = opaque {
         input: []const u8,
         func: T_Closure(anyopaque, ExecutionContext, ?Match),
     ) ErrorSet!*LazyIterator {
-        const self: *_Iterator = alloc.create(_Iterator) catch {
+        const self: *IteratorContext = alloc.create(IteratorContext) catch {
             return ErrorSet.MemoryError;
         };
         self.* = .{
@@ -38,14 +38,14 @@ pub const LazyIterator = opaque {
     }
 
     pub fn deinit(ptr: *LazyIterator, alloc: std.mem.Allocator) void {
-        const self: *_Iterator = @ptrCast(@alignCast(ptr));
+        const self: *IteratorContext = @ptrCast(@alignCast(ptr));
 
         self.* = undefined;
         alloc.destroy(self);
     }
 
     fn advanceAfterEmptyMatch(ptr: *LazyIterator) ErrorSet!void {
-        const self: *_Iterator = @ptrCast(@alignCast(ptr));
+        const self: *IteratorContext = @ptrCast(@alignCast(ptr));
 
         if (!try unicode.advancePos(self.input, &self.pos)) {
             self.done = true;
@@ -54,8 +54,8 @@ pub const LazyIterator = opaque {
 
     /// Scans the input once, starting at position in current context,
     /// then advances position register by one UTF-8 codepoint bytelength
-    pub fn next(ptr: *LazyIterator) ErrorSet!?Match {
-        const self: *_Iterator = @ptrCast(@alignCast(ptr));
+    pub fn next(ptr: *LazyIterator, alloc: std.mem.Allocator) ErrorSet!?Match {
+        const self: *IteratorContext = @ptrCast(@alignCast(ptr));
 
         if (self.done) return null;
 
@@ -64,7 +64,7 @@ pub const LazyIterator = opaque {
 
             if (maybe_match) |found| {
                 var match = found;
-                errdefer match.deinit();
+                errdefer match.deinit(alloc);
 
                 const start = try match.start(0);
                 const end = try match.end(0);
@@ -74,7 +74,7 @@ pub const LazyIterator = opaque {
                 } else {
                     ptr.advanceAfterEmptyMatch() catch |err| {
                         var owned = match;
-                        owned.deinit();
+                        owned.deinit(alloc);
                         return err;
                     };
                 }
@@ -92,7 +92,7 @@ pub const LazyIterator = opaque {
 
     /// Position in input from which the next iteration will resume lookup
     pub fn resumePos(ptr: *LazyIterator) usize {
-        const self: *_Iterator = @ptrCast(@alignCast(ptr));
+        const self: *IteratorContext = @ptrCast(@alignCast(ptr));
         return self.pos;
     }
 };

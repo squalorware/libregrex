@@ -2,14 +2,14 @@ const std = @import("std");
 const types = @import("types");
 const unicode = @import("unicode");
 
-const AST = @import("./syntax.zig");
+const AST = @import("./parsing/syntax.zig");
 const Bytecode = @import("./bytecode.zig");
 const utils = @import("./utils.zig");
 
 const testing = std.testing;
 
 const Instruction = Bytecode.Instruction;
-const RegrexError = types.errors.ErrorSet;
+const ErrorSet = types.errors.ErrorSet;
 const Match = types.Match;
 const T_DestructorCallback = types.meta.T_DestructorCallback;
 const CurrentRuneMatcher = utils.CurrentRuneMatcher;
@@ -24,10 +24,10 @@ const Frame = struct {
     /// Position to which VM should backtrack to and try resuming from
     pos: usize,
     /// Snapshot of capture slots at the time the alternative path was saved.
-    captures: []?usize,
+    registers: []?usize,
 
     pub fn deinit(self: *Frame, alloc: std.mem.Allocator) void {
-        alloc.free(self.captures);
+        alloc.free(self.registers);
         self.* = undefined;
     }
 };
@@ -46,9 +46,9 @@ pub const ExecutionContext = struct {
     pos: usize,
 };
 
-fn cloneCaptures(alloc: std.mem.Allocator, captures: []const ?usize) RegrexError![]?usize {
-    const clone = alloc.dupe(?usize, captures) catch {
-        return RegrexError.MemoryError;
+fn cloneCaptures(alloc: std.mem.Allocator, registers: []const ?usize) ErrorSet![]?usize {
+    const clone = alloc.dupe(?usize, registers) catch {
+        return ErrorSet.MemoryError;
     };
     return clone;
 }
@@ -59,13 +59,13 @@ fn hasBacktracked(
     stack: *Stack,
     pc: *usize,
     pos: *usize,
-    captures: *[]?usize,
+    registers: *[]?usize,
 ) bool {
     const frame = stack.pop() orelse return false;
-    alloc.free(captures.*);
+    alloc.free(registers.*);
     pc.* = frame.pc;
     pos.* = frame.pos;
-    captures.* = frame.captures;
+    registers.* = frame.registers;
     return true;
 }
 
@@ -75,12 +75,12 @@ fn hasRestoredState(
     stack: *Stack,
     pc: *usize,
     pos: *usize,
-    captures: *[]?usize,
+    registers: *[]?usize,
 ) bool {
-    if (hasBacktracked(alloc, stack, pc, pos, captures)) {
+    if (hasBacktracked(alloc, stack, pc, pos, registers)) {
         return true;
     }
-    alloc.free(captures.*);
+    alloc.free(registers.*);
     return false;
 }
 
@@ -89,16 +89,16 @@ pub fn execAt(
     allocator: std.mem.Allocator,
     input: []const u8,
     start_pos: usize,
-    group_count: usize,
+    captures_count: usize,
     prog: []const Instruction,
-) RegrexError!?Match {
-    const capture_slots = (group_count + 1) * 2;
-    var captures = allocator.alloc(?usize, capture_slots) catch {
-        return RegrexError.MemoryError;
+) ErrorSet!?Match {
+    const reg_count = (captures_count + 1) * 2;
+    var registers = allocator.alloc(?usize, reg_count) catch {
+        return ErrorSet.MemoryError;
     };
-    errdefer allocator.free(captures);
+    errdefer allocator.free(registers);
 
-    for (captures) |*slot| {
+    for (registers) |*slot| {
         slot.* = null;
     }
 
@@ -111,7 +111,7 @@ pub fn execAt(
     // Execution loop
     while (true) {
         if (pc >= prog.len) {
-            if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) continue;
+            if (hasRestoredState(allocator, &stack, &pc, &pos, &registers)) continue;
             return null;
         }
 
@@ -122,7 +122,7 @@ pub fn execAt(
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) {
+                if (hasRestoredState(allocator, &stack, &pc, &pos, &registers)) {
                     continue;
                 }
                 return null;
@@ -132,7 +132,7 @@ pub fn execAt(
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) {
+                if (hasRestoredState(allocator, &stack, &pc, &pos, &registers)) {
                     continue;
                 }
                 return null;
@@ -142,7 +142,7 @@ pub fn execAt(
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) {
+                if (hasRestoredState(allocator, &stack, &pc, &pos, &registers)) {
                     continue;
                 }
                 return null;
@@ -152,7 +152,7 @@ pub fn execAt(
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) {
+                if (hasRestoredState(allocator, &stack, &pc, &pos, &registers)) {
                     continue;
                 }
                 return null;
@@ -162,7 +162,7 @@ pub fn execAt(
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) {
+                if (hasRestoredState(allocator, &stack, &pc, &pos, &registers)) {
                     continue;
                 }
                 return null;
@@ -172,32 +172,32 @@ pub fn execAt(
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) {
+                if (hasRestoredState(allocator, &stack, &pc, &pos, &registers)) {
                     continue;
                 }
                 return null;
             },
             .Save => |slot| {
-                if (slot >= captures.len) {
-                    if (hasRestoredState(allocator, &stack, &pc, &pos, &captures)) {
+                if (slot >= registers.len) {
+                    if (hasRestoredState(allocator, &stack, &pc, &pos, &registers)) {
                         continue;
                     }
                     return null;
                 }
-                captures[slot] = pos;
+                registers[slot] = pos;
                 pc += 1;
             },
-            .Hold => return RegrexError.UnexpectedInstruction,
+            .Hold => return ErrorSet.UnexpectedInstruction,
             // Branch execution; execute `left` branch and store `right` branch to backtracking stack
             .Split => |split| {
-                const alt_captures = try cloneCaptures(allocator, captures);
+                const alt_captures = try cloneCaptures(allocator, registers);
 
                 stack.append(.{
                     .pc = split.right,
                     .pos = pos,
-                    .captures = alt_captures,
+                    .registers = alt_captures,
                 }) catch {
-                    return RegrexError.MemoryError;
+                    return ErrorSet.MemoryError;
                 };
                 // Resume execution from the program counter of the "left" `Frame`
                 pc = split.left;
@@ -210,11 +210,11 @@ pub fn execAt(
             .Match => {
                 const result = try Match.init(
                     allocator,
-                    group_count,
+                    captures_count,
                     input,
-                    captures,
+                    registers,
                 );
-                allocator.free(captures);
+                allocator.free(registers);
                 return result;
             },
         }
@@ -242,7 +242,7 @@ test "execAt() should produce a Match from given position" {
         try testing.expect(false);
         return;
     };
-    defer result.deinit();
+    defer result.deinit(allocator);
 
     try testing.expectEqualStrings("420", try result.full());
     try testing.expectEqual(@as(usize, 4), try result.start(0));
@@ -272,7 +272,7 @@ test "execAt() should handle capture slots" {
         try testing.expect(false);
         return;
     };
-    defer result.deinit();
+    defer result.deinit(allocator);
 
     try testing.expectEqualStrings("420", try result.full());
 
@@ -300,7 +300,7 @@ test "execAt() should consume a complete multibyte Unicode Rune" {
         try testing.expect(false);
         return;
     };
-    defer result.deinit();
+    defer result.deinit(allocator);
 
     try testing.expectEqual(
         @as(usize, 3),
@@ -353,7 +353,7 @@ test "execAt() should correctly handle an anchored lowercase character class rep
         try testing.expect(false);
         return;
     };
-    defer result.deinit();
+    defer result.deinit(allocator);
 
     try testing.expectEqualStrings("abc", try result.full());
 

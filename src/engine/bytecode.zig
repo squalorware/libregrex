@@ -4,7 +4,7 @@
 //! and consumed by the `VM`
 const Allocator = @import("std").mem.Allocator;
 const T_ManagedArrayList = @import("types").T_ManagedArrayList;
-const syntax = @import("./syntax.zig");
+const syntax = @import("./parsing/syntax.zig");
 
 /// A pair of bytecode addresses used by `Instruction.Split`
 pub const Split = struct {

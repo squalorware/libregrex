@@ -1,11 +1,11 @@
 const std = @import("std");
 const types = @import("types");
-const Lexer = @import("../Lexer.zig");
+const lexing = @import("../lexing/root.zig");
 const Parser = @import("./Parser.zig").Parser;
-const syntax = @import("../syntax.zig");
-const tokens = @import("../tokens.zig");
+const syntax = @import("./syntax.zig");
 const ErrorSet = types.errors.ErrorSet;
-const Token = tokens.Token;
+const Lexer = lexing.Lexer;
+const Token = lexing.Token;
 
 /// Applies a predefined Unicode character-class escape to its corresponding
 /// regular or negated class set.
@@ -41,7 +41,7 @@ pub fn assertionEscape(value: u21) ?syntax.AssertionType {
 pub fn parseEscapedAtom(ptr: *Parser, token: Token) ErrorSet!*syntax.Node {
     _ = ptr.advance();
 
-    const value = token.val.?.raw();
+    const value = token.val().?.raw();
 
     var preset: syntax.PresetClassSet = .{};
     var negated_preset: syntax.PresetClassSet = .{};

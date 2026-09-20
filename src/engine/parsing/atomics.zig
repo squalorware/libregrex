@@ -4,7 +4,7 @@ const classes = @import("./char_classes.zig");
 const escapes = @import("./escapes.zig");
 const groups = @import("./groups.zig");
 const Parser = @import("./Parser.zig").Parser;
-const syntax = @import("../syntax.zig");
+const syntax = @import("./syntax.zig");
 
 const ErrorSet = types.errors.ErrorSet;
 const T_ManagedArrayList = types.meta.T_ManagedArrayList;
@@ -16,7 +16,7 @@ pub fn parseSequence(ptr: *Parser) ErrorSet!*syntax.Node {
     var nodes = try NodeList.init(ptr.alloc, null);
     defer nodes.deinit();
 
-    while (ptr.current().typ != .EOF and ptr.current().typ != .RPAREN and ptr.current().typ != .PIPE) {
+    while (ptr.current().tag() != .EOP and ptr.current().tag() != .RPAREN and ptr.current().tag() != .PIPE) {
         const node = try parseQuantifier(ptr);
         try nodes.append(node);
     }
@@ -77,12 +77,12 @@ pub fn parseQuantifier(ptr: *Parser) ErrorSet!*syntax.Node {
 pub fn parseAtom(ptr: *Parser) ErrorSet!*syntax.Node {
     const token = ptr.current();
 
-    switch (token.typ) {
-        .CHAR => {
+    switch (token) {
+        .CHAR => |char| {
             _ = ptr.advance();
             return ptr.createNode(.{
                 .Literal = .{
-                    .value = token.val.?.raw(),
+                    .value = char.val.?.raw(),
                 },
             });
         },

@@ -38,7 +38,7 @@ enum
     REGREX_ENOMATCH,         /* No matching group */
     REGREX_EMALLOC,          /* Memory allocation error */
     REGREX_ERANGE,           /* Index is out of range */
-    REGREX_EMAXGRP,          /* Exceeded maximum group count limit */
+    REGREX_EMAXCAP,          /* Exceeded maximum group count limit */
     REGREX_EBADUTF8,         /* Invalid or malformed UTF-8 codepoint */
     REGREX_ETOKEN,           /* Token unexpected in current context */
     REGREX_EEND,             /* Unexpected end of pattern (EOF before construct complete) */

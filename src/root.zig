@@ -7,17 +7,17 @@ const errors = types.errors;
 const meta = types.meta;
 const T_MergedStruct = meta.T_MergedStruct;
 
-/// Lazy iterator over matches. Initialized by `Pattern`, then ownership is transferred to caller.
-pub const LazyIterator = engine.LazyIterator;
-/// Pattern behaviour modifiers. Can be inline as special characters in the pattern or passed to `compile` as an argument 
-pub const Flags = engine.Flags;
 /// Generic destructor for any owned slice of type `T`. Accepts optional destructor callback for complex deinit logic
-pub const freeAlloc = types.meta.freeAlloc;
+pub const free = types.meta.freeAlloc;
+/// Lazy iterator over matches. Initialized by `Pattern`, then ownership is transferred to caller.
+pub const FindIterator = engine.LazyIterator;
+/// Pattern behaviour modifiers. Can be inline as special characters in the pattern or passed to `compile` as an argument 
+pub const Flags = engine.syntax.Flags;
 /// Data structure that stores the matching result as a buffer of byte offsets. Owned by caller.
 pub const Match = types.Match;
 /// Opaque type which encapsulates the compiled regex pattern and provides API. Owned by caller.
 pub const Pattern = engine.Pattern;
-/// Common parsing and compilation errors
+/// Error set used by the library
 pub const RegrexError = errors.ErrorSet;
 /// Byte offset within the input string. Represents match data (full match and capture groups).
 ///     Follows slice semantics: `.start` is inclusive; `.end` is exclusive.
@@ -31,13 +31,12 @@ pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: Flags) Regr
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
 
-    var token_list = try tokens.TokenListBuffer.init(alloc, null);
-    defer token_list.deinit();
+    const allocator = arena.allocator();
 
-    var lexer = engine.Lexer.init(pattern);
-    try lexer.tokenize(&token_list);
+    var lexer = engine.Lexer.init();
+    const token_list = try lexer.eval(allocator, pattern);
 
-    var parser = engine.Parser.init(arena.allocator(), token_list.items());
+    var parser = engine.Parser.init(allocator, token_list);
     defer parser.deinit();
     
     const ast = try parser.parse();
@@ -49,7 +48,7 @@ pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: Flags) Regr
     const compiler = engine.Compiler.init(&prog, combined);
     try compiler.compile(alloc, ast);
 
-    return try Pattern.init(alloc, pattern, &prog, parser.group_count);
+    return try Pattern.init(alloc, pattern, &prog, parser.captures_count);
 }
 
 /// Returns the first match encountered at the beginning of the input

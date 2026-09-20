@@ -155,9 +155,12 @@ pub fn T_MergedStruct(comptime T_Base: type, comptime T_Extra: type) type {
 pub fn T_Range(comptime T: type, opts: RangeOptions) type {
     const info = @typeInfo(T);
 
-    if (info != .int) @compileError("Range accepts only integer element types");
+    if (info != .int) {
+        @compileError("Offset type is not integer");
+    }
+
     if (opts.extern_compat and !std.math.isPowerOfTwo(info.int.bits)) {
-        @compileError("Extern Range wanted, but the given element type is not C ABI compatible");
+        @compileError("Cannot create extern Range: integer bit size is not compatible");
     }
     // duplicated doc comment because we return two distinct structs
     // so we want to ensure that LSP picks up docs for either

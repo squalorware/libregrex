@@ -49,7 +49,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    // engine_mod.addImport("parsing", engine_parsing_mod);
+
     engine_mod.addImport("types", types_mod);
     engine_mod.addImport("unicode", unicode_mod);
 

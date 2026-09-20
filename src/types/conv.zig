@@ -40,7 +40,7 @@ pub const ReturnCode = enum(i8) {
     /// Index is out of range
     REGREX_ERANGE = 5,
     /// Exceeded maximum group count limit
-    REGREX_EMAXGRP = 6,
+    REGREX_EMAXCAP = 6,
     /// Invalid or malformed UTF-8
     REGREX_EBADUTF8 = 7,
     /// Unexpected Token
@@ -69,7 +69,7 @@ pub fn toErrorCode(err: anyerror) ReturnCode {
         ErrorSet.NoMatch => .REGREX_ENOMATCH,
         ErrorSet.MemoryError => .REGREX_EMALLOC,
         ErrorSet.OutOfRange => .REGREX_ERANGE,
-        ErrorSet.GroupBufferOverflow => .REGREX_EMAXGRP,
+        ErrorSet.ExceedsCapacity => .REGREX_EMAXCAP,
         ErrorSet.InvalidUnicode => .REGREX_EBADUTF8,
         ErrorSet.UnexpectedToken => .REGREX_ETOKEN,
         ErrorSet.UnexpectedEnd => .REGREX_EEND,
@@ -92,7 +92,7 @@ pub fn toErrorSet(rc: ReturnCode) ErrorSet {
         .REGREX_ENOMATCH => ErrorSet.NoMatch,
         .REGREX_EMALLOC => ErrorSet.MemoryError,
         .REGREX_ERANGE => ErrorSet.OutOfRange,
-        .REGREX_EMAXGRP => ErrorSet.GroupBufferOverflow,
+        .REGREX_EMAXCAP => ErrorSet.ExceedsCapacity,
         .REGREX_EBADUTF8 => ErrorSet.InvalidUnicode,
         .REGREX_ETOKEN => ErrorSet.UnexpectedToken,
         .REGREX_EEND => ErrorSet.UnexpectedEnd,
@@ -115,7 +115,7 @@ pub fn toErrorMsg(rcode: ReturnCode) [*:0]const u8 {
         .REGREX_ENOMATCH => "No matching group",
         .REGREX_EMALLOC => "Memory allocation error",
         .REGREX_ERANGE => "Index is out of range",
-        .REGREX_EMAXGRP => "Exceeded maximum group count limit",
+        .REGREX_EMAXCAP => "Exceeded maximum group count limit",
         .REGREX_EBADUTF8 => "Parsing error: Invalid or malformed UTF-8 code point",
         .REGREX_ETOKEN => "Parsing error: Unexpected token",
         .REGREX_EEND => "Parsing error: Unexpected end of pattern",

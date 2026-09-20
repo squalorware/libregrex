@@ -1,13 +1,12 @@
 const std = @import("std");
 const types = @import("types");
-const Lexer = @import("../Lexer.zig");
+const lexing = @import("../lexing/root.zig");
 const Parser = @import("./Parser.zig").Parser;
-const syntax = @import("../syntax.zig");
-const tokens = @import("../tokens.zig");
-const Flags = syntax.Flags;
+const syntax = @import("./syntax.zig");
 const ErrorSet = types.errors.ErrorSet;
-const Token = tokens.Token;
-const TokenType = tokens.TokenType;
+const Lexer = lexing.Lexer;
+const Token = lexing.Token;
+const TokenType = lexing.TokenType;
 
 pub fn applyInlineFlag(flags: *syntax.Flags, rune: u21) bool {
     switch (rune) {
@@ -24,14 +23,15 @@ pub fn startsInlineFlags(ptr: *Parser) bool {
     const question = ptr.peek(1) orelse return false;
     const flag = ptr.peek(2) orelse return false;
 
-    if (lparen.typ != .LPAREN or
-        question.typ != .QUESTION or
-        flag.typ != .CHAR) 
+    if (lparen.tag() != .LPAREN or
+        question.tag() != .QUESTION or
+        flag.tag() != .CHAR) 
     {
         return false;
     }
 
-    return switch(flag.val.?.raw()) {
+    const flag_val = flag.val();
+    return switch(flag_val.?.raw()) {
         'i', 'm', 's' => true,
         else => false,
     };
@@ -43,8 +43,9 @@ pub fn parseInlineFlags(ptr: *Parser) ErrorSet!void {
 
     var found = false;
 
-    while (ptr.current().typ == .CHAR) {
-        const rune = ptr.current().val.?.raw();
+    while (ptr.current().tag() == .CHAR) {
+        const current_val = ptr.current().val();
+        const rune = current_val.?.raw();
 
         if (!applyInlineFlag(&ptr.inline_flags, rune)) break;
         
@@ -54,7 +55,7 @@ pub fn parseInlineFlags(ptr: *Parser) ErrorSet!void {
 
     if (!found) return ErrorSet.UnexpectedToken;
 
-    if (ptr.current().typ == .EOF) return ErrorSet.UnmatchedParen;
+    if (ptr.current().tag() == .EOP) return ErrorSet.UnmatchedParen;
     _ = try ptr.expect(.RPAREN);
 }
 
@@ -64,11 +65,11 @@ pub fn parseGroup(ptr: *Parser) ErrorSet!*syntax.Node {
     const next = ptr.peek(1);
 
     // Parse inline flags or a non-capturing group
-    if (first != null and first.?.typ == .QUESTION) {
+    if (first != null and first.?.tag() == .QUESTION) {
         if (next == null) return ErrorSet.UnmatchedParen;
-        if (next.?.typ != .CHAR) return ErrorSet.UnexpectedToken;
+        if (next.?.tag() != .CHAR) return ErrorSet.UnexpectedToken;
 
-        const rune = next.?.val.?.raw();
+        const rune = next.?.val().?.raw();
 
         if (rune == ':') {
             _ = ptr.advance();
@@ -90,8 +91,8 @@ pub fn parseGroup(ptr: *Parser) ErrorSet!*syntax.Node {
         return ErrorSet.UnexpectedToken;
     }
     // Parse a capturing group
-    ptr.group_count += 1;
-    const pos = ptr.group_count;
+    ptr.captures_count += 1;
+    const pos = ptr.captures_count;
 
     const node = try ptr.parseBranch();
 

@@ -1,7 +1,7 @@
-const RegrexError = @import("types").errors.ErrorSet;
+const ErrorSet = @import("types").errors.ErrorSet;
 const unicode = @import("unicode");
 const Rune = unicode.Rune;
-const AST = @import("./syntax.zig");
+const AST = @import("./parsing/syntax.zig");
 const bytecode = @import("./bytecode.zig");
 
 /// Represents a rule by which a Rune-consuming Instruction should test it.
@@ -70,7 +70,7 @@ fn matchCharClasses(rune: Rune, matcher: bytecode.ClassMatcher) bool {
 }
 
 /// Checks whether a Rune satisfies the provided matcher
-fn matchRune(rune: Rune, matcher: CurrentRuneMatcher) RegrexError!bool {
+fn matchRune(rune: Rune, matcher: CurrentRuneMatcher) ErrorSet!bool {
     switch (matcher) {
         .any => |m| {
             return m.dot_all or !rune.isLineBreak();
@@ -83,7 +83,7 @@ fn matchRune(rune: Rune, matcher: CurrentRuneMatcher) RegrexError!bool {
 }
 
 /// Checks the Rune at the current position in input and then advances it by Rune byte length
-pub fn runeMatched(input: []const u8, pos: *usize, matcher: CurrentRuneMatcher) RegrexError!bool {
+pub fn runeMatched(input: []const u8, pos: *usize, matcher: CurrentRuneMatcher) ErrorSet!bool {
     const rune = try unicode.decodeAt(input, pos.*) orelse return false;
     if (!try matchRune(rune, matcher)) return false;
 
@@ -92,7 +92,7 @@ pub fn runeMatched(input: []const u8, pos: *usize, matcher: CurrentRuneMatcher) 
 }
 
 /// Checks whether current input position is a line start.
-fn isLineStart(input: []const u8, pos: usize) RegrexError!bool {
+fn isLineStart(input: []const u8, pos: usize) ErrorSet!bool {
     if (pos == 0) return true;
 
     const prev = try unicode.decodePrev(input, pos) orelse return false;
@@ -104,7 +104,7 @@ fn isLineStart(input: []const u8, pos: usize) RegrexError!bool {
 }
 
 /// Checks whether current input position is a line end.
-fn isLineEnd(input: []const u8, pos: usize) RegrexError!bool {
+fn isLineEnd(input: []const u8, pos: usize) ErrorSet!bool {
     if (pos == input.len) return true;
 
     const current = try unicode.decodeAt(input, pos) orelse return true;
@@ -116,7 +116,7 @@ fn isLineEnd(input: []const u8, pos: usize) RegrexError!bool {
 }
 
 /// Checks whether a start or end anchor matches current input position.
-pub fn anchorMatched(inst: bytecode.Instruction, input: []const u8, pos: usize, multiline: bool) RegrexError!bool {
+pub fn anchorMatched(inst: bytecode.Instruction, input: []const u8, pos: usize, multiline: bool) ErrorSet!bool {
     switch (inst) {
         .AssertStart => {
             if (multiline) return try isLineStart(input, pos);
@@ -131,7 +131,7 @@ pub fn anchorMatched(inst: bytecode.Instruction, input: []const u8, pos: usize, 
 }
 
 /// Checks whether current input position is a Unicode word boundary.
-fn isWordBoundary(input: []const u8, pos: usize) RegrexError!bool {
+fn isWordBoundary(input: []const u8, pos: usize) ErrorSet!bool {
     const prev = try unicode.decodePrev(input, pos);
     const current = try unicode.decodeAt(input, pos);
 
@@ -139,7 +139,7 @@ fn isWordBoundary(input: []const u8, pos: usize) RegrexError!bool {
 }
 
 /// Checks whether a zero-width assertion matches current input position.
-pub fn assertMatched(input: []const u8, pos: usize, assert: AST.AssertionType) RegrexError!bool {
+pub fn assertMatched(input: []const u8, pos: usize, assert: AST.AssertionType) ErrorSet!bool {
     return switch (assert) {
         .start_abs => pos == 0,
         .end_abs => pos == input.len,

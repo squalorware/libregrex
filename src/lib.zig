@@ -12,8 +12,11 @@ const T_MergedStruct = types.meta.T_MergedStruct;
 
 /// Memory management helpers for Zig and C
 pub const mem = struct {
+    pub const Allocator = std.mem.Allocator;
+    pub const c_allocator = std.heap.c_allocator;
     pub const freeAlloc = types.meta.freeAlloc;
     pub const freeMatchCallback = types.freeMatchCallback;
+    pub const span = std.mem.span;
 
     /// Converts a C array to a Zig slice and releases it together with its items
     pub fn freeRaw(
@@ -25,7 +28,7 @@ pub const mem = struct {
     ) void {
         const buf: [*]T = ptr orelse return;
 
-        _ = freeAlloc(T, alloc, buf[0..len], destroy_cb);
+        freeAlloc(T, alloc, buf[0..len], destroy_cb);
     }
 };
 
@@ -57,11 +60,11 @@ pub const helpers = struct {
         alloc: std.mem.Allocator,
         subject: anytype,
         in_str: ?ctypes.ConstStr,
-    ) RegrexError!RegrexMatch {
+    ) RegrexError!regex.Match {
         const input: ctypes.ConstStr = in_str orelse return RegrexError.InvalidArgument;
 
-        const m: RegrexMatch = if (comptime M == .pattern) blk: {
-            const pattern: *RegrexPattern = subject orelse return RegrexError.InvalidArgument;
+        const m: regex.Match = if (comptime M == .pattern) blk: {
+            const pattern: *regex.Pattern = subject orelse return RegrexError.InvalidArgument;
 
             break :blk try switch (Fn) {
                 .match => pattern.match(std.mem.span(input)),
@@ -71,8 +74,8 @@ pub const helpers = struct {
             const pattern: ctypes.ConstStr = subject.pattern orelse return RegrexError.InvalidArgument;
 
             break :blk try switch (Fn) {
-                .match => regrexMatch(alloc, std.mem.span(pattern), std.mem.span(input), subject.flags),
-                .search => regrexSearch(alloc, std.mem.span(pattern), std.mem.span(input), subject.flags),
+                .match => regex.match(alloc, std.mem.span(pattern), std.mem.span(input), subject.flags),
+                .search => regex.search(alloc, std.mem.span(pattern), std.mem.span(input), subject.flags),
             } orelse return RegrexError.NoMatch;
         };
 
@@ -80,15 +83,18 @@ pub const helpers = struct {
     }
 };
 
+pub const regex = struct {
+    pub const FindIterator = engine.LazyIterator;
+    pub const Flags = engine.syntax.Flags;
+    pub const Match = types.Match;
+    pub const Pattern = engine.Pattern;
+    pub const Span = types.Span;
+    pub const compile = root.compile;
+    pub const match = root.match;
+    pub const search = root.search;
+    pub const findAll = root.findAll;
+    pub const sub = root.sub;
+};
+
 pub const RegrexError = types.errors.ErrorSet;
-pub const RegrexFlags = engine.Flags;
-pub const RegrexIterator = engine.LazyIterator;
-pub const RegrexMatch = types.Match;
-pub const RegrexPattern = engine.Pattern;
-pub const RegrexSpan = types.Span;
-pub const regrexCompile = root.compile;
-pub const regrexFindAll = root.findAll;
-pub const regrexMatch = root.match;
-pub const regrexSearch = root.match;
-pub const regrexSub = root.sub;
-pub const SubOptions = T_MergedStruct(RegrexFlags, engine.PatternSubOptions);
+pub const SubOptions = T_MergedStruct(regex.Flags, engine.PatternSubOptions);

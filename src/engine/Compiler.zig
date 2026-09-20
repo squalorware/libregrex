@@ -4,9 +4,8 @@
 //! and emits corresponding bytecode instructions to the program buffer
 const std = @import("std");
 const types = @import("types");
-const syntax = @import("./syntax.zig");
+const syntax = @import("./parsing/syntax.zig");
 const Bytecode = @import("./bytecode.zig");
-const Flags = @import("./syntax.zig").Flags;
 const testing = std.testing;
 const Instruction = Bytecode.Instruction;
 const InstructionSet = Bytecode.InstructionSet;
@@ -47,9 +46,9 @@ fn cloneSequence(alloc: std.mem.Allocator, seq: syntax.Sequence) ErrorSet!syntax
 pub const Compiler = @This();
 
 buffer: *InstructionSet,
-flags: Flags,
+flags: syntax.Flags,
 
-pub fn init(prog: *InstructionSet, flags: Flags) Compiler {
+pub fn init(prog: *InstructionSet, flags: syntax.Flags) Compiler {
     return .{ .buffer = prog, .flags = flags };
 }
 

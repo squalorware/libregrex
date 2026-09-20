@@ -1,16 +1,17 @@
 const std = @import("std");
 const types = @import("types");
 const unicode = @import("unicode");
-const Lexer = @import("../Lexer.zig");
+const lexing = @import("../lexing/root.zig");
+const isSemanticEscape = @import("../lexing/escapes.zig").isSemantic;
 const Parser = @import("./Parser.zig").Parser;
-const syntax = @import("../syntax.zig");
-const tokens = @import("../tokens.zig");
+const syntax = @import("./syntax.zig");
 const ErrorSet = types.errors.ErrorSet;
 const Rune = unicode.Rune;
 const RuneRange = unicode.ranges.RuneRange;
 const T_ManagedArrayList = types.meta.T_ManagedArrayList;
-const Token = tokens.Token;
-const TokenType = tokens.TokenType;
+const Lexer = lexing.Lexer;
+const Token = lexing.Token;
+
 
 const RangeList = T_ManagedArrayList(RuneRange, null);
 const RuneList = T_ManagedArrayList(u21, null);
@@ -35,7 +36,7 @@ fn applyPresetEscape(
 
 /// Returns Token's literal if this Token can represent a part of character class
 fn charClassLiteral(token: Token) ?u21 {
-    return switch (token.typ) {
+    return switch (token) {
         .CHAR,
         .ESCAPED_CHAR,
         .DOT,
@@ -47,7 +48,7 @@ fn charClassLiteral(token: Token) ?u21 {
         .PIPE,
         .LPAREN,
         .RPAREN,
-        .LBRACKET => token.val.?.raw(),
+        .LBRACKET => |lexeme| lexeme.val.?.raw(),
         else => null,
     };
 }
@@ -65,11 +66,11 @@ pub fn parseCharClass(ptr: *Parser) ErrorSet!syntax.CharClass {
     var preset: syntax.PresetClassSet = .{};
     var negated_preset: syntax.PresetClassSet = .{};
 
-    while (ptr.current().typ != .RBRACKET and ptr.current().typ != .EOF) {
+    while (ptr.current().tag() != .RBRACKET and ptr.current().tag() != .EOP) {
         const start_token = ptr.current();
 
         // A leading or otherwise standalone unescaped '-' is a literal.
-        if (start_token.typ == .DASH) {
+        if (start_token.tag() == .DASH) {
             _ = ptr.advance();
 
             try chars.append('-');
@@ -78,10 +79,10 @@ pub fn parseCharClass(ptr: *Parser) ErrorSet!syntax.CharClass {
 
         // Predefined character classes retain their regex semantics
         // inside bracket classes.
-        if (start_token.typ == .ESCAPED_CHAR) {
-            const val = start_token.val.?.raw();
+        if (start_token.tag() == .ESCAPED_CHAR) {
+            const val = start_token.val();
 
-            if (applyPresetEscape(val, &preset, &negated_preset)) {
+            if (applyPresetEscape(val.?.raw(), &preset, &negated_preset)) {
                 _ = ptr.advance();
                 continue;
             }
@@ -101,17 +102,17 @@ pub fn parseCharClass(ptr: *Parser) ErrorSet!syntax.CharClass {
 
         // A '-' immediately before ']' is a literal hyphen rather than a
         // range separator: `[a-]` represents `a` and `-`.
-        if (ptr.current().typ == .RBRACKET) {
+        if (ptr.current().tag() == .RBRACKET) {
             try chars.append(start);
             try chars.append('-');
             break;
         }
 
         const end_token = ptr.current();
-
+        const val = end_token.val();
         // Preset classes cannot be range endpoints. Expressions such as
         // `[a-\d]` have no meaningful scalar endpoint.
-        if (end_token.typ == .ESCAPED_CHAR and Lexer.isSemanticEscape(end_token.val.?.raw())) {
+        if (end_token.tag() == .ESCAPED_CHAR and isSemanticEscape(val.?.raw())) {
             return ErrorSet.UnexpectedToken;
         }
 

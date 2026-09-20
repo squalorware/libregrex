@@ -1,10 +1,10 @@
 const std = @import("std");
-const syntax = @import("../syntax.zig");
+const syntax = @import("./syntax.zig");
 const types = @import("types");
-const tokens = @import("../tokens.zig");
+const lexing = @import("../lexing/root.zig");
 const ErrorSet = types.errors.ErrorSet;
-const Token = tokens.Token;
-const TokenType = tokens.TokenType;
+const Token = lexing.Token;
+const TokenType = lexing.TokenType;
 
 const atomics = @import("./atomics.zig");
 const classes = @import("./char_classes.zig");
@@ -13,9 +13,9 @@ const groups = @import("./groups.zig");
 
 pub const Parser = struct {
     alloc: std.mem.Allocator,
-    group_count: usize = 0,
+    captures_count: usize = 0,
     pos: usize = 0,
-    token_list: []const Token,
+    tokens: []const Token,
     inline_flags: syntax.Flags = .{},
 
     /// Using `std.heap.ArenaAllocator` is recommended, this way the entire AST is released
@@ -23,12 +23,12 @@ pub const Parser = struct {
     pub fn init(alloc: std.mem.Allocator, tlist: []const Token) Parser {
         return .{
             .alloc = alloc,
-            .token_list = tlist,
+            .tokens = tlist,
         };
     }
 
     pub fn deinit(self: *Parser) void {
-        self.alloc.free(self.token_list);
+        self.alloc.free(self.tokens);
     }
 
     pub fn inlineFlags(self: *Parser) syntax.Flags {
@@ -37,18 +37,18 @@ pub const Parser = struct {
 
     /// Returns a token at the current 'cursor' position
     pub fn current(self: *Parser) Token {
-        return self.token_list[self.pos];
+        return self.tokens[self.pos];
     }
 
     /// Returns a token at `pos + offset` or `null` if index out of range
     pub fn peek(self: *Parser, offset: usize) ?Token {
         const idx = self.pos + offset;
 
-        if (idx >= self.token_list.len) {
+        if (idx >= self.tokens.len) {
             return null;
         }
 
-        return self.token_list[idx];
+        return self.tokens[idx];
     }
 
     /// Returns the current token and moves one position 'forward'
@@ -59,8 +59,9 @@ pub const Parser = struct {
     }
 
     /// Checks if current token's type matches the expected one
-    pub fn match(self: *Parser, typ: TokenType) bool {
-        if (self.current().typ == typ) {
+    pub fn match(self: *Parser, tag: TokenType) bool {
+        const t = self.current();
+        if (t.tag() == tag) {
             _ = self.advance();
             return true;
         }
@@ -68,8 +69,9 @@ pub const Parser = struct {
     }
 
     /// Returns a compilation error if token type doesn't match the expected one
-    pub fn expect(self: *Parser, typ: TokenType) ErrorSet!Token {
-        if (self.current().typ != typ) {
+    pub fn expect(self: *Parser, tag: TokenType) ErrorSet!Token {
+        const t = self.current();
+        if (t.tag() != tag) {
             return ErrorSet.UnexpectedToken;
         }
         return self.advance();
@@ -77,7 +79,7 @@ pub const Parser = struct {
 
     /// Parses branching.
     ///
-    /// Alteration has the lowest precedence in this grammar
+    /// Alteration has the lowest precedence in this parsing
     pub fn parseBranch(self: *Parser) ErrorSet!*syntax.Node {
         var left = try atomics.parseSequence(self);
 
@@ -110,7 +112,7 @@ pub const Parser = struct {
 
         const ast = try self.parseBranch();
 
-        if (self.current().typ != .EOF) {
+        if (self.current().tag() != .EOP) {
             return ErrorSet.UnexpectedToken;
         }
         return ast;
@@ -120,13 +122,8 @@ pub const Parser = struct {
 
 
 pub fn initTestParser(alloc: std.mem.Allocator, pattern: []const u8) ErrorSet!Parser {
-    const Lexer = @import("../Lexer.zig");
+    var lexer = lexing.Lexer.init();
+    const token_list = try lexer.eval(alloc, pattern);
 
-    var token_buffer = try tokens.TokenListBuffer.init(alloc, null);
-    defer token_buffer.deinit();
-
-    var lexer = Lexer.init(pattern);
-    try lexer.tokenize(&token_buffer);
-
-    return Parser.init(alloc, try token_buffer.toOwnedSlice());
+    return Parser.init(alloc, token_list);
 }
