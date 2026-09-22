@@ -19,8 +19,8 @@ pub fn isEmpty(span: Span) bool {
 pub const Match = struct {
     input: []const u8,
     /// Byte offsets of matches within the input.
-    ///     `group[0]` always represents the full match.
-    ///     `group[1..]` contains capture groups
+    ///     `groups[0]` always represents the full match.
+    ///     `groups[1..]` contains capture groups
     groups: []Span,
 
     pub fn init(

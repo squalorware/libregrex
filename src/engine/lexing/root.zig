@@ -20,6 +20,7 @@ pub const Lexer = struct {
         return .{ .pos = 0 };
     }
 
+    /// Consumes the string with pattern and breaks it down into an array of lexical tokens 
     pub fn eval(self: *Lexer, alloc: std.mem.Allocator, pattern: []const u8) ErrorSet![]Token {
         var buffer = try Buffer.init(alloc, null);
         defer buffer.deinit();
@@ -40,30 +41,17 @@ pub const Lexer = struct {
                 self.pos += 1;
 
                 const literal = try escapes.processEscaped(&iter, escaped, &self.pos);
-                const token = if (escapes.isSemantic(escaped)) blk: {
-                    break :blk Token {
-                        .ESCAPED_CHAR = .{
-                            .val = try Rune.from(literal),
-                            .pos = current_pos,
-                        },
-                    };
-                } else blk: {
-                    break :blk Token {
-                        .CHAR = .{
-                            .val = try Rune.from(literal),
-                            .pos = current_pos,
-                        },
-                    };
-                };
+                const token = (try tokens.emitSemanticEscaped(escaped, literal, current_pos)) orelse (
+                    try tokens.emitLiteral(literal, current_pos)
+                );
+
                 try buffer.append(token);
                 continue;
             }
-            const token = (try tokens.emitSyntaxToken(char, current_pos)) orelse Token {
-                .CHAR = .{
-                    .val = try Rune.from(char),
-                    .pos = current_pos,
-                },
-            };
+            const token = (try tokens.emitSyntaxToken(char, current_pos)) orelse (
+                try tokens.emitLiteral(char, current_pos)
+            );
+
             try buffer.append(token);
             continue;
         }

@@ -9,6 +9,16 @@ const Attributes = Type.StructField.Attributes;
 const LookupOrder = misc.LookupOrder;
 const RangeOptions = misc.RangeOptions;
 
+pub fn is(comptime Id: std.builtin.TypeId) fn (type) bool {
+    const Closure = struct {
+        pub fn trait(comptime T: type) bool {
+            return Id == @typeInfo(T);
+        }
+    };
+    return Closure.trait;
+}
+
+
 pub fn hasDeinit(comptime T: type) bool {
     return switch (@typeInfo(T)) {
         .@"struct", .@"union", .@"enum", .@"opaque" => @hasDecl(T, "deinit"),
@@ -23,6 +33,14 @@ pub fn hasLength(comptime T: type) bool {
         else => false,
     };
 }
+
+pub fn isSlice(comptime T: type) bool {
+    if (is(.pointer)(T) and hasLength(T)) {
+        return true;
+    }
+    return false;
+}
+
 
 /// Checks if `name` is unique as `field.name for field in fields`
 pub fn uniq(comptime fields: []const StructField, name: []const u8) bool {
@@ -296,6 +314,16 @@ pub fn T_ManagedArrayList(
 
             self.inner.deinit(self.allocator);
             self.* = undefined;
+        }
+
+        pub fn contains(self: Self, item: T) bool {
+            for (self.inner.items) |elem| {
+                if (isSlice(T)) {
+                    return std.mem.eql(T, elem, item);
+                } else {
+                    return elem == item;
+                }
+            }
         }
 
         /// If allocation fails, releases the `item` before returning an error

@@ -1,7 +1,8 @@
 const std = @import("std");
-const testing = std.testing;
 const Rune = @import("unicode").Rune;
 const ErrorSet = @import("types").errors.ErrorSet;
+const isSemantic = @import("./escapes.zig").isSemantic;
+const testing = std.testing;
 
 pub const TokenType = enum {
     /// A literal unescaped Unicode code point
@@ -90,10 +91,29 @@ pub const Token = union(TokenType) {
         };
     }
 
-    pub fn tag(self: Token) TokenType  {
+    pub fn tag(self: Token) TokenType {
         return std.meta.activeTag(self);
     }
 };
+
+pub fn emitLiteral(char: u21, pos: usize) ErrorSet!Token {
+    return Token {
+        .CHAR = Lexeme {
+            .val = try Rune.from(char),
+            .pos = pos,
+        },
+    };
+}
+
+pub fn emitSemanticEscaped(escaped: u21, char: u21, pos: usize) ErrorSet!?Token {
+    if (isSemantic(escaped)) {
+        return .{ .ESCAPED_CHAR = .{
+            .val = try Rune.from(char),
+            .pos = pos,
+        }};
+    }
+    return null;
+}
 
 pub fn emitSyntaxToken(char: u21, pos: usize) ErrorSet!?Token {
     return switch (char) {
