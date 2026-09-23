@@ -44,6 +44,15 @@ pub fn build(b: *std.Build) void {
     });
     unicode_mod.addImport("types", types_mod);
 
+    const compiler_mod = b.addModule("compiler", .{
+        .root_source_file = b.path("src/regex/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    compiler_mod.addImport("types", types_mod);
+    compiler_mod.addImport("unicode", unicode_mod);
+
+
     const engine_mod = b.addModule("engine", .{
         .root_source_file = b.path("src/engine/root.zig"),
         .target = target,
@@ -61,7 +70,7 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "types", .module = types_mod },
             .{ .name = "unicode", .module = unicode_mod },
-            .{ .name = "engine", .module = engine_mod },
+            .{ .name = "compiler", .module = compiler_mod },
         } 
     });
 
@@ -115,7 +124,7 @@ pub fn build(b: *std.Build) void {
         const test_deps = buildTestRunners(b, &.{
             .{ .name = "Unit_root", .root_module = pkgroot_mod },
             .{ .name = "Unit_types", .root_module = types_mod },
-            .{ .name = "Unit_engine", .root_module = engine_mod },
+            .{ .name = "Unit_compiler", .root_module = compiler_mod },
             .{ .name = "Unit_unicode", .root_module = unicode_mod },
         });
         for (test_deps)|dep| test_step.dependOn(&b.addRunArtifact(dep).step);

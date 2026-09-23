@@ -364,7 +364,6 @@ pub fn T_ManagedArrayList(
         /// Replaces the value at `i`
         ///
         /// Releases the previous value and takes ownership of `val` on success.
-        /// If `i` is invalid, ownership of `val` remains with the caller.
         pub fn set(self: *Self, i: usize, val: T) ErrorSet!void {
             if (i >= self.inner.items.len) {
                 return ErrorSet.OutOfRange;
@@ -372,6 +371,16 @@ pub fn T_ManagedArrayList(
 
             self.deinitItem(&self.inner.items[i]);
             self.inner.items[i] = val;
+        }
+
+        /// Replaces values with a slice 
+        pub fn patch(self: *Self, start: usize, values: []const T) ErrorSet!void {
+            if (start + values.len > self.inner.items.len) {
+                return ErrorSet.OutOfRange;
+            }
+            for (values, 0..) |val, i| {
+                try self.set(start + i, val);
+            }
         }
 
         /// Transfers ownership of returned value to the caller.
