@@ -1,13 +1,13 @@
 const std = @import("std");
 const Rune = @import("unicode").Rune;
 const ErrorSet = @import("types").errors.ErrorSet;
-const isSemantic = @import("./escapes.zig").isSemantic;
+const isReserved = @import("./escapes.zig").isReserved;
 const testing = std.testing;
 
-pub const TokenType = enum {
+pub const TokenId = enum {
     /// A literal unescaped Unicode code point
     CHAR,
-    /// Escaped Unicode code point (treated as a literal after backslash) 
+    /// Escaped Unicode code point (treated as a literal after backslash)
     /// or Unicode character class or assertion
     ESCAPED_CHAR,
     /// `.` Wildcard
@@ -46,10 +46,10 @@ const Lexeme = struct {
     pos: usize = 0,
 };
 
-pub const Token = union(TokenType) {
+pub const Token = union(TokenId) {
     /// A literal unescaped Unicode code point
     CHAR: Lexeme,
-    /// Escaped Unicode code point (treated as a literal after backslash) 
+    /// Escaped Unicode code point (treated as a literal after backslash)
     /// or Unicode character class or assertion
     ESCAPED_CHAR: Lexeme,
     /// `.` Wildcard
@@ -80,117 +80,117 @@ pub const Token = union(TokenType) {
     EOP: Lexeme,
 
     pub fn val(self: Token) ?Rune {
-        return switch(self) {
+        return switch (self) {
             inline else => |data| data.val,
         };
     }
 
     pub fn pos(self: Token) usize {
-        return switch(self) {
+        return switch (self) {
             inline else => |data| data.usize,
         };
     }
 
-    pub fn tag(self: Token) TokenType {
+    pub fn id(self: Token) TokenId {
         return std.meta.activeTag(self);
     }
 };
 
 pub fn emitLiteral(char: u21, pos: usize) ErrorSet!Token {
-    return Token {
-        .CHAR = Lexeme {
+    return Token{
+        .CHAR = Lexeme{
             .val = try Rune.from(char),
             .pos = pos,
         },
     };
 }
 
-pub fn emitSemanticEscaped(escaped: u21, char: u21, pos: usize) ErrorSet!?Token {
-    if (isSemantic(escaped)) {
+pub fn emitReservedEscapesOnly(escaped: u21, char: u21, pos: usize) ErrorSet!?Token {
+    if (isReserved(escaped)) {
         return .{ .ESCAPED_CHAR = .{
             .val = try Rune.from(char),
             .pos = pos,
-        }};
+        } };
     }
     return null;
 }
 
-pub fn emitSyntaxToken(char: u21, pos: usize) ErrorSet!?Token {
+pub fn emitOperatorsOnly(char: u21, pos: usize) ErrorSet!?Token {
     return switch (char) {
         '.' => .{ .DOT = .{
             .val = try Rune.from(char),
             .pos = pos,
-        }},
+        } },
         '^' => .{ .CARET = .{
             .val = try Rune.from(char),
             .pos = pos,
-        }},
+        } },
         '$' => .{ .DOLLAR = .{
             .val = try Rune.from(char),
             .pos = pos,
-        }},
+        } },
         '*' => .{ .STAR = .{
             .val = try Rune.from(char),
             .pos = pos,
-        }},
+        } },
         '+' => .{ .PLUS = .{
             .val = try Rune.from(char),
             .pos = pos,
-        }},
+        } },
         '?' => .{ .QUESTION = .{
             .val = try Rune.from(char),
             .pos = pos,
-        }},
+        } },
         '|' => .{ .PIPE = .{
             .val = try Rune.from(char),
             .pos = pos,
-        }},
+        } },
         '(' => .{ .LPAREN = .{
             .val = try Rune.from(char),
             .pos = pos,
-        }},
+        } },
         ')' => .{ .RPAREN = .{
             .val = try Rune.from(char),
             .pos = pos,
-        }},
+        } },
         '[' => .{ .LBRACKET = .{
             .val = try Rune.from(char),
             .pos = pos,
-        }},
+        } },
         ']' => .{ .RBRACKET = .{
             .val = try Rune.from(char),
             .pos = pos,
-        }},
+        } },
         '-' => .{ .DASH = .{
             .val = try Rune.from(char),
             .pos = pos,
-        }},
+        } },
         else => null,
     };
 }
 
-test "emitSyntaxNode shoud tell apart parts of regex syntax and literals" {
+test "emitOperatorsOnly shoud tell apart parts of regex syntax and literals" {
     const cases = [_]struct {
         char: u21,
         expected: ?Token,
     }{
-        .{ .char = '.', .expected = .{ .DOT = .{ .val = try Rune.from('.') }}},
-        .{ .char = '^', .expected = .{ .CARET = .{ .val = try Rune.from('^') }}},
-        .{ .char = '$', .expected = .{ .DOLLAR = .{ .val = try Rune.from('$') }}},
-        .{ .char = '*', .expected = .{ .STAR = .{ .val = try Rune.from('*') }}},
-        .{ .char = '+', .expected = .{ .PLUS = .{ .val = try Rune.from('+') }}},
-        .{ .char = '?', .expected = .{ .QUESTION = .{ .val = try Rune.from('?') }}},
-        .{ .char = '|', .expected = .{ .PIPE = .{ .val = try Rune.from('|') }}},
-        .{ .char = '(', .expected = .{ .LPAREN = .{ .val = try Rune.from('(') }}},
-        .{ .char = ')', .expected = .{ .RPAREN = .{ .val = try Rune.from(')') }}},
-        .{ .char = '[', .expected = .{ .LBRACKET = .{ .val = try Rune.from('[') }}},
-        .{ .char = ']', .expected = .{ .RBRACKET = .{ .val = try Rune.from(']') }}},
-        .{ .char = '-', .expected = .{ .DASH = .{ .val = try Rune.from('-') }}},
-        .{ .char = 'a', .expected = null},
+        .{ .char = '.', .expected = .{ .DOT = .{ .val = try Rune.from('.') } } },
+        .{ .char = '^', .expected = .{ .CARET = .{ .val = try Rune.from('^') } } },
+        .{ .char = '$', .expected = .{ .DOLLAR = .{ .val = try Rune.from('$') } } },
+        .{ .char = '*', .expected = .{ .STAR = .{ .val = try Rune.from('*') } } },
+        .{ .char = '+', .expected = .{ .PLUS = .{ .val = try Rune.from('+') } } },
+        .{ .char = '?', .expected = .{ .QUESTION = .{ .val = try Rune.from('?') } } },
+        .{ .char = '|', .expected = .{ .PIPE = .{ .val = try Rune.from('|') } } },
+        .{ .char = '(', .expected = .{ .LPAREN = .{ .val = try Rune.from('(') } } },
+        .{ .char = ')', .expected = .{ .RPAREN = .{ .val = try Rune.from(')') } } },
+        .{ .char = '[', .expected = .{ .LBRACKET = .{ .val = try Rune.from('[') } } },
+        .{ .char = ']', .expected = .{ .RBRACKET = .{ .val = try Rune.from(']') } } },
+        .{ .char = '-', .expected = .{ .DASH = .{ .val = try Rune.from('-') } } },
+        .{ .char = 'a', .expected = null },
     };
 
     for (cases) |c| {
-        const result = try emitSyntaxToken(c.char, 0);
+        const result = try emitOperatorsOnly(c.char, 0);
         try testing.expectEqual(c.expected, result);
     }
 }

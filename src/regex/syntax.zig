@@ -20,6 +20,16 @@ pub const Flags = packed struct(u8) {
         };
     }
 
+    pub fn toIntBitmask(self: Flags) u8 {
+        var bitmask: u8 = 0;
+
+        if (self.ignore_case) bitmask |= (1 << 0);
+        if (self.multiline) bitmask |= (1 << 1);
+        if (self.dot_all) bitmask |= (1 << 2);
+
+        return bitmask;
+    }
+
     /// Add up flags received at various stages, e.g. inline flags + flags as args to compile
     pub fn merge(self: Flags, other: Flags) Flags {
         return .{
@@ -188,3 +198,26 @@ pub const CaptureGroup = struct {
 pub const NonCaptureGroup = struct {
     node: *Node,
 };
+
+test "Should convert to bitmask and back again round through" {
+    const std = @import("std");
+    const flags: Flags = .{
+        .ignore_case = true,
+        .dot_all = true,
+    };
+
+    const decoded = Flags.fromIntBitmask(flags.toIntBitmask());
+
+    try std.testing.expectEqual(flags.toIntBitmask(), decoded.toIntBitmask());
+}
+
+test "Should preserve enabled values from both inputs on merge" {
+    const std = @import("std");
+    const left: Flags = .{ .ignore_case = true };
+    const right: Flags = .{ .multiline = true };
+    const merged = left.merge(right);
+
+    try std.testing.expect(merged.ignore_case);
+    try std.testing.expect(merged.multiline);
+    try std.testing.expect(!merged.dot_all);
+}

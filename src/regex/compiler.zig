@@ -1,97 +1,190 @@
 const std = @import("std");
 const types = @import("types");
-const opcodes = @import("./opcodes.zig");
+const bytecode = @import("./bytecode/root.zig");
+const states = @import("./states.zig");
 const syntax = @import("./syntax.zig");
-const BytecodeBuffer = opcodes.BytecodeBuffer;
 const ErrorSet = types.errors.ErrorSet;
-const T_ManagedArrayList = types.meta.T_ManagedArrayList;
+const CompileBuffers = states.CompileBuffers;
 
-fn freeCharClassCallback(alloc: std.mem.Allocator, ptr: ?*syntax.CharClass) void {
-    const cls = ptr orelse return;
+pub fn compileNode(ptr: *CompileBuffers, node: *syntax.Node) ErrorSet!void {
+    switch (node.*) {
+        .Literal => |literal| {
+            _ = try bytecode.emit(ptr, .Rune, literal.value);
+        },
+        .AnyChar => {
+            _ = try bytecode.emit(ptr, .Any, null);
+        },
+        .StartAnchor => {
+            _ = try bytecode.emit(ptr, .AnchorStart, null);
+        },
+        .EndAnchor => {
+            _ = try bytecode.emit(ptr, .AnchorEnd, null);
+        },
+        .Assertion => |assertion| {
+            _ = try bytecode.emit(ptr, .Assert, @intFromEnum(assertion.typ));
+        },
+        .CharClass => |cls| {
+            const index = try ptr.cloneCharClass(cls);
 
-    alloc.free(cls.ranges);
-    alloc.free(cls.chars);
+            _ = try bytecode.emit(ptr, .CharClass, index);
+        },
+        .Sequence => |seq| {
+            // const owned = try ptr.cloneSequence(seq);
+
+            // defer ptr.alloc.free(owned.nodes);
+
+            for (seq.nodes) |child| {
+                try compileNode(ptr, child);
+            }
+        },
+        .Branch => |branch| {
+            try compileBranch(ptr, branch);
+        },
+        .Repeat => |rep| {
+            try compileRepeat(ptr, rep);
+        },
+        .CaptureGroup => |grp| {
+            try compileCaptureGroup(ptr, grp);
+        },
+        .NonCaptureGroup => |grp| {
+            try compileNode(ptr, grp.node);
+        },
+    }
 }
 
-fn flagSwitch(node: *syntax.Node, flags: syntax.Flags) ?opcodes.Instruction {
-    return switch(node) {
-        .Literal => opcodes.InstructionFlagSwitch.get(.{ 
-            .on = opcodes.Instruction.RuneIgnoreCase, 
-            .off = opcodes.Instruction.Rune 
-        }, flags),
-        .CharClass => opcodes.InstructionFlagSwitch.get(.{ 
-            .on = opcodes.Instruction.CharClassIgnoreCase, 
-            .off = opcodes.Instruction.CharClass 
-        }, flags),
-        .StartAnchor => opcodes.InstructionFlagSwitch.get(.{ 
-            .on = opcodes.Instruction.AnchorStartMultiline, 
-            .off = opcodes.Instruction.AnchorStart 
-        }, flags),
-        .EndAnchor => opcodes.InstructionFlagSwitch.get(.{ 
-            .on = opcodes.Instruction.AnchorEndMultiline, 
-            .off = opcodes.Instruction.AnchorEnd 
-        }, flags),
-        .AnyChar => opcodes.InstructionFlagSwitch.get(.{ 
-            .on = opcodes.Instruction.AnyDotAll, 
-            .off = opcodes.Instruction.Any 
-        }, flags),
-        else => null,
+/// Emits bytecode for alternation operator (`|` PIPE)
+fn compileBranch(ptr: *CompileBuffers, branch: syntax.Branch) ErrorSet!void {
+    const split = try bytecode.emitSplit(ptr, 0, 0);
+
+    const left = ptr.prog.len();
+    try compileNode(branch.left);
+
+    const jmp = try bytecode.emit(ptr, .Jump, 0);
+
+    const right = ptr.prog.len();
+    try compileNode(branch.right);
+
+    const after = ptr.prog.len();
+    try bytecode.patchSplit(ptr, split, left, right);
+    try bytecode.patch(ptr, .Jump, jmp, after);
+}
+
+/// Emits bytecode for supported postfix quantifiers
+fn compileRepeat(ptr: *CompileBuffers, rep: syntax.Repeat) ErrorSet!void {
+    // '*' STAR (zero or more)
+    if (rep.min == 0 and rep.max == null) {
+        const split = try bytecode.emitSplit(ptr, 0, 0);
+
+        const body = ptr.prog.len();
+        try compileNode(ptr, rep.node);
+
+        _ = try bytecode.emit(ptr, .Jump, split);
+        const after = ptr.prog.len();
+
+        try bytecode.patchSplit(ptr, split, body, after);
+        return;
+    }
+    // '+' PLUS (one or more)
+    if (rep.min == 1 and rep.max == null) {
+        const body = ptr.prog.len();
+        try compileNode(ptr, rep.node);
+
+        const split = try bytecode.emitSplit(ptr, body, 0);
+        const after = ptr.prog.len();
+
+        try bytecode.patchSplit(ptr, split, body, after);
+        return;
+    }
+    // '?' QUESTION (zero or one)
+    if (rep.min == 0 and rep.max != null and rep.max.? == 1) {
+        const split = try bytecode.emitSplit(ptr, 0, 0);
+
+        const body = ptr.prog.len();
+        try compileNode(ptr, rep.node);
+
+        const after = ptr.prog.len();
+        try bytecode.patchSplit(ptr, split, body, after);
+
+        return;
+    }
+    return ErrorSet.InvalidRepeat;
+}
+
+fn compileCaptureGroup(ptr: *CompileBuffers, grp: syntax.CaptureGroup) ErrorSet!void {
+    const start_slot = grp.pos * 2;
+    const end_slot = start_slot + 1;
+
+    _ = try bytecode.emit(ptr, .Save, start_slot);
+    try compileNode(ptr, grp.node);
+    _ = try bytecode.emit(ptr, .Save, end_slot);
+}
+
+test "compileNode lowers alternation to Split and Jump" {
+    const allocator = std.testing.allocator;
+
+    var state = try CompileBuffers.init(allocator, .{});
+    defer state.deinit();
+
+    var left: syntax.Node = .{ .Literal = .{ .value = 'a' } };
+    var right: syntax.Node = .{ .Literal = .{ .value = 'b' } };
+    var root: syntax.Node = .{
+        .Branch = .{
+            .left = &left,
+            .right = &right,
+        },
     };
+
+    try compileNode(&state, &root);
+
+    const prog = state.prog.items();
+    var pc: usize = 0;
+
+    try std.testing.expectEqual(bytecode.OpCode.Split, try bytecode.readOpcode(prog, &pc));
+    const left_target = try bytecode.readOperand(.Split, prog, &pc);
+    const right_target = try bytecode.readOperand(.Split, prog, &pc);
+    try std.testing.expectEqual(pc, left_target);
+
+    try std.testing.expectEqual(bytecode.OpCode.Rune, try bytecode.readOpcode(prog, &pc));
+    _ = try bytecode.readFlags(prog, &pc);
+    try std.testing.expectEqual(@as(u21, 'a'), try bytecode.readOperand(.Rune, prog, &pc));
+
+    try std.testing.expectEqual(bytecode.OpCode.Jump, try bytecode.readOpcode(prog, &pc));
+    const after = try bytecode.readOperand(.Jump, prog, &pc);
+    try std.testing.expectEqual(pc, right_target);
+
+    try std.testing.expectEqual(bytecode.OpCode.Rune, try bytecode.readOpcode(prog, &pc));
+    _ = try bytecode.readFlags(prog, &pc);
+    try std.testing.expectEqual(@as(u21, 'b'), try bytecode.readOperand(.Rune, prog, &pc));
+    try std.testing.expectEqual(pc, after);
 }
 
-pub const CharClassBuffer = T_ManagedArrayList(syntax.CharClass, freeCharClassCallback);
+test "compileNode lowers optional repeat to a skippable branch" {
+    const allocator = std.testing.allocator;
 
-pub const Compiler = struct {
-    code_buf: BytecodeBuffer,
-    class_buf: CharClassBuffer,
-    flags: syntax.Flags,
+    var state = try CompileBuffers.init(allocator, .{});
+    defer state.deinit();
 
-    pub fn init(alloc: std.mem.Allocator) ErrorSet!Compiler {
-        return .{
-            .code_buf = try BytecodeBuffer.init(alloc, null),
-            .class_buf = try CharClassBuffer.init(alloc, null),
-        };
-    }
+    var literal: syntax.Node = .{ .Literal = .{ .value = 'a' } };
+    var root: syntax.Node = .{
+        .Repeat = .{
+            .node = &literal,
+            .min = 0,
+            .max = 1,
+        },
+    };
 
-    pub fn deinit(self: *Compiler) void {
-        self.code_buf.deinit();
-        self.class_buf.deinit();
-        self.* = undefined;
-    }
+    try compileNode(&state, &root);
 
-    pub fn emit(self: *Compiler, opcode: opcodes.Instruction) ErrorSet!usize {
-        const pos = self.code_buf.len();
-        try self.code_buf.append(@intFromEnum(opcode));
-        return pos;
-    }
+    const prog = state.prog.items();
+    var pc: usize = 0;
 
-    pub fn emitSave(self: *Compiler, slot: usize) ErrorSet!usize {
-        const pos = try self.emit(.Save);
-        try opcodes.write(.Save, &self.code_buf, slot);
-        return pos;
-    }
+    try std.testing.expectEqual(bytecode.OpCode.Split, try bytecode.readOpcode(prog, &pc));
+    const body = try bytecode.readOperand(.Split, prog, &pc);
+    const after = try bytecode.readOperand(.Split, prog, &pc);
+    try std.testing.expectEqual(pc, body);
 
-    pub fn emitJump(self: *Compiler, target: usize) ErrorSet!usize {
-        const pos = try self.emit(.Jump);
-        try opcodes.write(.Jump, &self.code_buf, target);
-        return pos;
-    }
-
-    pub fn patchJump(self: *Compiler, jump_idx: usize, target: usize) void {
-        opcodes.patch(.Jump, &self.code_buf, jump_idx + 1, target);
-    }
-
-    pub fn emitSplit(self: *Compiler, left: usize, right: usize) ErrorSet!usize {
-        const pos = try self.emit(.Split);
-        try opcodes.write(.Split, &self.code_buf, left);
-        try opcodes.write(.Split, &self.code_buf, right);
-        return pos;
-    }
-
-    pub fn patchSplit(self: *Compiler, split_idx: usize, left: usize, right: usize) void {
-        const nbytes = @sizeOf(u32);
-        opcodes.patch(.Split, &self.code_buf, split_idx + 1, left);
-        opcodes.patch(.Split, &self.code_buf, split_idx + 1 + nbytes, right);
-    }
-};
-
+    try std.testing.expectEqual(bytecode.OpCode.Rune, try bytecode.readOpcode(prog, &pc));
+    _ = try bytecode.readFlags(prog, &pc);
+    try std.testing.expectEqual(@as(u21, 'a'), try bytecode.readOperand(.Rune, prog, &pc));
+    try std.testing.expectEqual(pc, after);
+}

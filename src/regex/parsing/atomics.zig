@@ -16,7 +16,7 @@ pub fn parseSequence(ptr: *Parser) ErrorSet!*syntax.Node {
     var nodes = try NodeList.init(ptr.alloc, null);
     defer nodes.deinit();
 
-    while (ptr.current().tag() != .EOP and ptr.current().tag() != .RPAREN and ptr.current().tag() != .PIPE) {
+    while (ptr.current().id() != .EOP and ptr.current().id() != .RPAREN and ptr.current().id() != .PIPE) {
         const node = try parseQuantifier(ptr);
         try nodes.append(node);
     }

@@ -11,7 +11,7 @@ const Buffer = T_ManagedArrayList(Token, null);
 
 pub const Lexeme = tokens.Lexeme;
 pub const Token = tokens.Token;
-pub const TokenType = tokens.TokenType;
+pub const TokenId = tokens.TokenId;
 
 pub const Lexer = struct {
     pos: usize = 0,
@@ -20,7 +20,7 @@ pub const Lexer = struct {
         return .{ .pos = 0 };
     }
 
-    /// Consumes the string with pattern and breaks it down into an array of lexical tokens 
+    /// Consumes the string with pattern and breaks it down into an array of lexical tokens
     pub fn eval(self: *Lexer, alloc: std.mem.Allocator, pattern: []const u8) ErrorSet![]Token {
         var buffer = try Buffer.init(alloc, null);
         defer buffer.deinit();
@@ -40,23 +40,19 @@ pub const Lexer = struct {
                 };
                 self.pos += 1;
 
-                const literal = try escapes.processEscaped(&iter, escaped, &self.pos);
-                const token = (try tokens.emitSemanticEscaped(escaped, literal, current_pos)) orelse (
-                    try tokens.emitLiteral(literal, current_pos)
-                );
+                const literal = try escapes.normalize(&iter, escaped, &self.pos);
+                const token = (try tokens.emitReservedEscapesOnly(escaped, literal, current_pos)) orelse (try tokens.emitLiteral(literal, current_pos));
 
                 try buffer.append(token);
                 continue;
             }
-            const token = (try tokens.emitSyntaxToken(char, current_pos)) orelse (
-                try tokens.emitLiteral(char, current_pos)
-            );
+            const token = (try tokens.emitOperatorsOnly(char, current_pos)) orelse (try tokens.emitLiteral(char, current_pos));
 
             try buffer.append(token);
             continue;
         }
-        try buffer.append(.{ 
-            .EOP = .{ .val = null, .pos = self.pos }, 
+        try buffer.append(.{
+            .EOP = .{ .val = null, .pos = self.pos },
         });
 
         return try buffer.toOwnedSlice();
@@ -72,36 +68,35 @@ test "Should break up a pattern into a valid sequence of Tokens" {
     defer allocator.free(result);
 
     const expected = [_]Token{
-        .{ 
+        .{
             .CHAR = .{
                 .val = try Rune.from('a'),
                 .pos = 0,
             },
         },
-        .{ 
+        .{
             .CHAR = .{
                 .val = try Rune.from('.'),
                 .pos = 1,
             },
         },
-        .{ 
+        .{
             .CHAR = .{
                 .val = try Rune.from('b'),
                 .pos = 3,
             },
         },
-        .{ 
+        .{
             .STAR = .{
                 .val = try Rune.from('*'),
                 .pos = 4,
             },
         },
-        .{ 
+        .{
             .CHAR = .{
                 .val = try Rune.from('c'),
                 .pos = 5,
             },
-
         },
         .{ .EOP = .{ .val = null, .pos = 6 } },
     };

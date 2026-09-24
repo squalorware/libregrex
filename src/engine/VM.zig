@@ -24,10 +24,10 @@ const Frame = struct {
     /// Position to which VM should backtrack to and try resuming from
     pos: usize,
     /// Snapshot of capture slots at the time the alternative path was saved.
-    registers: []?usize,
+    slots: []?usize,
 
     pub fn deinit(self: *Frame, alloc: std.mem.Allocator) void {
-        alloc.free(self.registers);
+        alloc.free(self.slots);
         self.* = undefined;
     }
 };
@@ -46,41 +46,30 @@ pub const ExecutionContext = struct {
     pos: usize,
 };
 
-fn cloneCaptures(alloc: std.mem.Allocator, registers: []const ?usize) ErrorSet![]?usize {
-    const clone = alloc.dupe(?usize, registers) catch {
+fn cloneCaptures(alloc: std.mem.Allocator, slots: []const ?usize) ErrorSet![]?usize {
+    const clone = alloc.dupe(?usize, slots) catch {
         return ErrorSet.MemoryError;
     };
     return clone;
 }
 
 /// Attempts to backtrack to the alternative state saved to Stack and restore execution from it
-fn hasBacktracked(
-    alloc: std.mem.Allocator,
-    stack: *Stack,
-    pc: *usize,
-    pos: *usize,
-    registers: *[]?usize,
-) bool {
-    const frame = stack.pop() orelse return false;
-    alloc.free(registers.*);
-    pc.* = frame.pc;
-    pos.* = frame.pos;
-    registers.* = frame.registers;
-    return true;
-}
-
 /// Checks if backtracking succeded, aborts execution and cleans up context otherwise
 fn hasRestoredState(
     alloc: std.mem.Allocator,
     stack: *Stack,
     pc: *usize,
     pos: *usize,
-    registers: *[]?usize,
+    slots: *[]?usize,
 ) bool {
-    if (hasBacktracked(alloc, stack, pc, pos, registers)) {
+    if (stack.pop()) |frame| {
+        alloc.free(slots.*);
+        pc.* = frame.pc;
+        pos.* = frame.pos;
+        slots.* = frame.slots;
         return true;
     }
-    alloc.free(registers.*);
+    alloc.free(slots.*);
     return false;
 }
 
@@ -93,12 +82,12 @@ pub fn execAt(
     prog: []const Instruction,
 ) ErrorSet!?Match {
     const reg_count = (captures_count + 1) * 2;
-    var registers = allocator.alloc(?usize, reg_count) catch {
+    var slots = allocator.alloc(?usize, reg_count) catch {
         return ErrorSet.MemoryError;
     };
-    errdefer allocator.free(registers);
+    errdefer allocator.free(slots);
 
-    for (registers) |*slot| {
+    for (slots) |*slot| {
         slot.* = null;
     }
 
@@ -111,7 +100,7 @@ pub fn execAt(
     // Execution loop
     while (true) {
         if (pc >= prog.len) {
-            if (hasRestoredState(allocator, &stack, &pc, &pos, &registers)) continue;
+            if (hasRestoredState(allocator, &stack, &pc, &pos, &slots)) continue;
             return null;
         }
 
@@ -122,7 +111,7 @@ pub fn execAt(
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &registers)) {
+                if (hasRestoredState(allocator, &stack, &pc, &pos, &slots)) {
                     continue;
                 }
                 return null;
@@ -132,7 +121,7 @@ pub fn execAt(
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &registers)) {
+                if (hasRestoredState(allocator, &stack, &pc, &pos, &slots)) {
                     continue;
                 }
                 return null;
@@ -142,7 +131,7 @@ pub fn execAt(
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &registers)) {
+                if (hasRestoredState(allocator, &stack, &pc, &pos, &slots)) {
                     continue;
                 }
                 return null;
@@ -152,7 +141,7 @@ pub fn execAt(
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &registers)) {
+                if (hasRestoredState(allocator, &stack, &pc, &pos, &slots)) {
                     continue;
                 }
                 return null;
@@ -162,7 +151,7 @@ pub fn execAt(
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &registers)) {
+                if (hasRestoredState(allocator, &stack, &pc, &pos, &slots)) {
                     continue;
                 }
                 return null;
@@ -172,30 +161,30 @@ pub fn execAt(
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &registers)) {
+                if (hasRestoredState(allocator, &stack, &pc, &pos, &slots)) {
                     continue;
                 }
                 return null;
             },
             .Save => |slot| {
-                if (slot >= registers.len) {
-                    if (hasRestoredState(allocator, &stack, &pc, &pos, &registers)) {
+                if (slot >= slots.len) {
+                    if (hasRestoredState(allocator, &stack, &pc, &pos, &slots)) {
                         continue;
                     }
                     return null;
                 }
-                registers[slot] = pos;
+                slots[slot] = pos;
                 pc += 1;
             },
             .Hold => return ErrorSet.UnexpectedInstruction,
             // Branch execution; execute `left` branch and store `right` branch to backtracking stack
             .Split => |split| {
-                const alt_captures = try cloneCaptures(allocator, registers);
+                const alt_captures = try cloneCaptures(allocator, slots);
 
                 stack.append(.{
                     .pc = split.right,
                     .pos = pos,
-                    .registers = alt_captures,
+                    .slots = alt_captures,
                 }) catch {
                     return ErrorSet.MemoryError;
                 };
@@ -212,9 +201,9 @@ pub fn execAt(
                     allocator,
                     captures_count,
                     input,
-                    registers,
+                    slots,
                 );
-                allocator.free(registers);
+                allocator.free(slots);
                 return result;
             },
         }

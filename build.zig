@@ -25,11 +25,7 @@ pub fn build(b: *std.Build) void {
         "Library linkage type: static, dynamic or both",
     ) orelse .dynamic;
 
-    const test_mode = b.option(
-        TestingMode,
-        "type",
-        "Type of tests to build and run: unit, lib (integration)"
-    ) orelse .lib;
+    const test_mode = b.option(TestingMode, "type", "Type of tests to build and run: unit, lib (integration)") orelse .lib;
 
     const types_mod = b.addModule("types", .{
         .root_source_file = b.path("src/types/root.zig"),
@@ -52,7 +48,6 @@ pub fn build(b: *std.Build) void {
     compiler_mod.addImport("types", types_mod);
     compiler_mod.addImport("unicode", unicode_mod);
 
-
     const engine_mod = b.addModule("engine", .{
         .root_source_file = b.path("src/engine/root.zig"),
         .target = target,
@@ -63,16 +58,11 @@ pub fn build(b: *std.Build) void {
     engine_mod.addImport("unicode", unicode_mod);
 
     // Root module for Zig package
-    const pkgroot_mod = b.addModule("regrex", .{ 
-        .target = target, 
-        .optimize = optimize, 
-        .root_source_file = b.path("src/root.zig"), 
-        .imports = &.{
-            .{ .name = "types", .module = types_mod },
-            .{ .name = "unicode", .module = unicode_mod },
-            .{ .name = "compiler", .module = compiler_mod },
-        } 
-    });
+    const pkgroot_mod = b.addModule("regrex", .{ .target = target, .optimize = optimize, .root_source_file = b.path("src/root.zig"), .imports = &.{
+        .{ .name = "types", .module = types_mod },
+        .{ .name = "unicode", .module = unicode_mod },
+        .{ .name = "compiler", .module = compiler_mod },
+    } });
 
     // Skip creating pkg-config file for Windows
     const OS = target.result.os.tag;
@@ -106,13 +96,7 @@ pub fn build(b: *std.Build) void {
     };
 
     // Initialize the library root module that will be used during build as well
-    const libroot_mod = buildLibRootModule(
-        b,
-        target,
-        optimize,
-        pkgroot_mod,
-        c_lib_imports
-    );
+    const libroot_mod = buildLibRootModule(b, target, optimize, pkgroot_mod, c_lib_imports);
 
     // Build and run test suite
     //
@@ -127,14 +111,11 @@ pub fn build(b: *std.Build) void {
             .{ .name = "Unit_compiler", .root_module = compiler_mod },
             .{ .name = "Unit_unicode", .root_module = unicode_mod },
         });
-        for (test_deps)|dep| test_step.dependOn(&b.addRunArtifact(dep).step);
+        for (test_deps) |dep| test_step.dependOn(&b.addRunArtifact(dep).step);
     }
 
     if (test_mode == .lib) {
-        const test_step = b.step(
-            "test",
-            "Build library and run integration tests"
-        );
+        const test_step = b.step("test", "Build library and run integration tests");
 
         const zig_lib_tests_mod = b.createModule(.{
             .root_source_file = b.path("tests/integration.zig"),
@@ -155,7 +136,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "Integration_C_ABI", .root_module = c_lib_tests_mod },
         });
 
-        for (test_deps)|dep| test_step.dependOn(&b.addRunArtifact(dep).step);
+        for (test_deps) |dep| test_step.dependOn(&b.addRunArtifact(dep).step);
     }
 
     // Compile and export the library (C-compatible)
@@ -185,12 +166,12 @@ fn buildTestRunners(b: *std.Build, opts: []const std.Build.TestOptions) []*Compi
     for (opts) |option| {
         const test_runner = b.addTest(option);
 
-        list.append(b .allocator, test_runner) catch |err| {
-            fatal("ERROR: {any}", .{ err });
+        list.append(b.allocator, test_runner) catch |err| {
+            fatal("ERROR: {any}", .{err});
         };
     }
 
-    return list.toOwnedSlice(b.allocator) catch |err| fatal("ERROR: {any}", .{ err });
+    return list.toOwnedSlice(b.allocator) catch |err| fatal("ERROR: {any}", .{err});
 }
 
 /// Compiles the library root module used both for export and for integration testing

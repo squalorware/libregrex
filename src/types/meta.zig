@@ -18,7 +18,6 @@ pub fn is(comptime Id: std.builtin.TypeId) fn (type) bool {
     return Closure.trait;
 }
 
-
 pub fn hasDeinit(comptime T: type) bool {
     return switch (@typeInfo(T)) {
         .@"struct", .@"union", .@"enum", .@"opaque" => @hasDecl(T, "deinit"),
@@ -40,7 +39,6 @@ pub fn isSlice(comptime T: type) bool {
     }
     return false;
 }
-
 
 /// Checks if `name` is unique as `field.name for field in fields`
 pub fn uniq(comptime fields: []const StructField, name: []const u8) bool {
@@ -373,8 +371,8 @@ pub fn T_ManagedArrayList(
             self.inner.items[i] = val;
         }
 
-        /// Replaces values with a slice 
-        pub fn patch(self: *Self, start: usize, values: []const T) ErrorSet!void {
+        /// Replaces values with a slice
+        pub fn setSlice(self: *Self, start: usize, values: []const T) ErrorSet!void {
             if (start + values.len > self.inner.items.len) {
                 return ErrorSet.OutOfRange;
             }
@@ -402,7 +400,7 @@ pub fn freeAlloc(comptime T: type, alloc: std.mem.Allocator, sequence: []T, dest
         for (sequence) |*item| {
             callback(alloc, item);
         }
-    }    
+    }
 
     alloc.free(sequence);
 }

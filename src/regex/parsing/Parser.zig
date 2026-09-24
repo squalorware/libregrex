@@ -4,7 +4,7 @@ const types = @import("types");
 const lexing = @import("../lexing/root.zig");
 const ErrorSet = types.errors.ErrorSet;
 const Token = lexing.Token;
-const TokenType = lexing.TokenType;
+const TokenId = lexing.TokenId;
 
 const atomics = @import("./atomics.zig");
 const classes = @import("./char_classes.zig");
@@ -59,9 +59,9 @@ pub const Parser = struct {
     }
 
     /// Checks if current token's type matches the expected one
-    pub fn match(self: *Parser, tag: TokenType) bool {
+    pub fn match(self: *Parser, tag: TokenId) bool {
         const t = self.current();
-        if (t.tag() == tag) {
+        if (t.id() == tag) {
             _ = self.advance();
             return true;
         }
@@ -69,9 +69,9 @@ pub const Parser = struct {
     }
 
     /// Returns a compilation error if token type doesn't match the expected one
-    pub fn expect(self: *Parser, tag: TokenType) ErrorSet!Token {
+    pub fn expect(self: *Parser, tag: TokenId) ErrorSet!Token {
         const t = self.current();
-        if (t.tag() != tag) {
+        if (t.id() != tag) {
             return ErrorSet.UnexpectedToken;
         }
         return self.advance();
@@ -106,20 +106,18 @@ pub const Parser = struct {
 
     /// Parses the lexical Token buffer into an abstract tree representation of a regular expression
     pub fn parse(self: *Parser) ErrorSet!*syntax.Node {
-        while(groups.startsInlineFlags(self)) {
-            try groups.parseInlineFlags(self);        
+        while (groups.startsInlineFlags(self)) {
+            try groups.parseInlineFlags(self);
         }
 
         const ast = try self.parseBranch();
 
-        if (self.current().tag() != .EOP) {
+        if (self.current().id() != .EOP) {
             return ErrorSet.UnexpectedToken;
         }
         return ast;
     }
-
 };
-
 
 pub fn initTestParser(alloc: std.mem.Allocator, pattern: []const u8) ErrorSet!Parser {
     var lexer = lexing.Lexer.init();

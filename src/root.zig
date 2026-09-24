@@ -2,7 +2,6 @@ const std = @import("std");
 const types = @import("types");
 const engine = @import("engine");
 const Bytecode = engine.Bytecode;
-const tokens = engine.tokens;
 const errors = types.errors;
 const meta = types.meta;
 const T_MergedStruct = meta.T_MergedStruct;

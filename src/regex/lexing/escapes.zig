@@ -4,14 +4,14 @@ const conv = types.conv;
 const ErrorSet = types.errors.ErrorSet;
 
 /// Filter semantic escapes which should not be treated as literals
-pub fn isSemantic(char: u21) bool {
+pub fn isReserved(char: u21) bool {
     return switch (char) {
         'd', 'D', 'w', 'W', 's', 'S', 'A', 'Z', 'b', 'B' => true,
         else => false,
     };
 }
 
-pub fn processEscaped(iter: *std.unicode.Utf8Iterator, char: u21, pos: *usize) ErrorSet!u21 {
+pub fn normalize(iter: *std.unicode.Utf8Iterator, char: u21, pos: *usize) ErrorSet!u21 {
     return switch (char) {
         'n' => '\n',
         'r' => '\r',

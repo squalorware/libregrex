@@ -12,7 +12,7 @@ const Match = types.Match;
 const MatchListBuffer = types.MatchListBuffer;
 const ExecutionContext = vm.ExecutionContext;
 
-const _Pattern = struct {
+const PatternContext = struct {
     alloc: std.mem.Allocator,
     pattern: []const u8,
     instructions: []Instruction,
@@ -31,7 +31,7 @@ pub const Pattern = opaque {
         bytecode: *InstructionSet,
         captures_count: usize,
     ) ErrorSet!*Pattern {
-        const self: *_Pattern = alloc.create(_Pattern) catch {
+        const self: *PatternContext = alloc.create(PatternContext) catch {
             return ErrorSet.MemoryError;
         };
 
@@ -49,7 +49,7 @@ pub const Pattern = opaque {
 
     /// Releases bytecode buffer and dereferences itself
     pub fn deinit(ptr: *Pattern) void {
-        const self: *_Pattern = @ptrCast(@alignCast(ptr));
+        const self: *PatternContext = @ptrCast(@alignCast(ptr));
         const alloc = self.alloc;
 
         for (self.instructions) |*inst| {
@@ -62,14 +62,14 @@ pub const Pattern = opaque {
 
     /// Returns the first match encountered at the beginning of the input
     pub fn match(ptr: *Pattern, input: []const u8) ErrorSet!?Match {
-        const self: *_Pattern = @ptrCast(@alignCast(ptr));
+        const self: *PatternContext = @ptrCast(@alignCast(ptr));
 
         return try vm.execAt(self.alloc, input, 0, self.captures_count, self.instructions);
     }
 
     /// Returns the first match produced at any position within the input
     pub fn search(ptr: *Pattern, input: []const u8) ErrorSet!?Match {
-        const self: *_Pattern = @ptrCast(@alignCast(ptr));
+        const self: *PatternContext = @ptrCast(@alignCast(ptr));
         var pos: usize = 0;
 
         while (pos <= input.len) {
@@ -85,7 +85,7 @@ pub const Pattern = opaque {
         ctx: *const anyopaque,
         opts: ExecutionContext,
     ) ErrorSet!?Match {
-        const self: *const _Pattern = @ptrCast(@alignCast(ctx));
+        const self: *const PatternContext = @ptrCast(@alignCast(ctx));
 
         return vm.execAt(
             self.alloc,
@@ -100,7 +100,7 @@ pub const Pattern = opaque {
     ///
     /// The caller owns the instance and must release it explicitly by calling `iter.deinit(alloc)`
     pub fn findIter(ptr: *Pattern, input: []const u8) ErrorSet!*LazyIterator {
-        const self: *_Pattern = @ptrCast(@alignCast(ptr));
+        const self: *PatternContext = @ptrCast(@alignCast(ptr));
 
         return LazyIterator.init(
             self.alloc,
@@ -114,7 +114,7 @@ pub const Pattern = opaque {
     ///
     /// The caller owns the slice and must explicitly release it
     pub fn findAll(ptr: *Pattern, input: []const u8) ErrorSet![]Match {
-        const self: *_Pattern = @ptrCast(@alignCast(ptr));
+        const self: *PatternContext = @ptrCast(@alignCast(ptr));
 
         var iter = try findIter(ptr, input);
         defer iter.deinit(self.alloc);
@@ -136,7 +136,7 @@ pub const Pattern = opaque {
         repl: []const u8,
         opts: PatternSubOptions,
     ) ErrorSet![]u8 {
-        const self: *_Pattern = @ptrCast(@alignCast(ptr));
+        const self: *PatternContext = @ptrCast(@alignCast(ptr));
 
         var out_buf = try StringBuffer.init(self.alloc, null);
         defer out_buf.deinit();
