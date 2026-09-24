@@ -40,28 +40,29 @@ pub fn build(b: *std.Build) void {
     });
     unicode_mod.addImport("types", types_mod);
 
-    const compiler_mod = b.addModule("compiler", .{
-        .root_source_file = b.path("src/regex/root.zig"),
+    const compiler_mod = b.addModule("regexp", .{
+        .root_source_file = b.path("src/regexp/root.zig"),
         .target = target,
         .optimize = optimize,
     });
     compiler_mod.addImport("types", types_mod);
     compiler_mod.addImport("unicode", unicode_mod);
 
-    const engine_mod = b.addModule("engine", .{
-        .root_source_file = b.path("src/engine/root.zig"),
+    const vm_mod = b.addModule("vm", .{
+        .root_source_file = b.path("src/vm/root.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    engine_mod.addImport("types", types_mod);
-    engine_mod.addImport("unicode", unicode_mod);
+    vm_mod.addImport("types", types_mod);
+    vm_mod.addImport("unicode", unicode_mod);
+    vm_mod.addImport("regexp", compiler_mod);
 
     // Root module for Zig package
     const pkgroot_mod = b.addModule("regrex", .{ .target = target, .optimize = optimize, .root_source_file = b.path("src/root.zig"), .imports = &.{
         .{ .name = "types", .module = types_mod },
         .{ .name = "unicode", .module = unicode_mod },
-        .{ .name = "compiler", .module = compiler_mod },
+        .{ .name = "regexp", .module = compiler_mod },
     } });
 
     // Skip creating pkg-config file for Windows
@@ -92,7 +93,7 @@ pub fn build(b: *std.Build) void {
 
     const c_lib_imports: []const Import = &.{
         .{ .name = "types", .module = types_mod },
-        .{ .name = "engine", .module = engine_mod },
+        // .{ .name = "engine", .module = engine_mod },
     };
 
     // Initialize the library root module that will be used during build as well

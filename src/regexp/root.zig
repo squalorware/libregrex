@@ -5,13 +5,14 @@ const compiler = @import("./compiler.zig");
 const states = @import("./states.zig");
 const lexing = @import("./lexing/root.zig");
 const Parser = @import("./parsing/Parser.zig").Parser;
-const syntax = @import("./syntax.zig");
 const ErrorSet = types.errors.ErrorSet;
 const Lexer = lexing.Lexer;
 const Token = lexing.Token;
 const CompileBuffers = states.CompileBuffers;
-const CompileOutput = states.CompileOutput;
-const ParserOutput = states.ParserOutput;
+
+pub const syntax = @import("./syntax.zig");
+pub const CompileOutput = states.CompileOutput;
+pub const ParserOutput = states.ParserOutput;
 
 fn tokenize(alloc: std.mem.Allocator, input: []const u8) ErrorSet![]Token {
     var lexer = Lexer.init();
@@ -26,6 +27,7 @@ fn buildSyntaxTree(alloc: std.mem.Allocator, tokens: []Token) ErrorSet!ParserOut
     return ParserOutput{
         .syntax_tree = node,
         .inline_flags = parser.inlineFlags(),
+        .captures_count = parser.captures_count,
     };
 }
 
@@ -43,6 +45,7 @@ fn emitBytecode(alloc: std.mem.Allocator, parsed: ParserOutput, flags: syntax.Fl
     return CompileOutput{
         .prog = try buffers.prog.toOwnedSlice(),
         .classes = try buffers.classes.toOwnedSlice(),
+        .captures_count = parsed.captures_count,
     };
 }
 

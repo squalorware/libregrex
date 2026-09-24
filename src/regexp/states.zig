@@ -17,11 +17,13 @@ pub const CharClassBuffer = T_ManagedArrayList(syntax.CharClass, freeCharClassCa
 pub const ParserOutput = struct {
     syntax_tree: *syntax.Node,
     inline_flags: syntax.Flags,
+    captures_count: usize,
 };
 
 pub const CompileOutput = struct {
     prog: []u8,
     classes: []syntax.CharClass,
+    captures_count: usize,
 
     pub fn free(alloc: std.mem.Allocator, self: CompileOutput) void {
         alloc.free(self.prog);
