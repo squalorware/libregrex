@@ -4,6 +4,7 @@ const states = @import("../states.zig");
 const syntax = @import("../syntax.zig");
 const opcodes = @import("./opcodes.zig");
 const operands = @import("./operands.zig");
+pub const Instruction = @import("./instruction.zig");
 const ErrorSet = types.errors.ErrorSet;
 const CompileBuffers = states.CompileBuffers;
 const ByteBuffer = states.ByteBuffer;
@@ -22,6 +23,10 @@ pub fn readFlags(prog: []const u8, pc: *usize) ErrorSet!syntax.Flags {
 pub const OpCode = opcodes.OpCode;
 pub const operandsInfo = operands.operandsInfo;
 pub const OperandType = operands.OperandType;
+
+// pub fn decompile(start_byte: ) Instruction {
+
+// }
 
 pub fn emit(ptr: *CompileBuffers, comptime opcode: OpCode, operand: ?OperandType(opcode)) ErrorSet!usize {
     const pos = ptr.prog.len();

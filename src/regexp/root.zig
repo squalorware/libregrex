@@ -11,6 +11,7 @@ const Token = lexing.Token;
 const CompileBuffers = states.CompileBuffers;
 
 pub const syntax = @import("./syntax.zig");
+pub const Instruction = bytecode.Instruction;
 pub const CompileOutput = states.CompileOutput;
 pub const ParserOutput = states.ParserOutput;
 

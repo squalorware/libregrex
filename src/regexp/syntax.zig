@@ -1,5 +1,6 @@
 //! The Abstract Syntax Tree representation
 //! of the regular expression pattern.
+const std = @import("std");
 const unicode = @import("unicode");
 
 pub const Flags = packed struct(u8) {
@@ -164,6 +165,20 @@ pub const CharClass = struct {
     preset: PresetClassSet = .{},
     negated_preset: PresetClassSet = .{},
     negated: bool = false,
+
+    pub fn deinit(self: *CharClass, alloc: std.mem.Allocator) void {
+        alloc.free(self.ranges);
+        alloc.free(self.chars);
+    }
+
+    pub fn freeCharClasses(alloc: std.mem.Allocator, list: ?[]CharClass) void {
+        const classes = list orelse return;
+
+        for (classes) |*cls| {
+            cls.deinit(alloc);
+        }
+        alloc.free(classes);
+    }
 };
 
 /// Concatenation of child nodes that must match in order.
@@ -200,7 +215,6 @@ pub const NonCaptureGroup = struct {
 };
 
 test "Should convert to bitmask and back again round through" {
-    const std = @import("std");
     const flags: Flags = .{
         .ignore_case = true,
         .dot_all = true,
@@ -212,7 +226,6 @@ test "Should convert to bitmask and back again round through" {
 }
 
 test "Should preserve enabled values from both inputs on merge" {
-    const std = @import("std");
     const left: Flags = .{ .ignore_case = true };
     const right: Flags = .{ .multiline = true };
     const merged = left.merge(right);

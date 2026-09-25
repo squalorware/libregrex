@@ -4,11 +4,8 @@ const syntax = @import("./syntax.zig");
 const ErrorSet = types.errors.ErrorSet;
 const T_ManagedArrayList = types.meta.T_ManagedArrayList;
 
-fn freeCharClassCallback(alloc: std.mem.Allocator, ptr: ?*syntax.CharClass) void {
-    const cls = ptr orelse return;
-
-    alloc.free(cls.ranges);
-    alloc.free(cls.chars);
+fn freeCharClassCallback(alloc: std.mem.Allocator, ptr: *syntax.CharClass) void {
+    ptr.deinit(alloc);
 }
 
 pub const ByteBuffer = T_ManagedArrayList(u8, null);
@@ -25,14 +22,11 @@ pub const CompileOutput = struct {
     classes: []syntax.CharClass,
     captures_count: usize,
 
-    pub fn free(alloc: std.mem.Allocator, self: CompileOutput) void {
+    pub fn free(self: *CompileOutput, alloc: std.mem.Allocator) void {
         alloc.free(self.prog);
 
-        for (self.classes) |cls| {
-            alloc.free(cls.ranges);
-            alloc.free(cls.chars);
-        }
-        alloc.free(self.classes);
+        syntax.CharClass.freeCharClasses(alloc, self.classes);
+        self.* = undefined;
     }
 };
 
@@ -81,16 +75,6 @@ pub const CompileBuffers = struct {
 
         return idx;
     }
-
-    // /// Deep-copies a sequence into memory owned by compiler to avoid emitted `Instruction` pointing into `Parser` arena
-    // pub fn cloneSequence(self: *CompileBuffers, seq: syntax.Sequence) ErrorSet!syntax.Sequence {
-    //     const nodes = self.alloc.dupe(*syntax.Node, seq.nodes) catch {
-    //         return ErrorSet.MemoryError;
-    //     };
-    //     errdefer self.alloc.free(nodes);
-
-    //     return .{ .nodes = nodes };
-    // }
 };
 
 test "Should deep copy char classes buffer with cloneCharClass" {
