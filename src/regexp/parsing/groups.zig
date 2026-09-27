@@ -4,9 +4,6 @@ const lexing = @import("../lexing/root.zig");
 const Parser = @import("./Parser.zig").Parser;
 const syntax = @import("../syntax.zig");
 const ErrorSet = types.errors.ErrorSet;
-const Lexer = lexing.Lexer;
-const Token = lexing.Token;
-const TokenId = lexing.TokenId;
 
 pub fn applyInlineFlag(flags: *syntax.Flags, rune: u21) bool {
     switch (rune) {
@@ -23,15 +20,15 @@ pub fn startsInlineFlags(ptr: *Parser) bool {
     const question = ptr.peek(1) orelse return false;
     const flag = ptr.peek(2) orelse return false;
 
-    if (lparen.id() != .LPAREN or
-        question.id() != .QUESTION or
-        flag.id() != .CHAR)
+    if (lparen.id != .LPAREN or
+        question.id != .QUESTION or
+        flag.id != .CHAR)
     {
         return false;
     }
 
-    const flag_val = flag.val();
-    return switch (flag_val.?.raw()) {
+    const flag_val = flag.lexeme.?;
+    return switch (flag_val.raw()) {
         'i', 'm', 's' => true,
         else => false,
     };
@@ -44,8 +41,8 @@ pub fn parseInlineFlags(ptr: *Parser) ErrorSet!void {
     var found = false;
 
     while (ptr.current().id() == .CHAR) {
-        const current_val = ptr.current().val();
-        const rune = current_val.?.raw();
+        const current_val = ptr.current().lexeme.?;
+        const rune = current_val.raw();
 
         if (!applyInlineFlag(&ptr.inline_flags, rune)) break;
 
@@ -55,7 +52,7 @@ pub fn parseInlineFlags(ptr: *Parser) ErrorSet!void {
 
     if (!found) return ErrorSet.UnexpectedToken;
 
-    if (ptr.current().id() == .EOP) return ErrorSet.UnmatchedParen;
+    if (ptr.current().id == .EOP) return ErrorSet.UnmatchedParen;
     _ = try ptr.expect(.RPAREN);
 }
 
@@ -65,11 +62,11 @@ pub fn parseGroup(ptr: *Parser) ErrorSet!*syntax.Node {
     const next = ptr.peek(1);
 
     // Parse inline flags or a non-capturing group
-    if (first != null and first.?.id() == .QUESTION) {
+    if (first != null and first.?.id == .QUESTION) {
         if (next == null) return ErrorSet.UnmatchedParen;
-        if (next.?.id() != .CHAR) return ErrorSet.UnexpectedToken;
+        if (next.?.id != .CHAR) return ErrorSet.UnexpectedToken;
 
-        const rune = next.?.val().?.raw();
+        const rune = next.?.lexeme.?.raw();
 
         if (rune == ':') {
             _ = ptr.advance();

@@ -41,20 +41,18 @@ pub fn assertionEscape(value: u21) ?syntax.AssertionType {
 pub fn parseEscapedAtom(ptr: *Parser, token: Token) ErrorSet!*syntax.Node {
     _ = ptr.advance();
 
-    const value = token.val().?.raw();
+    const value = token.lexeme.?.raw();
 
     var preset: syntax.PresetClassSet = .{};
     var negated_preset: syntax.PresetClassSet = .{};
 
     if (applyPresetEscape(value, &preset, &negated_preset)) {
-        return ptr.createNode(.{ 
-            .CharClass = .{
-                .ranges = &.{},
-                .chars = &.{},
-                .preset = preset,
-                .negated_preset = negated_preset,
-            } 
-        });
+        return ptr.createNode(.{ .CharClass = .{
+            .ranges = &.{},
+            .chars = &.{},
+            .preset = preset,
+            .negated_preset = negated_preset,
+        } });
     }
 
     if (assertionEscape(value)) |assert| {

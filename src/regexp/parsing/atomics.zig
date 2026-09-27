@@ -3,6 +3,7 @@ const types = @import("types");
 const classes = @import("./char_classes.zig");
 const escapes = @import("./escapes.zig");
 const groups = @import("./groups.zig");
+const repeats = @import("./repeats.zig");
 const Parser = @import("./Parser.zig").Parser;
 const syntax = @import("../syntax.zig");
 
@@ -16,7 +17,7 @@ pub fn parseSequence(ptr: *Parser) ErrorSet!*syntax.Node {
     var nodes = try NodeList.init(ptr.alloc, null);
     defer nodes.deinit();
 
-    while (ptr.current().id() != .EOP and ptr.current().id() != .RPAREN and ptr.current().id() != .PIPE) {
+    while (ptr.current().id != .EOP and ptr.current().id != .RPAREN and ptr.current().id != .PIPE) {
         const node = try parseQuantifier(ptr);
         try nodes.append(node);
     }
@@ -34,7 +35,7 @@ pub fn parseSequence(ptr: *Parser) ErrorSet!*syntax.Node {
     });
 }
 
-/// Parses an Atom and an optional postfix quantifier (`*`, `+` or `?`)
+/// Parse quantifying operators
 pub fn parseQuantifier(ptr: *Parser) ErrorSet!*syntax.Node {
     const node = try parseAtom(ptr);
 
@@ -70,6 +71,11 @@ pub fn parseQuantifier(ptr: *Parser) ErrorSet!*syntax.Node {
             },
         });
     }
+
+    // Parse bounded repeat expression {m, n?}
+    if (ptr.match(.LBRACE)) {
+        return repeats.parseBoundedRepeat(ptr, node);
+    }
     return node;
 }
 
@@ -77,42 +83,57 @@ pub fn parseQuantifier(ptr: *Parser) ErrorSet!*syntax.Node {
 pub fn parseAtom(ptr: *Parser) ErrorSet!*syntax.Node {
     const token = ptr.current();
 
-    switch (token) {
-        .CHAR => |char| {
+    switch (token.id) {
+        .CHAR => {
             _ = ptr.advance();
+
             return ptr.createNode(.{
                 .Literal = .{
-                    .value = char.val.?.raw(),
+                    .value = token.lexeme.?.raw(),
                 },
             });
         },
+
         .ESCAPED_CHAR => {
             return escapes.parseEscapedAtom(ptr, token);
         },
+
         .DOT => {
             _ = ptr.advance();
-            return ptr.createNode(.{ .AnyChar = .{} });
+            return ptr.createNode(.{
+                .AnyChar = .{},
+            });
         },
+
         .CARET => {
             _ = ptr.advance();
-            return ptr.createNode(.{ .StartAnchor = .{} });
+            return ptr.createNode(.{
+                .StartAnchor = .{},
+            });
         },
+
         .DOLLAR => {
             _ = ptr.advance();
-            return ptr.createNode(.{ .EndAnchor = .{} });
+            return ptr.createNode(.{
+                .EndAnchor = .{},
+            });
         },
+
         .LPAREN => {
             _ = ptr.advance();
             return groups.parseGroup(ptr);
         },
+
         .LBRACKET => {
             _ = ptr.advance();
+
             const class = try classes.parseCharClass(ptr);
 
             return ptr.createNode(.{
                 .CharClass = class,
             });
         },
+
         else => return ErrorSet.UnexpectedToken,
     }
 }

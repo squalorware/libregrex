@@ -35,8 +35,8 @@ fn applyPresetEscape(
 
 /// Returns Token's literal if this Token can represent a part of character class
 fn getValueIfClass(token: Token) ?u21 {
-    return switch (token) {
-        .CHAR, .ESCAPED_CHAR, .DOT, .CARET, .DOLLAR, .STAR, .PLUS, .QUESTION, .PIPE, .LPAREN, .RPAREN, .LBRACKET => |lexeme| lexeme.val.?.raw(),
+    return switch (token.id) {
+        .CHAR, .ESCAPED_CHAR, .DOT, .CARET, .DOLLAR, .STAR, .PLUS, .QUESTION, .PIPE, .LPAREN, .RPAREN, .LBRACKET => token.lexeme.?.raw(),
         else => null,
     };
 }
@@ -54,11 +54,11 @@ pub fn parseCharClass(ptr: *Parser) ErrorSet!syntax.CharClass {
     var preset: syntax.PresetClassSet = .{};
     var negated_preset: syntax.PresetClassSet = .{};
 
-    while (ptr.current().id() != .RBRACKET and ptr.current().id() != .EOP) {
+    while (ptr.current().id != .RBRACKET and ptr.current().id != .EOP) {
         const start_token = ptr.current();
 
         // A leading or otherwise standalone unescaped '-' is a literal.
-        if (start_token.id() == .DASH) {
+        if (start_token.id == .DASH) {
             _ = ptr.advance();
 
             try chars.append('-');
@@ -67,10 +67,10 @@ pub fn parseCharClass(ptr: *Parser) ErrorSet!syntax.CharClass {
 
         // Predefined character classes retain their regex semantics
         // inside bracket classes.
-        if (start_token.id() == .ESCAPED_CHAR) {
-            const val = start_token.val();
+        if (start_token.id == .ESCAPED_CHAR) {
+            const val = start_token.lexeme.?;
 
-            if (applyPresetEscape(val.?.raw(), &preset, &negated_preset)) {
+            if (applyPresetEscape(val.raw(), &preset, &negated_preset)) {
                 _ = ptr.advance();
                 continue;
             }
@@ -90,17 +90,17 @@ pub fn parseCharClass(ptr: *Parser) ErrorSet!syntax.CharClass {
 
         // A '-' immediately before ']' is a literal hyphen rather than a
         // range separator: `[a-]` represents `a` and `-`.
-        if (ptr.current().id() == .RBRACKET) {
+        if (ptr.current().id == .RBRACKET) {
             try chars.append(start);
             try chars.append('-');
             break;
         }
 
         const end_token = ptr.current();
-        const val = end_token.val();
+        const val = end_token.lexeme.?;
         // Preset classes cannot be range endpoints. Expressions such as
         // `[a-\d]` have no meaningful scalar endpoint.
-        if (end_token.id() == .ESCAPED_CHAR and isReservedEscape(val.?.raw())) {
+        if (end_token.id == .ESCAPED_CHAR and isReservedEscape(val.raw())) {
             return ErrorSet.UnexpectedToken;
         }
 

@@ -9,7 +9,6 @@ const T_ManagedArrayList = types.T_ManagedArrayList;
 
 const Buffer = T_ManagedArrayList(Token, null);
 
-pub const Lexeme = tokens.Lexeme;
 pub const Token = tokens.Token;
 pub const TokenId = tokens.TokenId;
 
@@ -52,7 +51,9 @@ pub const Lexer = struct {
             continue;
         }
         try buffer.append(.{
-            .EOP = .{ .val = null, .pos = self.pos },
+            .id = .EOP,
+            .lexeme = null,
+            .pos = self.pos,
         });
 
         return try buffer.toOwnedSlice();
@@ -68,37 +69,12 @@ test "Should break up a pattern into a valid sequence of Tokens" {
     defer allocator.free(result);
 
     const expected = [_]Token{
-        .{
-            .CHAR = .{
-                .val = try Rune.from('a'),
-                .pos = 0,
-            },
-        },
-        .{
-            .CHAR = .{
-                .val = try Rune.from('.'),
-                .pos = 1,
-            },
-        },
-        .{
-            .CHAR = .{
-                .val = try Rune.from('b'),
-                .pos = 3,
-            },
-        },
-        .{
-            .STAR = .{
-                .val = try Rune.from('*'),
-                .pos = 4,
-            },
-        },
-        .{
-            .CHAR = .{
-                .val = try Rune.from('c'),
-                .pos = 5,
-            },
-        },
-        .{ .EOP = .{ .val = null, .pos = 6 } },
+        .{ .id = .CHAR, .lexeme = try Rune.from('a'), .pos = 0 },
+        .{ .id = .CHAR, .lexeme = try Rune.from('.'), .pos = 1 },
+        .{ .id = .CHAR, .lexeme = try Rune.from('b'), .pos = 3 },
+        .{ .id = .STAR, .lexeme = try Rune.from('*'), .pos = 4 },
+        .{ .id = .CHAR, .lexeme = try Rune.from('c'), .pos = 5 },
+        .{ .id = .EOP, .lexeme = null, .pos = 6 },
     };
 
     try std.testing.expectEqualDeep(expected[0..], result);

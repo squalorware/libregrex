@@ -30,13 +30,13 @@ pub const CompileOutput = struct {
     }
 };
 
-pub const CompileBuffers = struct {
+pub const CompileStateBuffer = struct {
     alloc: std.mem.Allocator,
     prog: ByteBuffer,
     classes: CharClassBuffer,
     flags: syntax.Flags,
 
-    pub fn init(alloc: std.mem.Allocator, flags: syntax.Flags) ErrorSet!CompileBuffers {
+    pub fn init(alloc: std.mem.Allocator, flags: syntax.Flags) ErrorSet!CompileStateBuffer {
         return .{
             .alloc = alloc,
             .prog = try ByteBuffer.init(alloc, null),
@@ -45,14 +45,14 @@ pub const CompileBuffers = struct {
         };
     }
 
-    pub fn deinit(self: *CompileBuffers) void {
+    pub fn deinit(self: *CompileStateBuffer) void {
         self.prog.deinit();
         self.classes.deinit();
         self.* = undefined;
     }
 
     /// Deep-copies a char class into memory owned by compiler to avoid emitted `Instruction` pointing into `Parser` arena
-    pub fn cloneCharClass(self: *CompileBuffers, cls: syntax.CharClass) ErrorSet!usize {
+    pub fn cloneCharClass(self: *CompileStateBuffer, cls: syntax.CharClass) ErrorSet!usize {
         const ranges = self.alloc.dupe(syntax.RuneRange, cls.ranges) catch {
             return ErrorSet.MemoryError;
         };
@@ -80,7 +80,7 @@ pub const CompileBuffers = struct {
 test "Should deep copy char classes buffer with cloneCharClass" {
     const allocator = std.testing.allocator;
 
-    var state = try CompileBuffers.init(allocator, .{});
+    var state = try CompileStateBuffer.init(allocator, .{});
     defer state.deinit();
 
     const ranges = [_]syntax.RuneRange{.{ .start = 'a', .end = 'z' }};

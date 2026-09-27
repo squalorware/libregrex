@@ -3,14 +3,12 @@ const types = @import("types");
 const states = @import("../states.zig");
 const syntax = @import("../syntax.zig");
 const opcodes = @import("./opcodes.zig");
-const operands = @import("./operands.zig");
-pub const Instruction = @import("./instruction.zig");
+const operand_mod = @import("./operand.zig");
+const view = @import("./view.zig");
 const ErrorSet = types.errors.ErrorSet;
-const CompileBuffers = states.CompileBuffers;
-const ByteBuffer = states.ByteBuffer;
+const CompileStateBuffer = states.CompileStateBuffer;
 
-pub const readOpcode = opcodes.readOpcode;
-pub const readOperand = operands.readOperand;
+pub const readOperand = operand_mod.readOperand;
 pub fn readFlags(prog: []const u8, pc: *usize) ErrorSet!syntax.Flags {
     if (pc.* >= prog.len) return ErrorSet.OutOfRange;
 
@@ -20,89 +18,102 @@ pub fn readFlags(prog: []const u8, pc: *usize) ErrorSet!syntax.Flags {
     return syntax.Flags.fromIntBitmask(bitmask);
 }
 
-pub const OpCode = opcodes.OpCode;
-pub const operandsInfo = operands.operandsInfo;
-pub const OperandType = operands.OperandType;
+pub const Opcode = opcodes.Opcode;
+pub const Operand = operand_mod.Operand;
+pub const T_Operand = operand_mod.T_Operand;
 
+// pub const Instruction = struct {
+//     opcode: OpCode,
+//     flags: ?syntax.Flags,
+//     data: comptime_int,
+// };
+
+// pub fn decompile(prog: []const u8, pc: *usize) Instruction {
+//     const opcode = try readOpcode(prog, pc);
+
+//     var flags: ?syntax.Flags = null;
+
+//     if (opcode.usesFlags()) flags = try readFlags(prog, pc);
+
+//     if (opcode.hasOperands()) {
+//         const info =  comptime try operandsInfo(opcode).?;
+//     }
+// }
 // pub fn decompile(start_byte: ) Instruction {
 
 // }
 
-pub fn emit(ptr: *CompileBuffers, comptime opcode: OpCode, operand: ?OperandType(opcode)) ErrorSet!usize {
-    const pos = ptr.prog.len();
+pub fn emit(ptr: *CompileStateBuffer, comptime opcode: Opcode, data: anytype) ErrorSet!usize {
+    const pos = ptr.len();
 
-    try ptr.prog.append(@intFromEnum(opcode));
+    try ptr.append(@intFromEnum(opcode));
 
     if (opcode.usesFlags()) try ptr.prog.append(ptr.flags.toIntBitmask());
 
-    if (comptime operandsInfo(opcode) != null) {
-        const data = operand orelse return ErrorSet.InvalidArgument;
-
-        try operands.writeOperand(opcode, &ptr.prog, data);
-    }
+    try operand_mod.writeOperand(opcode, &ptr.prog, data);
     return pos;
 }
 
 /// Split requires a separate emit since this instruction takes two operands unlike others with one or none
-pub fn emitSplit(ptr: *CompileBuffers, left: usize, right: usize) ErrorSet!usize {
-    const pos = ptr.prog.len();
+pub fn emitFork(ptr: *CompileStateBuffer, left: usize, right: usize) ErrorSet!usize {
+    const pos = ptr.len();
 
-    try ptr.prog.append(@intFromEnum(OpCode.Split));
+    try ptr.prog.append(@intFromEnum(Opcode.FORK));
 
-    try operands.writeOperand(.Split, &ptr.prog, left);
-    try operands.writeOperand(.Split, &ptr.prog, right);
+    try operand_mod.writeOperand(.FORK, &ptr.prog, left);
+    try operand_mod.writeOperand(.FORK, &ptr.prog, right);
 
     return pos;
 }
 
-pub fn patch(ptr: *CompileBuffers, comptime opcode: OpCode, pos: usize, data: OperandType(opcode)) ErrorSet!void {
-    const info = operandsInfo(opcode).?;
-    var bytes: [@sizeOf(info.T)]u8 = undefined;
+pub fn patch(ptr: *CompileStateBuffer, comptime opcode: Opcode, pos: usize, data: T_Operand(opcode)) ErrorSet!void {
+    const operand = opcode.opInfo().?;
+    var bytes: [operand.size()]u8 = undefined;
 
-    std.mem.writeInt(info.T, &bytes, @intCast(data), .little);
+    std.mem.writeInt(T_Operand(opcode), &bytes, @intCast(data), .little);
 
-    try ptr.prog.setSlice(pos + operands.offset(opcode), &bytes);
+    try ptr.prog.setSlice(pos + opcode.offset(), &bytes);
 }
 
-pub fn patchSplit(ptr: *CompileBuffers, pos: usize, left: usize, right: usize) ErrorSet!void {
-    const info = comptime operandsInfo(.Split).?;
-    const size = @sizeOf(info.T);
+pub fn patchFork(ptr: *CompileStateBuffer, pos: usize, left: usize, right: usize) ErrorSet!void {
+    const operand = comptime Opcode.FORK.opInfo().?;
 
-    try patch(ptr, .Split, pos, left);
-    try patch(ptr, .Split, pos + size, right);
+    try patch(ptr, .FORK, pos, left);
+    try patch(ptr, .FORK, pos + operand.size(), right);
 }
 
 test "Should emit serialized instruction ordered as [opcode][flags?][operand?]" {
     const allocator = std.testing.allocator;
     const flags: syntax.Flags = .{ .ignore_case = true };
 
-    var state = try CompileBuffers.init(allocator, flags);
+    var state = try CompileStateBuffer.init(allocator, flags);
     defer state.deinit();
 
-    _ = try emit(&state, .Rune, 'A');
+    _ = try emit(&state.prog, .TESTR, 'A');
 
     const prog = state.prog.items();
     var pc: usize = 0;
 
-    try std.testing.expectEqual(OpCode.Rune, try readOpcode(prog, &pc));
+    const opcode = Opcode.TESTR;
+    try std.testing.expectEqual(opcode, try Opcode.read(prog, &pc));
     try std.testing.expectEqual(flags.toIntBitmask(), (try readFlags(prog, &pc)).toIntBitmask());
-    try std.testing.expectEqual(@as(u21, 'A'), try readOperand(.Rune, prog, &pc));
+    try std.testing.expectEqual(@as(u32, 'A'), try readOperand(.TESTR, prog, &pc));
     try std.testing.expectEqual(prog.len, pc);
 }
 
-test "Should replace both reserved branch targets by patchSplit" {
+test "Should replace both reserved branch targets by patchFork" {
     const allocator = std.testing.allocator;
 
-    var state = try CompileBuffers.init(allocator, .{});
+    var state = try CompileStateBuffer.init(allocator, null);
     defer state.deinit();
 
-    const pos = try emitSplit(&state, 0, 0);
-    try patchSplit(&state, pos, 12, 34);
+    const pos = try emitFork(&state, 0, 0);
+    try patchFork(&state, pos, 12, 34);
 
     const prog = state.prog.items();
     var pc: usize = 0;
 
-    try std.testing.expectEqual(OpCode.Split, try readOpcode(prog, &pc));
-    try std.testing.expectEqual(@as(usize, 12), try readOperand(.Split, prog, &pc));
-    try std.testing.expectEqual(@as(usize, 34), try readOperand(.Split, prog, &pc));
+    try std.testing.expectEqual(Opcode.FORK, try Opcode.read(prog, &pc));
+    try std.testing.expectEqual(@as(u32, 12), try readOperand(.FORK, prog, &pc));
+    try std.testing.expectEqual(@as(u32, 34), try readOperand(.FORK, prog, &pc));
 }

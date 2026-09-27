@@ -11,6 +11,7 @@ pub const MatchListBuffer = matching.MatchListBuffer;
 pub const ReturnCode = conv.ReturnCode;
 pub const Span = matching.Span;
 pub const StringBuffer = T_ManagedArrayList(u8, null);
+pub const formatStr = misc.formatStr;
 
 test {
     _ = @import("./conv.zig");

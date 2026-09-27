@@ -8,10 +8,10 @@ const Parser = @import("./parsing/Parser.zig").Parser;
 const ErrorSet = types.errors.ErrorSet;
 const Lexer = lexing.Lexer;
 const Token = lexing.Token;
-const CompileBuffers = states.CompileBuffers;
+const CompileStateBuffer = states.CompileStateBuffer;
 
 pub const syntax = @import("./syntax.zig");
-pub const Instruction = bytecode.Instruction;
+// pub const Instruction = bytecode.Instruction;
 pub const CompileOutput = states.CompileOutput;
 pub const ParserOutput = states.ParserOutput;
 
@@ -35,7 +35,7 @@ fn buildSyntaxTree(alloc: std.mem.Allocator, tokens: []Token) ErrorSet!ParserOut
 fn emitBytecode(alloc: std.mem.Allocator, parsed: ParserOutput, flags: syntax.Flags) ErrorSet!CompileOutput {
     const combined_flags = flags.merge(parsed.inline_flags);
 
-    var buffers = try CompileBuffers.init(alloc, combined_flags);
+    var buffers = try CompileStateBuffer.init(alloc, combined_flags);
     defer buffers.deinit();
 
     _ = try bytecode.emit(&buffers, .Save, 0);

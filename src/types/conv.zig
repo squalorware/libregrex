@@ -59,8 +59,10 @@ pub const ReturnCode = enum(i8) {
     REGREX_ERPAREN = 14,
     /// Closing bracket missing
     REGREX_ERBRACK = 15,
+    /// Closing brace missing
+    REGREX_ERBRACE = 16,
     /// Unexpected bytecode instruction
-    REGREX_EINSTERR = 16,
+    REGREX_EINSTERR = 17,
 };
 
 pub fn toErrorCode(err: anyerror) ReturnCode {

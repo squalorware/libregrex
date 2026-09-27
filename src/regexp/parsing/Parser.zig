@@ -61,7 +61,7 @@ pub const Parser = struct {
     /// Checks if current token's type matches the expected one
     pub fn match(self: *Parser, tag: TokenId) bool {
         const t = self.current();
-        if (t.id() == tag) {
+        if (t.id == tag) {
             _ = self.advance();
             return true;
         }
@@ -71,7 +71,7 @@ pub const Parser = struct {
     /// Returns a compilation error if token type doesn't match the expected one
     pub fn expect(self: *Parser, tag: TokenId) ErrorSet!Token {
         const t = self.current();
-        if (t.id() != tag) {
+        if (t.id != tag) {
             return ErrorSet.UnexpectedToken;
         }
         return self.advance();
@@ -112,7 +112,7 @@ pub const Parser = struct {
 
         const ast = try self.parseBranch();
 
-        if (self.current().id() != .EOP) {
+        if (self.current().id != .EOP) {
             return ErrorSet.UnexpectedToken;
         }
         return ast;

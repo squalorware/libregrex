@@ -32,6 +32,8 @@ pub const ErrorSet = error{
     UnmatchedParen,
     /// Missing `]`
     UnmatchedBracket,
+    /// Missing `}`
+    UnmatchedBrace,
     /// Non-specific generic error
     InternalError,
 };
