@@ -1,0 +1,139 @@
+const std = @import("std");
+const types = @import("types");
+const classes = @import("./char_classes.zig");
+const escapes = @import("./escapes.zig");
+const groups = @import("./groups.zig");
+const repeats = @import("./repeats.zig");
+const Parser = @import("./Parser.zig").Parser;
+const syntax = @import("../syntax.zig");
+
+const ErrorSet = types.errors.ErrorSet;
+const T_ManagedArrayList = types.meta.T_ManagedArrayList;
+
+const NodeList = T_ManagedArrayList(*syntax.Node, null);
+
+/// Parses a sequence of quantified Atoms until `EOF`, `RPAREN` or `PIPE`
+pub fn parseSequence(ptr: *Parser) ErrorSet!*syntax.Node {
+    var nodes = try NodeList.init(ptr.gpa, null);
+    defer nodes.deinit();
+
+    while (ptr.current().id != .EOP and ptr.current().id != .RPAREN and ptr.current().id != .PIPE) {
+        const node = try parseQuantifier(ptr);
+        try nodes.append(node);
+    }
+
+    if (nodes.len() == 0) {
+        return ErrorSet.ExpressionExpected;
+    }
+
+    if (nodes.len() == 1) {
+        return nodes.items()[0];
+    }
+
+    return ptr.createNode(.{
+        .Sequence = .{ .nodes = try nodes.toOwnedSlice() },
+    });
+}
+
+/// Parse quantifying operators
+pub fn parseQuantifier(ptr: *Parser) ErrorSet!*syntax.Node {
+    const node = try parseAtom(ptr);
+
+    // Parse 'zero or more'
+    if (ptr.match(.STAR)) {
+        return ptr.createNode(.{
+            .Repeat = .{
+                .node = node,
+                .min = 0,
+                .max = null,
+            },
+        });
+    }
+
+    // Parse 'one or more'
+    if (ptr.match(.PLUS)) {
+        return ptr.createNode(.{
+            .Repeat = .{
+                .node = node,
+                .min = 1,
+                .max = null,
+            },
+        });
+    }
+
+    // Parse 'zero or one'
+    if (ptr.match(.QUESTION)) {
+        return ptr.createNode(.{
+            .Repeat = .{
+                .node = node,
+                .min = 0,
+                .max = 1,
+            },
+        });
+    }
+
+    // Parse bounded repeat expression {m, n?}
+    if (ptr.match(.LBRACE)) {
+        return repeats.parseBoundedRepeat(ptr, node);
+    }
+    return node;
+}
+
+/// Parses the base indivisible expression
+pub fn parseAtom(ptr: *Parser) ErrorSet!*syntax.Node {
+    const token = ptr.current();
+
+    switch (token.id) {
+        .CHAR => {
+            _ = ptr.advance();
+
+            return ptr.createNode(.{
+                .Literal = .{
+                    .value = token.lexeme.?.raw(),
+                },
+            });
+        },
+
+        .ESCAPED_CHAR => {
+            return escapes.parseEscapedAtom(ptr, token);
+        },
+
+        .DOT => {
+            _ = ptr.advance();
+            return ptr.createNode(.{
+                .AnyChar = .{},
+            });
+        },
+
+        .CARET => {
+            _ = ptr.advance();
+            return ptr.createNode(.{
+                .StartAnchor = .{},
+            });
+        },
+
+        .DOLLAR => {
+            _ = ptr.advance();
+            return ptr.createNode(.{
+                .EndAnchor = .{},
+            });
+        },
+
+        .LPAREN => {
+            _ = ptr.advance();
+            return groups.parseGroup(ptr);
+        },
+
+        .LBRACKET => {
+            _ = ptr.advance();
+
+            const class = try classes.parseCharClass(ptr);
+
+            return ptr.createNode(.{
+                .CharClass = class,
+            });
+        },
+
+        else => return ErrorSet.UnexpectedToken,
+    }
+}

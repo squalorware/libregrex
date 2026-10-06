@@ -89,25 +89,25 @@ pub fn build(b: *std.Build) void {
 ```
 
 ### Use (in Zig)
-For one-off operations, import `regrex` and pass an allocator explicitly. Returned `Match` values own internal subgroup storage, so they must be released with `Match.deinit()`
+For one-off operations, import `regrex` and pass an gpa explicitly. Returned `Match` values own internal subgroup storage, so they must be released with `Match.deinit()`
 
 ```zig
 const std = @import("std");
 const regrex = @import("regrex");
 
 pub fn main() !void {
-    const allocator = std.heap.page_allocator;
+    const gpa = std.heap.page_allocator;
 
     // If no match was found, search() returns null;
     var result = (try regrex.search(
-        allocator,
+        gpa,
         "[0-9]+",
         "foo 123 bar",
     )) orelse {
         std.debug.print("no match found\n", .{});
         return;
     };
-    defer result.deinit(allocator);
+    defer result.deinit(gpa);
 
     std.debug.print("matched: {s}\n", .{result.full()});
 }
@@ -115,16 +115,16 @@ pub fn main() !void {
 If you need to use the same pattern more than once, it's better to compile it once to keep a reusable `Pattern` handle until you release it:
 ```zig
 // Other code...
-const allocator = std.heap.page_allocator;
+const gpa = std.heap.page_allocator;
 
-const pattern = try regrex.compile(allocator, "[a-zA-Z]+=[0-9]+");
+const pattern = try regrex.compile(gpa, "[a-zA-Z]+=[0-9]+");
 defer pattern.deinit();
 
 var first = (try pattern.search("foo=123 bar=456")) orelse {
     std.debug.print("no match found\n", .{});
     return;
 };
-defer first.deinit(allocator);
+defer first.deinit(gpa);
 std.debug.print("first match: {s}\n", .{first.full()});
 ```
 `Pattern` provides all the same functionality as the one-off functions - in fact, what, for example, the `regrex.match` is doing is basically compiling a temporary `Pattern` and calling its methods; the `Pattern` is released at the end of the function's execution. 
@@ -159,7 +159,7 @@ while(iter.next()) |m| {
 And of course, you can replace the matches (the original input is never mutated - `sub` copies the non-matching bits and inserts the string stored inside `repl_buf` parameter at the byte offsets of the matches)
 ```zig
 const replaced = try pattern.sub("<pair>", "foo=123 bar=456", .{ .count = 0 });
-defer allocator.free(replaced);
+defer gpa.free(replaced);
 
 std.debug.print("replaced: {s}\n", .{replaced});
 ```
