@@ -166,18 +166,18 @@ pub const CharClass = struct {
     negated_preset: PresetClassSet = .{},
     negated: bool = false,
 
-    pub fn deinit(self: *CharClass, alloc: std.mem.Allocator) void {
-        alloc.free(self.ranges);
-        alloc.free(self.chars);
+    pub fn deinit(self: *CharClass, gpa: std.mem.Allocator) void {
+        gpa.free(self.ranges);
+        gpa.free(self.chars);
     }
 
-    pub fn freeCharClasses(alloc: std.mem.Allocator, list: ?[]CharClass) void {
+    pub fn freeCharClasses(gpa: std.mem.Allocator, list: ?[]CharClass) void {
         const classes = list orelse return;
 
         for (classes) |*cls| {
-            cls.deinit(alloc);
+            cls.deinit(gpa);
         }
-        alloc.free(classes);
+        gpa.free(classes);
     }
 };
 

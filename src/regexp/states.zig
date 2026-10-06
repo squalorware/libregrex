@@ -4,8 +4,8 @@ const syntax = @import("./syntax.zig");
 const ErrorSet = types.errors.ErrorSet;
 const T_ManagedArrayList = types.meta.T_ManagedArrayList;
 
-fn freeCharClassCallback(alloc: std.mem.Allocator, ptr: *syntax.CharClass) void {
-    ptr.deinit(alloc);
+fn freeCharClassCallback(gpa: std.mem.Allocator, ptr: *syntax.CharClass) void {
+    ptr.deinit(gpa);
 }
 
 pub const ByteBuffer = T_ManagedArrayList(u8, null);
@@ -22,25 +22,25 @@ pub const CompileOutput = struct {
     classes: []syntax.CharClass,
     captures_count: usize,
 
-    pub fn free(self: *CompileOutput, alloc: std.mem.Allocator) void {
-        alloc.free(self.prog);
+    pub fn free(self: *CompileOutput, gpa: std.mem.Allocator) void {
+        gpa.free(self.prog);
 
-        syntax.CharClass.freeCharClasses(alloc, self.classes);
+        syntax.CharClass.freeCharClasses(gpa, self.classes);
         self.* = undefined;
     }
 };
 
 pub const CompileStateBuffer = struct {
-    alloc: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     prog: ByteBuffer,
     classes: CharClassBuffer,
     flags: syntax.Flags,
 
-    pub fn init(alloc: std.mem.Allocator, flags: syntax.Flags) ErrorSet!CompileStateBuffer {
+    pub fn init(gpa: std.mem.Allocator, flags: syntax.Flags) ErrorSet!CompileStateBuffer {
         return .{
-            .alloc = alloc,
-            .prog = try ByteBuffer.init(alloc, null),
-            .classes = try CharClassBuffer.init(alloc, null),
+            .gpa = gpa,
+            .prog = try ByteBuffer.init(gpa, null),
+            .classes = try CharClassBuffer.init(gpa, null),
             .flags = flags,
         };
     }
@@ -53,15 +53,15 @@ pub const CompileStateBuffer = struct {
 
     /// Deep-copies a char class into memory owned by compiler to avoid emitted `Instruction` pointing into `Parser` arena
     pub fn cloneCharClass(self: *CompileStateBuffer, cls: syntax.CharClass) ErrorSet!usize {
-        const ranges = self.alloc.dupe(syntax.RuneRange, cls.ranges) catch {
+        const ranges = self.gpa.dupe(syntax.RuneRange, cls.ranges) catch {
             return ErrorSet.MemoryError;
         };
-        errdefer self.alloc.free(ranges);
+        errdefer self.gpa.free(ranges);
 
-        const chars = self.alloc.dupe(u21, cls.chars) catch {
+        const chars = self.gpa.dupe(u21, cls.chars) catch {
             return ErrorSet.MemoryError;
         };
-        errdefer self.alloc.free(chars);
+        errdefer self.gpa.free(chars);
 
         const idx: usize = self.classes.len();
 
@@ -78,9 +78,9 @@ pub const CompileStateBuffer = struct {
 };
 
 test "Should deep copy char classes buffer with cloneCharClass" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
 
-    var state = try CompileStateBuffer.init(allocator, .{});
+    var state = try CompileStateBuffer.init(gpa, .{});
     defer state.deinit();
 
     const ranges = [_]syntax.RuneRange{.{ .start = 'a', .end = 'z' }};

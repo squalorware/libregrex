@@ -4,24 +4,24 @@ const regrex = @import("regrex");
 const testing = std.testing;
 
 test "Should recognize a global inline flag for ignore case" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
 
-    const pattern = try regrex.compile(allocator, "(?i)foo", .{});
+    const pattern = try regrex.compile(gpa, "(?i)foo", .{});
     defer pattern.deinit();
 
     var match = try pattern.match("FOO");
 
     try testing.expect(match != null);
-    match.?.deinit(allocator);
+    match.?.deinit(gpa);
 }
 
 test "Should recognize a global inline flag for multiline" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
 
-    const pattern = try regrex.compile(allocator, "(?m)^foo$", .{});
+    const pattern = try regrex.compile(gpa, "(?m)^foo$", .{});
     defer pattern.deinit();
 
-    const input = 
+    const input =
         \\bar
         \\foo
         \\baz
@@ -30,18 +30,18 @@ test "Should recognize a global inline flag for multiline" {
         try testing.expect(false);
         return;
     };
-    defer match.deinit(allocator);
+    defer match.deinit(gpa);
 
     try testing.expectEqualStrings("foo", try match.full());
 }
 
 test "Should recognize a global inline dot-all flag (include newline characters in matching)" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
 
-    const pattern = try regrex.compile(allocator, "(?s)a.b", .{});
+    const pattern = try regrex.compile(gpa, "(?s)a.b", .{});
     defer pattern.deinit();
 
-    const input = 
+    const input =
         \\a
         \\b
     ;
@@ -49,18 +49,18 @@ test "Should recognize a global inline dot-all flag (include newline characters 
         try testing.expect(false);
         return;
     };
-    defer match.deinit(allocator);
+    defer match.deinit(gpa);
 
     try testing.expectEqualStrings(input, try match.full());
 }
 
 test "Should recognize combined global inline flags" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
 
-    const pattern = try regrex.compile(allocator, "(?ims)^[a-z]*$.^[a-z]*$", .{});
+    const pattern = try regrex.compile(gpa, "(?ims)^[a-z]*$.^[a-z]*$", .{});
     defer pattern.deinit();
 
-    const input = 
+    const input =
         \\foo
         \\BAR
     ;
@@ -68,22 +68,22 @@ test "Should recognize combined global inline flags" {
         try testing.expect(false);
         return;
     };
-    defer match.deinit(allocator);
+    defer match.deinit(gpa);
 
     try testing.expectEqualStrings(input, try match.full());
 }
 
 test "regrex.compile() should return a reusable *Pattern" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
 
-    const pattern = try regrex.compile(allocator, "^[a-z]*$", .{});
+    const pattern = try regrex.compile(gpa, "^[a-z]*$", .{});
     defer pattern.deinit();
 
     var match = try (pattern.match("abc")) orelse {
         try testing.expect(false);
         return;
     };
-    defer match.deinit(allocator);
+    defer match.deinit(gpa);
 
     try testing.expectEqualStrings("abc", try match.full());
 
@@ -92,10 +92,10 @@ test "regrex.compile() should return a reusable *Pattern" {
 }
 
 test "regrex.match() should try to match only at the input start" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
 
     var match = (try regrex.match(
-        allocator,
+        gpa,
         "[0-9]+",
         "420 kek",
         .{},
@@ -103,19 +103,19 @@ test "regrex.match() should try to match only at the input start" {
         try testing.expect(false);
         return;
     };
-    defer match.deinit(allocator);
+    defer match.deinit(gpa);
 
     try testing.expectEqualStrings("420", try match.full());
 
-    const no_match = try regrex.match(allocator, "[0-9]+", "lol 420 kek", .{});
+    const no_match = try regrex.match(gpa, "[0-9]+", "lol 420 kek", .{});
     try testing.expect(no_match == null);
 }
 
 test "regrex.search() should return first match no matter its position in input" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
 
     var match = (try regrex.search(
-        allocator,
+        gpa,
         "[0-9]+",
         "lol 420 kek",
         .{},
@@ -123,7 +123,7 @@ test "regrex.search() should return first match no matter its position in input"
         try testing.expect(false);
         return;
     };
-    defer match.deinit(allocator);
+    defer match.deinit(gpa);
 
     try testing.expectEqualStrings("420", try match.full());
     try testing.expectEqual(@as(usize, 4), try match.start(0));
@@ -131,10 +131,10 @@ test "regrex.search() should return first match no matter its position in input"
 }
 
 test "regrex.search() should support Unicode literal matching" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
 
     var match = (try regrex.search(
-        allocator,
+        gpa,
         "う",
         "hうй",
         .{},
@@ -142,13 +142,13 @@ test "regrex.search() should support Unicode literal matching" {
         try testing.expect(false);
         return;
     };
-    defer match.deinit(allocator);
+    defer match.deinit(gpa);
 
     try testing.expectEqualStrings("う", try match.full());
 }
 
 test "regrex.findAll() should return all non-overlapping matches" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
 
     var matches = try regrex.findAll(
         allocator,
@@ -159,9 +159,9 @@ test "regrex.findAll() should return all non-overlapping matches" {
     defer {
         for (matches) |m| {
             var owned = m;
-            owned.deinit(allocator);
+            owned.deinit(gpa);
         }
-        allocator.free(matches);
+        gpa.free(matches);
     }
 
     try testing.expectEqual(@as(usize, 2), matches.len);
@@ -176,40 +176,40 @@ test "regrex.findAll() should return all non-overlapping matches" {
 }
 
 test "regrex.sub() replaces all occurences matching pattern" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
 
-    const out = try regrex.sub(allocator, "[0-9]+", "lol 420 kek 69", "SIXSEVEN", .{});
-    defer allocator.free(out);
+    const out = try regrex.sub(gpa, "[0-9]+", "lol 420 kek 69", "SIXSEVEN", .{});
+    defer gpa.free(out);
 
     try testing.expectEqualStrings("lol SIXSEVEN kek SIXSEVEN", out);
 }
 
 test "regrex.sub() acknowledges option.count and replaces exact number of occurences" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
 
     const out = try regrex.sub(
-        allocator,
+        gpa,
         "[0-9]+",
         "lol 67 kek 420",
         "SIXSEVEN",
         .{ .count = 1 },
     );
-    defer allocator.free(out);
+    defer gpa.free(out);
 
     try testing.expectEqualStrings("lol SIXSEVEN kek 420", out);
 }
 
 test "regrex.sub() safely replaces all occurences if options.count is greater than actual matches count" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
 
     const out = try regrex.sub(
-        allocator,
+        gpa,
         "[0-9]+",
         "lol 67 kek 420",
         "SIXSEVEN",
         .{ .count = 67 },
     );
-    defer allocator.free(out);
+    defer gpa.free(out);
 
     try testing.expectEqualStrings("lol SIXSEVEN kek SIXSEVEN", out);
 }

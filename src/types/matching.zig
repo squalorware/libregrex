@@ -24,7 +24,7 @@ pub const Match = struct {
     groups: []Span,
 
     pub fn init(
-        allocator: std.mem.Allocator,
+        gpa: std.mem.Allocator,
         captures_count: usize,
         input: []const u8,
         slots: []const ?usize,
@@ -36,10 +36,10 @@ pub const Match = struct {
         if (groups_len > MAX_GROUPS_LEN) {
             return ErrorSet.ExceedsCapacity;
         }
-        var groups_buf = allocator.alloc(Span, groups_len) catch {
+        var groups_buf = gpa.alloc(Span, groups_len) catch {
             return ErrorSet.MemoryError;
         };
-        errdefer allocator.free(groups_buf);
+        errdefer gpa.free(groups_buf);
 
         groups_buf[0] = .{
             .start = full_start,
@@ -69,8 +69,8 @@ pub const Match = struct {
     }
 
     /// Releases the internal Span buffer and dereferences the Match
-    pub fn deinit(self: *Match, alloc: std.mem.Allocator) void {
-        alloc.free(self.groups);
+    pub fn deinit(self: *Match, gpa: std.mem.Allocator) void {
+        gpa.free(self.groups);
         self.* = undefined;
     }
 
@@ -115,8 +115,8 @@ pub const Match = struct {
     }
 };
 
-pub fn freeMatchCallback(alloc: std.mem.Allocator, ptr: *Match) void {
-    ptr.deinit(alloc);
+pub fn freeMatchCallback(gpa: std.mem.Allocator, ptr: *Match) void {
+    ptr.deinit(gpa);
 }
 
 /// A resizable dynamic buffer to store Match entries
@@ -137,12 +137,12 @@ test "isEmpty should return false for non-empty Span" {
 const test_input = "lol 420 kek";
 
 test "Match.init() should return a Match with valid full match and no capture groups" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
     // Capture slot with whole match start and end indices
     const slots = [_]?usize{ 4, 7 };
 
-    var m = try Match.init(allocator, 0, test_input, slots[0..]);
-    defer m.deinit(allocator);
+    var m = try Match.init(gpa, 0, test_input, slots[0..]);
+    defer m.deinit(gpa);
 
     try testing.expectEqualStrings("420", try m.full());
     try testing.expectEqual(@as(usize, 4), try m.start(0));
@@ -153,7 +153,7 @@ test "Match.init() should return a Match with valid full match and no capture gr
 }
 
 test "Match.init() should return a Match with a valid subgroup" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
     const slots = [_]?usize{
         4,
         7,
@@ -161,8 +161,8 @@ test "Match.init() should return a Match with a valid subgroup" {
         7,
     };
 
-    var m = try Match.init(allocator, 1, test_input, slots[0..]);
-    defer m.deinit(allocator);
+    var m = try Match.init(gpa, 1, test_input, slots[0..]);
+    defer m.deinit(gpa);
 
     try testing.expectEqualStrings("420", try m.full());
 
@@ -175,11 +175,11 @@ test "Match.init() should return a Match with a valid subgroup" {
 }
 
 test "Match.init() should create a Match with unmatched subgroups as sentinel groups" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
     const slots = [_]?usize{ 4, 7, null, null };
 
-    var m = try Match.init(allocator, 1, test_input, slots[0..]);
-    defer m.deinit(allocator);
+    var m = try Match.init(gpa, 1, test_input, slots[0..]);
+    defer m.deinit(gpa);
 
     try testing.expectEqualStrings("420", try m.full());
 
@@ -189,11 +189,11 @@ test "Match.init() should create a Match with unmatched subgroups as sentinel gr
 }
 
 test "Match.init() should create a Match with partially captured groups as sentinel groups" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
     const slots = [_]?usize{ 4, 7, 4, null };
 
-    var m = try Match.init(allocator, 1, test_input, slots[0..]);
-    defer m.deinit(allocator);
+    var m = try Match.init(gpa, 1, test_input, slots[0..]);
+    defer m.deinit(gpa);
 
     try testing.expectEqualStrings("420", try m.full());
 
@@ -203,7 +203,7 @@ test "Match.init() should create a Match with partially captured groups as senti
 }
 
 test "Match.init() should create a Match with multiple capture groups" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
     const slots = [_]?usize{
         0, 11, // group 0 (full match)
         0, 3, // group 1
@@ -212,8 +212,8 @@ test "Match.init() should create a Match with multiple capture groups" {
     };
     const expected = [_][]const u8{ "lol", "420", "kek" };
 
-    var m = try Match.init(allocator, 3, test_input, slots[0..]);
-    defer m.deinit(allocator);
+    var m = try Match.init(gpa, 3, test_input, slots[0..]);
+    defer m.deinit(gpa);
 
     try testing.expectEqualStrings("lol 420 kek", try m.full());
 
@@ -228,34 +228,34 @@ test "Match.init() should create a Match with multiple capture groups" {
 }
 
 test "Match.full() should return the full match string representation" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
     const slots = [_]?usize{ 4, 7 };
     const captures_count = slots.len / 2 - 1; // excluding full match
 
-    var match = try Match.init(allocator, captures_count, test_input, slots[0..]);
-    defer match.deinit(allocator);
+    var match = try Match.init(gpa, captures_count, test_input, slots[0..]);
+    defer match.deinit(gpa);
 
     try testing.expectEqualStrings("420", try match.full());
 }
 
 test "Match.group(0) should return the full match string representation" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
     const slots = [_]?usize{ 4, 7 };
     const captures_count = slots.len / 2 - 1;
 
-    var match = try Match.init(allocator, captures_count, test_input, slots[0..]);
-    defer match.deinit(allocator);
+    var match = try Match.init(gpa, captures_count, test_input, slots[0..]);
+    defer match.deinit(gpa);
 
     try testing.expectEqualStrings("420", try match.full());
 }
 
 test "Match.span(0) should return the byte span of the full match" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
     const slots = [_]?usize{ 4, 7 };
     const captures_count = slots.len / 2 - 1;
 
-    var match = try Match.init(allocator, captures_count, test_input, slots[0..]);
-    defer match.deinit(allocator);
+    var match = try Match.init(gpa, captures_count, test_input, slots[0..]);
+    defer match.deinit(gpa);
 
     const result = try match.span(0);
 
@@ -264,12 +264,12 @@ test "Match.span(0) should return the byte span of the full match" {
 }
 
 test "Match.group(i) should return a subgroup string representation" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
     const slots = [_]?usize{ 4, 7, 4, 7 };
     const captures_count = slots.len / 2 - 1;
 
-    var match = try Match.init(allocator, captures_count, test_input, slots[0..]);
-    defer match.deinit(allocator);
+    var match = try Match.init(gpa, captures_count, test_input, slots[0..]);
+    defer match.deinit(gpa);
 
     const result = try match.group(1);
 
@@ -277,12 +277,12 @@ test "Match.group(i) should return a subgroup string representation" {
 }
 
 test "Match.span(i) should return subgroup byte span" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
     const slots = [_]?usize{ 4, 7, 4, 7 };
     const captures_count = slots.len / 2 - 1;
 
-    var match = try Match.init(allocator, captures_count, test_input, slots[0..]);
-    defer match.deinit(allocator);
+    var match = try Match.init(gpa, captures_count, test_input, slots[0..]);
+    defer match.deinit(gpa);
 
     const result = try match.span(1);
 
@@ -291,36 +291,36 @@ test "Match.span(i) should return subgroup byte span" {
 }
 
 test "Match.group(i), Match.span(i) should return `Error.NoMatch` for an unmatched capture group" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
     const slots = [_]?usize{ 4, 7, null, null };
     const captures_count = slots.len / 2 - 1;
 
-    var match = try Match.init(allocator, captures_count, test_input, slots[0..]);
-    defer match.deinit(allocator);
+    var match = try Match.init(gpa, captures_count, test_input, slots[0..]);
+    defer match.deinit(gpa);
 
     try testing.expectError(ErrorSet.NoMatch, match.group(1));
     try testing.expectError(ErrorSet.NoMatch, match.span(1));
 }
 
 test "Match.group(i), Match.span(i) should return `Error.OutOfRange` for a group out of range" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
     const slots = [_]?usize{ 4, 7, 4, 7 };
     const captures_count = slots.len / 2 - 1;
 
-    var match = try Match.init(allocator, captures_count, test_input, slots[0..]);
-    defer match.deinit(allocator);
+    var match = try Match.init(gpa, captures_count, test_input, slots[0..]);
+    defer match.deinit(gpa);
 
     try testing.expectError(ErrorSet.OutOfRange, match.group(2));
     try testing.expectError(ErrorSet.OutOfRange, match.span(2));
 }
 
 test "Match.subgroups() should return captures excluding full match" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
     const slots = [_]?usize{ 0, 7, 0, 3, 4, 7, null, null };
     const captures_count = slots.len / 2 - 1;
 
-    var match = try Match.init(allocator, captures_count, test_input, slots[0..]);
-    defer match.deinit(allocator);
+    var match = try Match.init(gpa, captures_count, test_input, slots[0..]);
+    defer match.deinit(gpa);
 
     const result = try match.subgroups();
 
@@ -333,24 +333,24 @@ test "Match.subgroups() should return captures excluding full match" {
 }
 
 test "MatchListBuffer.init() should create an empty array" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
 
-    var matches = try MatchListBuffer.init(allocator, null);
+    var matches = try MatchListBuffer.init(gpa, null);
     defer matches.deinit();
 
     try testing.expectEqual(@as(usize, 0), matches.len());
 }
 
 test "MatchListBuffer.append() should store owned matches" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
 
-    var matches = try MatchListBuffer.init(allocator, null);
+    var matches = try MatchListBuffer.init(gpa, null);
     defer matches.deinit();
 
     const slots = [_]?usize{ 4, 7 };
     const captures_count = slots.len / 2 - 1;
 
-    const match = try Match.init(allocator, captures_count, test_input, slots[0..]);
+    const match = try Match.init(gpa, captures_count, test_input, slots[0..]);
 
     try matches.append(match);
 

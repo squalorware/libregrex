@@ -3,45 +3,22 @@ const types = @import("types");
 const states = @import("../states.zig");
 const syntax = @import("../syntax.zig");
 const opcodes = @import("./opcodes.zig");
-const operand_mod = @import("./operand.zig");
+const op_mod = @import("./operand.zig");
 const view = @import("./view.zig");
 const ErrorSet = types.errors.ErrorSet;
 const CompileStateBuffer = states.CompileStateBuffer;
 
-pub const readOperand = operand_mod.readOperand;
-pub fn readFlags(prog: []const u8, pc: *usize) ErrorSet!syntax.Flags {
-    if (pc.* >= prog.len) return ErrorSet.OutOfRange;
+pub const InstructionView = view.InstructionView;
+pub const Opcode = opcodes.Opcode;
+pub const Operand = op_mod.Operand;
+pub const T_Operand = op_mod.T_Operand;
+pub const readOperand = op_mod.readOperand;
 
-    const bitmask = prog[pc.*];
-    pc.* += 1;
+pub fn readFlags(prog: []const u8, pc: usize) ErrorSet!syntax.Flags {
+    const bitmask = prog[pc];
 
     return syntax.Flags.fromIntBitmask(bitmask);
 }
-
-pub const Opcode = opcodes.Opcode;
-pub const Operand = operand_mod.Operand;
-pub const T_Operand = operand_mod.T_Operand;
-
-// pub const Instruction = struct {
-//     opcode: OpCode,
-//     flags: ?syntax.Flags,
-//     data: comptime_int,
-// };
-
-// pub fn decompile(prog: []const u8, pc: *usize) Instruction {
-//     const opcode = try readOpcode(prog, pc);
-
-//     var flags: ?syntax.Flags = null;
-
-//     if (opcode.usesFlags()) flags = try readFlags(prog, pc);
-
-//     if (opcode.hasOperands()) {
-//         const info =  comptime try operandsInfo(opcode).?;
-//     }
-// }
-// pub fn decompile(start_byte: ) Instruction {
-
-// }
 
 pub fn emit(ptr: *CompileStateBuffer, comptime opcode: Opcode, data: anytype) ErrorSet!usize {
     const pos = ptr.len();
@@ -50,7 +27,7 @@ pub fn emit(ptr: *CompileStateBuffer, comptime opcode: Opcode, data: anytype) Er
 
     if (opcode.usesFlags()) try ptr.prog.append(ptr.flags.toIntBitmask());
 
-    try operand_mod.writeOperand(opcode, &ptr.prog, data);
+    try op_mod.writeOperand(opcode, &ptr.prog, data);
     return pos;
 }
 
@@ -60,8 +37,8 @@ pub fn emitFork(ptr: *CompileStateBuffer, left: usize, right: usize) ErrorSet!us
 
     try ptr.prog.append(@intFromEnum(Opcode.FORK));
 
-    try operand_mod.writeOperand(.FORK, &ptr.prog, left);
-    try operand_mod.writeOperand(.FORK, &ptr.prog, right);
+    try op_mod.writeOperand(.FORK, &ptr.prog, left);
+    try op_mod.writeOperand(.FORK, &ptr.prog, right);
 
     return pos;
 }
@@ -83,10 +60,10 @@ pub fn patchFork(ptr: *CompileStateBuffer, pos: usize, left: usize, right: usize
 }
 
 test "Should emit serialized instruction ordered as [opcode][flags?][operand?]" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
     const flags: syntax.Flags = .{ .ignore_case = true };
 
-    var state = try CompileStateBuffer.init(allocator, flags);
+    var state = try CompileStateBuffer.init(gpa, flags);
     defer state.deinit();
 
     _ = try emit(&state.prog, .TESTR, 'A');
@@ -102,9 +79,9 @@ test "Should emit serialized instruction ordered as [opcode][flags?][operand?]" 
 }
 
 test "Should replace both reserved branch targets by patchFork" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
 
-    var state = try CompileStateBuffer.init(allocator, null);
+    var state = try CompileStateBuffer.init(gpa, null);
     defer state.deinit();
 
     const pos = try emitFork(&state, 0, 0);

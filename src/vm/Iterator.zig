@@ -21,12 +21,12 @@ const IteratorContext = struct {
 /// which allows updating shared execution context and call VM execution within closure
 pub const LazyIterator = opaque {
     pub fn init(
-        alloc: std.mem.Allocator,
+        gpa: std.mem.Allocator,
         ctx: *const anyopaque,
         input: []const u8,
         func: T_Closure(anyopaque, ExecutionContext, ?Match),
     ) ErrorSet!*LazyIterator {
-        const self: *IteratorContext = alloc.create(IteratorContext) catch {
+        const self: *IteratorContext = gpa.create(IteratorContext) catch {
             return ErrorSet.MemoryError;
         };
         self.* = .{
@@ -37,11 +37,11 @@ pub const LazyIterator = opaque {
         return @ptrCast(self);
     }
 
-    pub fn deinit(ptr: *LazyIterator, alloc: std.mem.Allocator) void {
+    pub fn deinit(ptr: *LazyIterator, gpa: std.mem.Allocator) void {
         const self: *IteratorContext = @ptrCast(@alignCast(ptr));
 
         self.* = undefined;
-        alloc.destroy(self);
+        gpa.destroy(self);
     }
 
     fn advanceAfterEmptyMatch(ptr: *LazyIterator) ErrorSet!void {
@@ -54,7 +54,7 @@ pub const LazyIterator = opaque {
 
     /// Scans the input once, starting at position in current context,
     /// then advances position register by one UTF-8 codepoint bytelength
-    pub fn next(ptr: *LazyIterator, alloc: std.mem.Allocator) ErrorSet!?Match {
+    pub fn next(ptr: *LazyIterator, gpa: std.mem.Allocator) ErrorSet!?Match {
         const self: *IteratorContext = @ptrCast(@alignCast(ptr));
 
         if (self.done) return null;
@@ -64,7 +64,7 @@ pub const LazyIterator = opaque {
 
             if (maybe_match) |found| {
                 var match = found;
-                errdefer match.deinit(alloc);
+                errdefer match.deinit(gpa);
 
                 const start = try match.start(0);
                 const end = try match.end(0);
@@ -74,7 +74,7 @@ pub const LazyIterator = opaque {
                 } else {
                     ptr.advanceAfterEmptyMatch() catch |err| {
                         var owned = match;
-                        owned.deinit(alloc);
+                        owned.deinit(gpa);
                         return err;
                     };
                 }

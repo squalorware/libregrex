@@ -20,8 +20,8 @@ pub const Lexer = struct {
     }
 
     /// Consumes the string with pattern and breaks it down into an array of lexical tokens
-    pub fn eval(self: *Lexer, alloc: std.mem.Allocator, pattern: []const u8) ErrorSet![]Token {
-        var buffer = try Buffer.init(alloc, null);
+    pub fn eval(self: *Lexer, gpa: std.mem.Allocator, pattern: []const u8) ErrorSet![]Token {
+        var buffer = try Buffer.init(gpa, null);
         defer buffer.deinit();
 
         const view = std.unicode.Utf8View.init(pattern) catch {
@@ -61,12 +61,12 @@ pub const Lexer = struct {
 };
 
 test "Should break up a pattern into a valid sequence of Tokens" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
 
     var lexer = Lexer.init();
-    const result = try lexer.eval(allocator, "a\\.b*c");
+    const result = try lexer.eval(gpa, "a\\.b*c");
 
-    defer allocator.free(result);
+    defer gpa.free(result);
 
     const expected = [_]Token{
         .{ .id = .CHAR, .lexeme = try Rune.from('a'), .pos = 0 },

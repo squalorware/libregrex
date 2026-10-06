@@ -21,14 +21,14 @@ pub const mem = struct {
     /// Converts a C array to a Zig slice and releases it together with its items
     pub fn freeRaw(
         comptime T: type,
-        alloc: std.mem.Allocator,
+        gpa: std.mem.Allocator,
         ptr: ?[*]T,
         len: usize,
         destroy_cb: ?types.meta.T_DestructorCallback(T),
     ) void {
         const buf: [*]T = ptr orelse return;
 
-        freeAlloc(T, alloc, buf[0..len], destroy_cb);
+        freeAlloc(T, gpa, buf[0..len], destroy_cb);
     }
 };
 
@@ -57,7 +57,7 @@ pub const helpers = struct {
     pub fn commonMatchImpl(
         comptime Fn: LookupFn,
         comptime M: LookupSource,
-        alloc: std.mem.Allocator,
+        gpa: std.mem.Allocator,
         subject: anytype,
         in_str: ?ctypes.ConstStr,
     ) RegrexError!regex.Match {
@@ -74,8 +74,8 @@ pub const helpers = struct {
             const pattern: ctypes.ConstStr = subject.pattern orelse return RegrexError.InvalidArgument;
 
             break :blk try switch (Fn) {
-                .match => regex.match(alloc, std.mem.span(pattern), std.mem.span(input), subject.flags),
-                .search => regex.search(alloc, std.mem.span(pattern), std.mem.span(input), subject.flags),
+                .match => regex.match(gpa, std.mem.span(pattern), std.mem.span(input), subject.flags),
+                .search => regex.search(gpa, std.mem.span(pattern), std.mem.span(input), subject.flags),
             } orelse return RegrexError.NoMatch;
         };
 

@@ -12,7 +12,7 @@ const escapes = @import("./escapes.zig");
 const groups = @import("./groups.zig");
 
 pub const Parser = struct {
-    alloc: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     captures_count: usize = 0,
     pos: usize = 0,
     tokens: []const Token,
@@ -20,15 +20,15 @@ pub const Parser = struct {
 
     /// Using `std.heap.ArenaAllocator` is recommended, this way the entire AST is released
     /// after being compiled to bytecode
-    pub fn init(alloc: std.mem.Allocator, tlist: []const Token) Parser {
+    pub fn init(gpa: std.mem.Allocator, tlist: []const Token) Parser {
         return .{
-            .alloc = alloc,
+            .gpa = gpa,
             .tokens = tlist,
         };
     }
 
     pub fn deinit(self: *Parser) void {
-        self.alloc.free(self.tokens);
+        self.gpa.free(self.tokens);
     }
 
     pub fn inlineFlags(self: *Parser) syntax.Flags {
@@ -97,7 +97,7 @@ pub const Parser = struct {
 
     /// Allocates and initializes an AST Node
     pub fn createNode(self: *Parser, node: syntax.Node) ErrorSet!*syntax.Node {
-        const ptr = self.alloc.create(syntax.Node) catch {
+        const ptr = self.gpa.create(syntax.Node) catch {
             return ErrorSet.MemoryError;
         };
         ptr.* = node;
@@ -119,9 +119,9 @@ pub const Parser = struct {
     }
 };
 
-pub fn initTestParser(alloc: std.mem.Allocator, pattern: []const u8) ErrorSet!Parser {
+pub fn initTestParser(gpa: std.mem.Allocator, pattern: []const u8) ErrorSet!Parser {
     var lexer = lexing.Lexer.init();
-    const token_list = try lexer.eval(alloc, pattern);
+    const token_list = try lexer.eval(gpa, pattern);
 
-    return Parser.init(alloc, token_list);
+    return Parser.init(gpa, token_list);
 }

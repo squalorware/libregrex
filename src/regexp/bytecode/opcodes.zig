@@ -4,7 +4,8 @@ const operand = @import("./operand.zig");
 const ErrorSet = types.errors.ErrorSet;
 const Operand = operand.Operand;
 
-const FLAGGED_MAP = std.EnumSet(Opcode).init(.{
+/// Set of instructions that use modifiers (flags)
+const USE_MOD = std.EnumSet(Opcode).init(.{
     .TESTR = true,
     .TESTCL = true,
     .ASTART = true,
@@ -12,22 +13,14 @@ const FLAGGED_MAP = std.EnumSet(Opcode).init(.{
     .TEST = true,
 });
 /// Metadata table mapping opcodes to respective operand sizes and quantity
-const OPERANDS_MAP = std.EnumMap(Opcode, Operand).init(.{
-    .SAVE = .{ .bits = 16, .count = 1, .int_type = u16 },
-    .FORK = .{ .bits = 32, .count = 2, .int_type = u32 },
-    .GOTO = .{ .bits = 32, .count = 1, .int_type = u32 },
-    .TESTR = .{ .bits = 32, .count = 1, .int_type = u32 },
-    .TESTCL = .{ .bits = 16, .count = 1, .int_type = u16 },
-    .TESTA = .{ .bits = 8, .count = 1, .int_type = u8 },
+const OP_TYPES = std.EnumMap(Opcode, Operand).init(.{
+    .SAVE = .{ .bits = 16, .count = 1 },
+    .FORK = .{ .bits = 32, .count = 2 },
+    .GOTO = .{ .bits = 32, .count = 1 },
+    .TESTR = .{ .bits = 32, .count = 1 },
+    .TESTCL = .{ .bits = 16, .count = 1 },
+    .TESTA = .{ .bits = 8, .count = 1 },
 });
-// const OPERANDS_MAP = std.EnumMap(Opcode, Operand).init(.{
-//     .SAVE = OpFn(usize, 16, null),
-//     .FORK = OpFn(usize, 32, 2),
-//     .GOTO = OpFn(usize, 32, null),
-//     .TESTR = OpFn(u21, 32, null),
-//     .TESTCL = OpFn(usize, 16, null),
-//     .TESTA = OpFn(u8, 8, ),
-// });
 
 pub const Opcode = enum(u8) {
     /// Save the current input position into a capture slot.
@@ -55,12 +48,12 @@ pub const Opcode = enum(u8) {
     TESTA = 0x07,
     /// Match any single Unicode code point
     TEST = 0x08,
-    /// Terminal instruction; return the matching results
-    RET = 0x09,
+    /// Terminal instruction;
+    RETURN = 0x09,
 
     /// Get operand metadata for given opcode
     pub fn opInfo(comptime opcode: Opcode) ?Operand {
-        return comptime OPERANDS_MAP.get(opcode);
+        return comptime OP_TYPES.get(opcode);
     }
 
     pub fn id(self: Opcode) []const u8 {
@@ -68,20 +61,19 @@ pub const Opcode = enum(u8) {
     }
 
     pub fn usesFlags(self: Opcode) bool {
-        return FLAGGED_MAP.contains(self);
+        return USE_MOD.contains(self);
     }
 
     pub fn hasOperands(self: Opcode) bool {
-        return OPERANDS_MAP.contains(self);
+        return OP_TYPES.contains(self);
     }
 
-    pub fn read(buffer: []const u8, pcount: *usize) ErrorSet!Opcode {
-        if (pcount.* >= buffer.len) return ErrorSet.OutOfRange;
+    pub fn read(buffer: []const u8, pc: usize) ErrorSet!Opcode {
+        if (pc >= buffer.len) return ErrorSet.OutOfRange;
 
-        const data = buffer[pcount.*];
-        pcount.* += 1;
+        const data = buffer[pc];
 
-        if (data > @intFromEnum(Opcode.RET)) {
+        if (data > @intFromEnum(Opcode.RETURN)) {
             return ErrorSet.InvalidArgument;
         }
         return @enumFromInt(data);
@@ -96,7 +88,7 @@ test "usesFlags identifies flag-sensitive opcodes" {
     try std.testing.expect(Opcode.TESTR.usesFlags());
     try std.testing.expect(Opcode.TESTCL.usesFlags());
     try std.testing.expect(!Opcode.GOTO.usesFlags());
-    try std.testing.expect(!Opcode.RET.usesFlags());
+    try std.testing.expect(!Opcode.RETURN.usesFlags());
 }
 
 test "readOpcode decodes one byte and advances the program counter" {

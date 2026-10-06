@@ -26,14 +26,14 @@ const Frame = struct {
     /// Snapshot of capture slots at the time the alternative path was saved.
     slots: []?usize,
 
-    pub fn deinit(self: *Frame, alloc: std.mem.Allocator) void {
-        alloc.free(self.slots);
+    pub fn deinit(self: *Frame, gpa: std.mem.Allocator) void {
+        gpa.free(self.slots);
         self.* = undefined;
     }
 };
 
-fn freeCapturesCallback(alloc: std.mem.Allocator, ptr: *Frame) void {
-    ptr.deinit(alloc);
+fn freeCapturesCallback(gpa: std.mem.Allocator, ptr: *Frame) void {
+    ptr.deinit(gpa);
 }
 
 const Stack = types.T_ManagedArrayList(Frame, freeCapturesCallback);
@@ -46,8 +46,8 @@ pub const ExecutionContext = struct {
     pos: usize,
 };
 
-fn cloneCaptures(alloc: std.mem.Allocator, slots: []const ?usize) ErrorSet![]?usize {
-    const clone = alloc.dupe(?usize, slots) catch {
+fn cloneCaptures(gpa: std.mem.Allocator, slots: []const ?usize) ErrorSet![]?usize {
+    const clone = gpa.dupe(?usize, slots) catch {
         return ErrorSet.MemoryError;
     };
     return clone;
@@ -56,42 +56,42 @@ fn cloneCaptures(alloc: std.mem.Allocator, slots: []const ?usize) ErrorSet![]?us
 /// Attempts to backtrack to the alternative state saved to Stack and restore execution from it
 /// Checks if backtracking succeded, aborts execution and cleans up context otherwise
 fn hasRestoredState(
-    alloc: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     stack: *Stack,
     pc: *usize,
     pos: *usize,
     slots: *[]?usize,
 ) bool {
     if (stack.pop()) |frame| {
-        alloc.free(slots.*);
+        gpa.free(slots.*);
         pc.* = frame.pc;
         pos.* = frame.pos;
         slots.* = frame.slots;
         return true;
     }
-    alloc.free(slots.*);
+    gpa.free(slots.*);
     return false;
 }
 
 /// Executes instructions in the bytecode buffer `prog` against the input starting from `start_pos`
 pub fn execAt(
-    allocator: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     input: []const u8,
     start_pos: usize,
     captures_count: usize,
     prog: []const Instruction,
 ) ErrorSet!?Match {
     const reg_count = (captures_count + 1) * 2;
-    var slots = allocator.alloc(?usize, reg_count) catch {
+    var slots = gpa.alloc(?usize, reg_count) catch {
         return ErrorSet.MemoryError;
     };
-    errdefer allocator.free(slots);
+    errdefer gpa.free(slots);
 
     for (slots) |*slot| {
         slot.* = null;
     }
 
-    var stack = try Stack.init(allocator, null);
+    var stack = try Stack.init(gpa, null);
     defer stack.deinit();
 
     // Initialize the program execution counter
@@ -100,75 +100,75 @@ pub fn execAt(
     // Execution loop
     while (true) {
         if (pc >= prog.len) {
-            if (hasRestoredState(allocator, &stack, &pc, &pos, &slots)) continue;
+            if (hasRestoredState(gpa, &stack, &pc, &pos, &slots)) continue;
             return null;
         }
 
         const inst = prog[pc];
         switch (inst) {
             .Rune => |matcher| {
-                if (try utils.runeMatched(input, &pos, .{ .literal = matcher })) {
+                if (try utils.consumeMatchingRune(input, &pos, .{ .literal = matcher })) {
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &slots)) {
+                if (hasRestoredState(gpa, &stack, &pc, &pos, &slots)) {
                     continue;
                 }
                 return null;
             },
             .Any => |matcher| {
-                if (try utils.runeMatched(input, &pos, .{ .any = matcher })) {
+                if (try utils.consumeMatchingRune(input, &pos, .{ .any = matcher })) {
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &slots)) {
+                if (hasRestoredState(gpa, &stack, &pc, &pos, &slots)) {
                     continue;
                 }
                 return null;
             },
             .Class => |matcher| {
-                if (try utils.runeMatched(input, &pos, .{ .char_class = matcher })) {
+                if (try utils.consumeMatchingRune(input, &pos, .{ .char_class = matcher })) {
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &slots)) {
+                if (hasRestoredState(gpa, &stack, &pc, &pos, &slots)) {
                     continue;
                 }
                 return null;
             },
             .AssertStart => |matcher| {
-                if (try utils.anchorMatched(inst, input, pos, matcher.multiline)) {
+                if (try utils.matchesAnchor(inst, input, pos, matcher.multiline)) {
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &slots)) {
+                if (hasRestoredState(gpa, &stack, &pc, &pos, &slots)) {
                     continue;
                 }
                 return null;
             },
             .AssertEnd => |matcher| {
-                if (try utils.anchorMatched(inst, input, pos, matcher.multiline)) {
+                if (try utils.matchesAnchor(inst, input, pos, matcher.multiline)) {
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &slots)) {
+                if (hasRestoredState(gpa, &stack, &pc, &pos, &slots)) {
                     continue;
                 }
                 return null;
             },
             .Assert => |assert| {
-                if (try utils.assertMatched(input, pos, assert)) {
+                if (try utils.matchesAssertion(input, pos, assert)) {
                     pc += 1;
                     continue;
                 }
-                if (hasRestoredState(allocator, &stack, &pc, &pos, &slots)) {
+                if (hasRestoredState(gpa, &stack, &pc, &pos, &slots)) {
                     continue;
                 }
                 return null;
             },
             .Save => |slot| {
                 if (slot >= slots.len) {
-                    if (hasRestoredState(allocator, &stack, &pc, &pos, &slots)) {
+                    if (hasRestoredState(gpa, &stack, &pc, &pos, &slots)) {
                         continue;
                     }
                     return null;
@@ -179,7 +179,7 @@ pub fn execAt(
             .Hold => return ErrorSet.UnexpectedInstruction,
             // Branch execution; execute `left` branch and store `right` branch to backtracking stack
             .Split => |split| {
-                const alt_captures = try cloneCaptures(allocator, slots);
+                const alt_captures = try cloneCaptures(gpa, slots);
 
                 stack.append(.{
                     .pc = split.right,
@@ -198,12 +198,12 @@ pub fn execAt(
             // Terminal instruction
             .Match => {
                 const result = try Match.init(
-                    allocator,
+                    gpa,
                     captures_count,
                     input,
                     slots,
                 );
-                allocator.free(slots);
+                gpa.free(slots);
                 return result;
             },
         }
@@ -211,7 +211,7 @@ pub fn execAt(
 }
 
 test "execAt() should produce a Match from given position" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
     const prog = [_]Instruction{
         .{ .Save = 0 },
         .{ .Rune = .{ .value = '4' } },
@@ -222,7 +222,7 @@ test "execAt() should produce a Match from given position" {
     };
 
     var result = (try execAt(
-        allocator,
+        gpa,
         "lol 420 kek",
         4,
         0,
@@ -231,7 +231,7 @@ test "execAt() should produce a Match from given position" {
         try testing.expect(false);
         return;
     };
-    defer result.deinit(allocator);
+    defer result.deinit(gpa);
 
     try testing.expectEqualStrings("420", try result.full());
     try testing.expectEqual(@as(usize, 4), try result.start(0));
@@ -239,7 +239,7 @@ test "execAt() should produce a Match from given position" {
 }
 
 test "execAt() should handle capture slots" {
-    const allocator = testing.allocator;
+    const gpa = testing.gpa;
     const prog = [_]Instruction{
         .{ .Save = 0 },
         .{ .Save = 2 },
@@ -252,7 +252,7 @@ test "execAt() should handle capture slots" {
     };
 
     var result = (try execAt(
-        allocator,
+        gpa,
         "420",
         0,
         1,
@@ -261,7 +261,7 @@ test "execAt() should handle capture slots" {
         try testing.expect(false);
         return;
     };
-    defer result.deinit(allocator);
+    defer result.deinit(gpa);
 
     try testing.expectEqualStrings("420", try result.full());
 
@@ -270,7 +270,7 @@ test "execAt() should handle capture slots" {
 }
 
 test "execAt() should consume a complete multibyte Unicode Rune" {
-    const allocator = testing.allocator;
+    const gpa = testing.gpa;
 
     const prog = [_]Instruction{
         .{ .Save = 0 },
@@ -280,7 +280,7 @@ test "execAt() should consume a complete multibyte Unicode Rune" {
     };
 
     var result = (try execAt(
-        allocator,
+        gpa,
         "abcЇdef",
         3,
         0,
@@ -289,7 +289,7 @@ test "execAt() should consume a complete multibyte Unicode Rune" {
         try testing.expect(false);
         return;
     };
-    defer result.deinit(allocator);
+    defer result.deinit(gpa);
 
     try testing.expectEqual(
         @as(usize, 3),
@@ -303,7 +303,7 @@ test "execAt() should consume a complete multibyte Unicode Rune" {
 }
 
 test "execAt() should correctly handle an anchored lowercase character class repeat" {
-    const allocator = testing.allocator;
+    const gpa = testing.allocator;
     const ranges = [_]AST.RuneRange{
         .{ .start = 'a', .end = 'z' },
     };
@@ -333,7 +333,7 @@ test "execAt() should correctly handle an anchored lowercase character class rep
     };
 
     var result = (try execAt(
-        allocator,
+        gpa,
         "abc",
         0,
         0,
@@ -342,12 +342,12 @@ test "execAt() should correctly handle an anchored lowercase character class rep
         try testing.expect(false);
         return;
     };
-    defer result.deinit(allocator);
+    defer result.deinit(gpa);
 
     try testing.expectEqualStrings("abc", try result.full());
 
     const no_match = try execAt(
-        allocator,
+        gpa,
         "abc123",
         0,
         0,

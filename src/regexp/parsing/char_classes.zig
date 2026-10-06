@@ -45,10 +45,10 @@ fn getValueIfClass(token: Token) ?u21 {
 pub fn parseCharClass(ptr: *Parser) ErrorSet!syntax.CharClass {
     const negated = ptr.match(.CARET);
 
-    var ranges = try RangeList.init(ptr.alloc, null);
+    var ranges = try RangeList.init(ptr.gpa, null);
     defer ranges.deinit();
 
-    var chars = try RuneList.init(ptr.alloc, null);
+    var chars = try RuneList.init(ptr.gpa, null);
     defer chars.deinit();
 
     var preset: syntax.PresetClassSet = .{};
@@ -132,8 +132,8 @@ pub fn parseCharClass(ptr: *Parser) ErrorSet!syntax.CharClass {
 const initTestParser = @import("./Parser.zig").initTestParser;
 
 test "Should parse anchored lowercase character class repeat" {
-    const allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    const gpa = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
 
     var parser = try initTestParser(arena.allocator(), "^[a-z]*$");
@@ -168,8 +168,8 @@ test "Should parse anchored lowercase character class repeat" {
 }
 
 test "Should parse predefined Unicode character classes" {
-    const allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    const gpa = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
 
     var parser = try initTestParser(arena.allocator(), "\\d\\D\\w\\W\\s\\S");
@@ -237,8 +237,8 @@ test "Should parse predefined Unicode character classes" {
 }
 
 test "Should parse predefined classes inside bracket character class" {
-    const allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    const gpa = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
 
     var parser = try initTestParser(arena.allocator(), "[a-z\\d_\\S]");

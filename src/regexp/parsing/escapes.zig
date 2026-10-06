@@ -73,8 +73,8 @@ pub fn parseEscapedAtom(ptr: *Parser, token: Token) ErrorSet!*syntax.Node {
 const initTestParser = @import("./Parser.zig").initTestParser;
 
 test "Should parse absolute and word-boundary assertions" {
-    const allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    const gpa = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
 
     var parser = try initTestParser(arena.allocator(), "\\A\\bX\\B\\Z");
@@ -144,8 +144,8 @@ test "Should parse absolute and word-boundary assertions" {
 }
 
 test "Should preserve decoded escaped literals as literal AST nodes" {
-    const allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    const gpa = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
 
     var parser = try initTestParser(arena.allocator(), "\\n\\r\\t\\x41\\101");

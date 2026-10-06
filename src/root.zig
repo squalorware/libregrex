@@ -28,50 +28,50 @@ pub const Span = types.Span;
 // pub const SubOptions = T_MergedStruct(Flags, PatternSubOptions);
 
 /// Compiles regular expression string and returns the compiled pattern
-pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: syntax.Flags) RegrexError!void {
-    // var arena = std.heap.ArenaAllocator.init(alloc);
+pub fn compile(gpa: std.mem.Allocator, pattern: []const u8, flags: syntax.Flags) RegrexError!void {
+    // var arena = std.heap.ArenaAllocator.init(gpa);
     // defer arena.deinit();
-    var ctx = try regexp.compilePattern(alloc, pattern, flags);
+    var ctx = try regexp.compilePattern(gpa, pattern, flags);
     defer ctx.free();
-    // const allocator = arena.allocator();
+    // const gpa = arena.allocator();
 
     // var lexer = engine.Lexer.init();
-    // const token_list = try lexer.eval(allocator, pattern);
+    // const token_list = try lexer.eval(gpa, pattern);
 
-    // var parser = engine.Parser.init(allocator, token_list);
+    // var parser = engine.Parser.init(gpa, token_list);
     // defer parser.deinit();
 
     // const ast = try parser.parse();
     // const combined = flags.merge(parser.inlineFlags());
 
-    // var prog = try Bytecode.InstructionSet.init(alloc, null);
+    // var prog = try Bytecode.InstructionSet.init(gpa, null);
     // defer prog.deinit();
 
     // const compiler = engine.Compiler.init(&prog, combined);
-    // try compiler.compile(alloc, ast);
+    // try compiler.compile(gpa, ast);
 
-    // return try Pattern.init(alloc, pattern, &prog, parser.captures_count);
+    // return try Pattern.init(gpa, pattern, &prog, parser.captures_count);
 }
 
 // /// Returns the first match encountered at the beginning of the input
-// pub fn match(alloc: std.mem.Allocator, pattern: []const u8, input: []const u8, flags: Flags) RegrexError!?Match {
-//     const regex: *Pattern = try compile(alloc, pattern, flags);
+// pub fn match(gpa: std.mem.Allocator, pattern: []const u8, input: []const u8, flags: Flags) RegrexError!?Match {
+//     const regex: *Pattern = try compile(gpa, pattern, flags);
 //     defer regex.deinit();
 
 //     return try regex.match(input);
 // }
 
 // /// Returns the first match produced at any position within the input
-// pub fn search(alloc: std.mem.Allocator, pattern: []const u8, input: []const u8, flags: Flags) RegrexError!?Match {
-//     const regex: *Pattern = try compile(alloc, pattern, flags);
+// pub fn search(gpa: std.mem.Allocator, pattern: []const u8, input: []const u8, flags: Flags) RegrexError!?Match {
+//     const regex: *Pattern = try compile(gpa, pattern, flags);
 //     defer regex.deinit();
 
 //     return try regex.search(input);
 // }
 
 // /// Returns a slice containing all non-overlapping matches found in the input. Caller owns returned value
-// pub fn findAll(alloc: std.mem.Allocator, pattern: []const u8, input: []const u8, flags: Flags) RegrexError![]Match {
-//     const regex: *Pattern = try compile(alloc, pattern, flags);
+// pub fn findAll(gpa: std.mem.Allocator, pattern: []const u8, input: []const u8, flags: Flags) RegrexError![]Match {
+//     const regex: *Pattern = try compile(gpa, pattern, flags);
 //     defer regex.deinit();
 
 //     return try regex.findAll(input);
@@ -82,13 +82,13 @@ pub fn compile(alloc: std.mem.Allocator, pattern: []const u8, flags: syntax.Flag
 // ///
 // /// Caller owns returned value
 // pub fn sub(
-//     alloc: std.mem.Allocator,
+//     gpa: std.mem.Allocator,
 //     pattern: []const u8,
 //     input: []const u8,
 //     repl: []const u8,
 //     option_set: SubOptions,
 // ) RegrexError![]u8 {
-//     const regex: *Pattern = try compile(alloc, pattern, @as(Flags, .{
+//     const regex: *Pattern = try compile(gpa, pattern, @as(Flags, .{
 //         .ignore_case = option_set.ignore_case,
 //         .multiline = option_set.multiline,
 //         .dot_all = option_set.dot_all,

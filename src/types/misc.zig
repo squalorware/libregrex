@@ -14,8 +14,8 @@ pub const RangeOptions = struct {
     extern_compat: bool = false,
 };
 
-pub fn formatStr(alloc: std.mem.Allocator, comptime fmt: []const u8, args: anytype) ErrorSet![]u8 {
-    return std.fmt.allocPrint(alloc, fmt, args) catch {
+pub fn formatStr(gpa: std.mem.Allocator, comptime fmt: []const u8, args: anytype) ErrorSet![]u8 {
+    return std.fmt.allocPrint(gpa, fmt, args) catch {
         return ErrorSet.MemoryError;
     };
 }

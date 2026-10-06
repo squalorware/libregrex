@@ -29,7 +29,7 @@ const std = @import("std");
 const types = @import("types");
 const regexp = @import("regexp");
 const unicode = @import("unicode");
-const stack = @import("./stack.zig");
+const process = @import("./process.zig");
 const decodeAt = unicode.decodeAt;
 const decodePrev = unicode.decodePrev;
 const ErrorSet = types.errors.ErrorSet;
@@ -37,48 +37,55 @@ const Match = types.Match;
 const syntax = regexp.syntax;
 
 pub const StackMachine = struct {
-    alloc: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     prog: []const u8,
     classes: []syntax.CharClass,
     captures_count: usize,
 
-    pub fn init(alloc: std.mem.Allocator, ctx: regexp.CompileOutput) StackMachine {
-        const bcode = alloc.dupe(u8, ctx.prog) catch {
+    pub fn init(gpa: std.mem.Allocator, comp: regexp.CompileOutput) StackMachine {
+        const bcode = gpa.dupe(u8, comp.prog) catch {
             return ErrorSet.MemoryError;
         };
-        errdefer alloc.free(bcode);
+        errdefer gpa.free(bcode);
 
-        const char_classes = alloc.dupe(syntax.CharClass, ctx.classes) catch {
+        const char_classes = gpa.dupe(syntax.CharClass, comp.classes) catch {
             return ErrorSet.MemoryError;
         };
-        errdefer syntax.CharClass.freeCharClasses(alloc, char_classes);
+        errdefer syntax.CharClass.freeCharClasses(gpa, char_classes);
 
         return .{
-            .alloc = std.mem.Allocator,
+            .gpa = std.mem.Allocator,
             .prog = bcode,
             .classes = char_classes,
-            .captures_count = ctx.captures_count,
+            .captures_count = comp.captures_count,
         };
     }
 
     pub fn deinit(self: *StackMachine) void {
-        const alloc = self.alloc;
-        alloc.free(self.prog);
+        const gpa = self.gpa;
+        gpa.free(self.prog);
 
-        syntax.CharClass.freeCharClasses(alloc, self.classes);
+        syntax.CharClass.freeCharClasses(gpa, self.classes);
 
         self.* = undefined;
     }
 
-    pub fn exec(self: *StackMachine, alloc: std.mem.Allocator, input: []const u8, start_pos: usize) ErrorSet!?Match {
-        var ctx = try stack.ExecutionContext.init(alloc, start_pos, self.captures_count);
+    pub fn exec(self: *StackMachine, gpa: std.mem.Allocator, input: []const u8, start_pos: usize) ErrorSet!?Match {
+        var ctx = try process.Context.init(gpa, start_pos, self.captures_count);
         defer ctx.deinit();
 
         while (true) {
-            if (ctx.pc >= self.prog.len) {
-                if (ctx.backtrack(self.alloc)) continue;
+            if (ctx.acc() >= self.prog.len) {
+                if (ctx.backtrack(self.gpa)) continue;
                 return null;
             }
+            const opcode = try regexp.Opcode.read(self.prog, ctx.acc());
+            const OpType = regexp.T_Operand(opcode);
+
+            ctx.inc(1);
+
+            const inst = try regexp.readInstruction(gpa, OpType, opcode, self.prog, ctx.acc());
+            switch (inst.opcode.data) {}
         }
     }
 };

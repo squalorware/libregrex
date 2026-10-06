@@ -8,11 +8,10 @@ const regex = lib.regex;
 const Allocator = mem.Allocator;
 const c_allocator = mem.c_allocator;
 
-
 /// A helper to release matches and their capture groups in array of opaques
-fn freeCMatchCallback(alloc: Allocator, ptr: **regx_match_t) void {
+fn freeCMatchCallback(gpa: Allocator, ptr: **regx_match_t) void {
     const m = ptr.*;
-    MatchInterface.destroy(m, alloc);
+    MatchInterface.destroy(m, gpa);
 }
 
 /// Return codes used within the library
@@ -34,11 +33,7 @@ pub export fn regx_span_buffer_free(ptr: ?[*]regx_span_t, len: usize) callconv(.
 pub const regx_match_t = opaque {};
 
 /// Proxy handler between `regx_match_t` and `regrex.Match`
-const MatchInterface = helpers.initOpaqueInterface(
-    regex.Match,
-    regx_match_t,
-    mem.freeMatchCallback
-);
+const MatchInterface = helpers.initOpaqueInterface(regex.Match, regx_match_t, mem.freeMatchCallback);
 
 pub export fn regx_match_destroy(match: ?*regx_match_t) callconv(.c) void {
     const ptr = match orelse return;
@@ -173,13 +168,7 @@ pub export fn regx_pattern_match(
     out_p: ?*?*regx_match_t,
 ) callconv(.c) regx_rcode_t {
     const out = out_p orelse return .REGREX_EARG;
-    const m = helpers.commonMatchImpl(
-        .match,
-        .pattern,
-        c_allocator,
-        pattern,
-        in_str
-    ) catch |err| return cast.toReturnCode(err);
+    const m = helpers.commonMatchImpl(.match, .pattern, c_allocator, pattern, in_str) catch |err| return cast.toReturnCode(err);
 
     out.* = MatchInterface.create(c_allocator, m) catch |err| {
         return cast.toReturnCode(err);
@@ -194,13 +183,7 @@ pub export fn regx_pattern_search(
     out_p: ?*?*regx_match_t,
 ) callconv(.c) regx_rcode_t {
     const out = out_p orelse return .REGREX_EARG;
-    const m = helpers.commonMatchImpl(
-        .search,
-        .pattern,
-        c_allocator,
-        pattern,
-        in_str
-    ) catch |err| return cast.toReturnCode(err);
+    const m = helpers.commonMatchImpl(.search, .pattern, c_allocator, pattern, in_str) catch |err| return cast.toReturnCode(err);
 
     out.* = MatchInterface.create(c_allocator, m) catch |err| {
         return cast.toReturnCode(err);
@@ -249,7 +232,7 @@ pub export fn regx_pattern_find_all(
     };
     const mlen = matches.len;
 
-    var buffer = c_allocator.alloc(*regx_match_t, mlen) catch {
+    var buffer = c_allocator.gpa(*regx_match_t, mlen) catch {
         return .REGREX_EMALLOC;
     };
     errdefer c_allocator.free(buffer);
@@ -286,9 +269,7 @@ pub export fn regx_pattern_sub(
     out.* = null;
     len.* = 0;
 
-    const replaced: []u8 = p.sub(mem.span(input), mem.span(repl),.{ 
-        .count = count 
-    }) catch |err| return cast.toReturnCode(err);
+    const replaced: []u8 = p.sub(mem.span(input), mem.span(repl), .{ .count = count }) catch |err| return cast.toReturnCode(err);
 
     const repl_len = replaced.len;
     defer mem.freeAlloc(u8, c_allocator, replaced, null);
@@ -333,23 +314,11 @@ pub export fn regrex_compile(
 }
 
 /// One-off lookup for the first match at the beginning of the input
-pub export fn regrex_match(
-    pattern: ?ctypes.ConstStr, 
-    in_str: ?ctypes.ConstStr, 
-    cflags: regx_flags_t, 
-    out_p: ?*?*regx_match_t
-) callconv(.c) regx_rcode_t {
-
+pub export fn regrex_match(pattern: ?ctypes.ConstStr, in_str: ?ctypes.ConstStr, cflags: regx_flags_t, out_p: ?*?*regx_match_t) callconv(.c) regx_rcode_t {
     const out = out_p orelse return .REGREX_EARG;
     const flags = regex.Flags.fromIntBitmask(cflags);
 
-    const m = helpers.commonMatchImpl(
-        .match,
-        .root,
-        c_allocator,
-        .{ .pattern = pattern, .flags = flags },
-        in_str
-    ) catch |err| return cast.toReturnCode(err);
+    const m = helpers.commonMatchImpl(.match, .root, c_allocator, .{ .pattern = pattern, .flags = flags }, in_str) catch |err| return cast.toReturnCode(err);
 
     out.* = MatchInterface.create(c_allocator, m) catch |err| {
         return cast.toReturnCode(err);
@@ -358,23 +327,11 @@ pub export fn regrex_match(
 }
 
 /// One-off lookup for the first match at any position within the input
-pub export fn regrex_search(
-    pattern: ?ctypes.ConstStr, 
-    in_str: ?ctypes.ConstStr, 
-    cflags: regx_flags_t, 
-    out_p: ?*?*regx_match_t
-) callconv(.c) regx_rcode_t {
-
+pub export fn regrex_search(pattern: ?ctypes.ConstStr, in_str: ?ctypes.ConstStr, cflags: regx_flags_t, out_p: ?*?*regx_match_t) callconv(.c) regx_rcode_t {
     const out = out_p orelse return .REGREX_EARG;
     const flags = regex.Flags.fromIntBitmask(cflags);
 
-    const m = helpers.commonMatchImpl(
-        .match,
-        .root,
-        c_allocator,
-        .{ .pattern = pattern, .flags = flags },
-        in_str
-    ) catch |err| return cast.toReturnCode(err);
+    const m = helpers.commonMatchImpl(.match, .root, c_allocator, .{ .pattern = pattern, .flags = flags }, in_str) catch |err| return cast.toReturnCode(err);
 
     out.* = MatchInterface.create(c_allocator, m) catch |err| {
         return cast.toReturnCode(err);
@@ -407,7 +364,7 @@ pub export fn regrex_find_all(
     ) catch |err| return cast.toReturnCode(err);
     const mlen = matches.len;
 
-    var buffer = c_allocator.alloc(*regx_match_t, mlen) catch {
+    var buffer = c_allocator.gpa(*regx_match_t, mlen) catch {
         return .REGREX_EMALLOC;
     };
     errdefer c_allocator.free(buffer);
@@ -452,13 +409,7 @@ pub export fn regrex_sub(
         .count = count,
     };
 
-    const replaced = regex.sub(
-        c_allocator,
-        mem.span(p),
-        mem.span(input),
-        mem.span(repl),
-        options
-    ) catch |err| return cast.toReturnCode(err);
+    const replaced = regex.sub(c_allocator, mem.span(p), mem.span(input), mem.span(repl), options) catch |err| return cast.toReturnCode(err);
 
     const repl_len = replaced.len;
 

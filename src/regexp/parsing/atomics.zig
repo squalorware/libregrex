@@ -14,7 +14,7 @@ const NodeList = T_ManagedArrayList(*syntax.Node, null);
 
 /// Parses a sequence of quantified Atoms until `EOF`, `RPAREN` or `PIPE`
 pub fn parseSequence(ptr: *Parser) ErrorSet!*syntax.Node {
-    var nodes = try NodeList.init(ptr.alloc, null);
+    var nodes = try NodeList.init(ptr.gpa, null);
     defer nodes.deinit();
 
     while (ptr.current().id != .EOP and ptr.current().id != .RPAREN and ptr.current().id != .PIPE) {

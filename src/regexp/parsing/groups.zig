@@ -108,8 +108,8 @@ pub fn parseGroup(ptr: *Parser) ErrorSet!*syntax.Node {
 const initTestParser = @import("./Parser.zig").initTestParser;
 
 test "Should parse non-capturing group" {
-    const allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    const gpa = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
 
     var parser = try initTestParser(arena.allocator(), "(?:ab)+");
@@ -147,11 +147,11 @@ test "Should parse non-capturing group" {
 }
 
 test "Should parse global inline ignore-case flag" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.gpa;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var parser = try initTestParser(arena.allocator(), "(?i)foo");
+    var parser = try initTestParser(arena.gpa(), "(?i)foo");
     defer parser.deinit();
 
     const ast = try parser.parse();
@@ -170,8 +170,8 @@ test "Should parse global inline ignore-case flag" {
 }
 
 test "Should parse combined global inline flags" {
-    const allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    const gpa = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
 
     var parser = try initTestParser(arena.allocator(), "(?ims)foo");
@@ -193,8 +193,8 @@ test "Should parse combined global inline flags" {
 }
 
 test "Should parse consequently repeated global inline flags" {
-    const allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    const gpa = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
 
     var parser = try initTestParser(arena.allocator(), "(?i)(?s)foo");
@@ -216,8 +216,8 @@ test "Should parse consequently repeated global inline flags" {
 }
 
 test "Should return an Error in case of a misplaced global inline flag" {
-    const allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    const gpa = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
 
     var parser = try initTestParser(arena.allocator(), "foo(?i)bar");

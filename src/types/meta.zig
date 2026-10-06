@@ -1,6 +1,7 @@
 //! Generics and meta-programming
 //! All generic and/or comptime types and functions are prefixed with `T_`
 const std = @import("std");
+const Aligned = @import("std").array_list.Aligned;
 const ErrorSet = @import("./error.zig").ErrorSet;
 const misc = @import("./misc.zig");
 const Type = std.builtin.Type;
@@ -229,7 +230,7 @@ pub fn T_DestructorCallback(comptime T: type) type {
 ///
 /// Allows interfacing between two types without one explicitly being a field of another
 pub fn T_Closure(comptime T: type, comptime O: type, comptime R: type) type {
-    return *const fn (ctx: *const T, opts: O) ErrorSet!R;
+    return *const fn (*const T, O) anyerror!R;
 }
 
 /// Creates a proxy interface between an external opaque and an internal structs
@@ -237,21 +238,21 @@ pub fn T_OpaqueInterface(comptime T: type, comptime OT: type, destroy_cb: ?T_Des
     return struct {
         const destroyCallback = destroy_cb;
 
-        pub fn create(alloc: std.mem.Allocator, m: ?T) ErrorSet!*OT {
+        pub fn init(gpa: std.mem.Allocator, m: ?T) ErrorSet!*OT {
             const internal = m orelse return ErrorSet.InvalidArgument;
 
-            const ptr: *T = alloc.create(T) catch return ErrorSet.MemoryError;
+            const ptr: *T = gpa.create(T) catch return ErrorSet.MemoryError;
             ptr.* = internal;
 
             return @ptrCast(ptr);
         }
 
-        pub fn destroy(self: ?*OT, alloc: std.mem.Allocator) void {
+        pub fn deinit(self: ?*OT, gpa: std.mem.Allocator) void {
             const op = self orelse return;
             const ptr = unwrap(op) catch return;
 
-            if (destroy_cb) |func| func(alloc, ptr);
-            alloc.destroy(ptr);
+            if (destroy_cb) |func| func(gpa, ptr);
+            gpa.destroy(ptr);
         }
 
         pub fn unwrap(self: ?*OT) ErrorSet!*T {
@@ -268,7 +269,7 @@ pub fn T_OpaqueInterface(comptime T: type, comptime OT: type, destroy_cb: ?T_Des
 
 /// Wraps over `std.ArrayList` allowing it owning values it stores.
 ///
-/// Released with `Self.deinit` using allocator saved on initializing.
+/// Released with `Self.deinit` using gpa saved on initializing.
 /// If stored items need explicit deinit, optional `destroy_cb` must receive
 /// `*const fn(std.mem.Allocator, *T) void` when the wrapper is called to create a list.
 pub fn T_ManagedArrayList(
@@ -277,30 +278,30 @@ pub fn T_ManagedArrayList(
 ) type {
     return struct {
         const Self = @This();
-        allocator: std.mem.Allocator,
-        inner: std.ArrayList(T),
+        gpa: std.mem.Allocator,
+        inner: Aligned(T),
 
         /// If buffer is supplied, the values are copied to the list which takes ownership of them
-        pub fn init(alloc: std.mem.Allocator, buffer: ?[]const T) ErrorSet!Self {
+        pub fn init(gpa: std.mem.Allocator, buffer: ?[]const T) ErrorSet!Self {
             var inner: std.ArrayList(T) = .empty;
 
             if (buffer) |buf| {
-                inner.appendSlice(alloc, buf) catch {
+                inner.appendSlice(gpa, buf) catch {
                     return ErrorSet.MemoryError;
                 };
             }
 
             return .{
-                .allocator = alloc,
+                .gpa = gpa,
                 .inner = inner,
             };
         }
 
         fn deinitItem(self: Self, item: *T) void {
             if (destroy_cb) |callback| {
-                callback(self.allocator, item);
+                callback(self.gpa, item);
             } else if (comptime hasDeinit(T)) {
-                item.deinit(self.allocator);
+                item.deinit(self.gpa);
             }
         }
 
@@ -310,7 +311,7 @@ pub fn T_ManagedArrayList(
                 self.deinitItem(item);
             }
 
-            self.inner.deinit(self.allocator);
+            self.inner.deinit(self.gpa);
             self.* = undefined;
         }
 
@@ -328,14 +329,26 @@ pub fn T_ManagedArrayList(
         pub fn append(self: *Self, item: T) ErrorSet!void {
             var owned = item;
 
-            self.inner.append(self.allocator, owned) catch {
+            self.inner.append(self.gpa, owned) catch {
                 self.deinitItem(&owned);
                 return ErrorSet.MemoryError;
             };
         }
 
         pub fn appendSlice(self: *Self, slice: []const T) ErrorSet!void {
-            self.inner.appendSlice(self.allocator, slice) catch {
+            self.inner.appendSlice(self.gpa, slice) catch {
+                return ErrorSet.MemoryError;
+            };
+        }
+
+        pub fn appendFmt(self: *Self, comptime fmt: []const u8, args: anytype) ErrorSet!void {
+            if (comptime T != u8) {
+                @compileError("appendFmt is available only for `u8` buffers");
+            }
+            var out = std.Io.Writer.Allocating.fromArrayList(self.gpa, &self.inner);
+            defer self.inner = out.toArrayList();
+
+            out.writer.print(fmt, args) catch {
                 return ErrorSet.MemoryError;
             };
         }
@@ -388,21 +401,21 @@ pub fn T_ManagedArrayList(
 
         /// Transfers ownership of returned slice and its items to the caller
         pub fn toOwnedSlice(self: *Self) ErrorSet![]T {
-            return self.inner.toOwnedSlice(self.allocator) catch {
+            return self.inner.toOwnedSlice(self.gpa) catch {
                 return ErrorSet.MemoryError;
             };
         }
     };
 }
 
-pub fn freeAlloc(comptime T: type, alloc: std.mem.Allocator, sequence: []T, destroy_cb: ?T_DestructorCallback(T)) void {
+pub fn freeAlloc(comptime T: type, gpa: std.mem.Allocator, sequence: []T, destroy_cb: ?T_DestructorCallback(T)) void {
     if (destroy_cb) |callback| {
         for (sequence) |*item| {
-            callback(alloc, item);
+            callback(gpa, item);
         }
     }
 
-    alloc.free(sequence);
+    gpa.free(sequence);
 }
 
 test "MergeInt merges two integer types into new one with combined bit size" {
@@ -599,12 +612,12 @@ const TestItem = struct {
     data: []u8,
     deinit_count: *usize,
 
-    pub fn init(alloc: std.mem.Allocator, id: usize, deinit_count: *usize) !TestItem {
-        return .{ .id = id, .data = try alloc.dupe(u8, "test"), .deinit_count = deinit_count };
+    pub fn init(gpa: std.mem.Allocator, id: usize, deinit_count: *usize) !TestItem {
+        return .{ .id = id, .data = try gpa.dupe(u8, "test"), .deinit_count = deinit_count };
     }
 
-    pub fn deinit(self: *TestItem, alloc: std.mem.Allocator) void {
-        _ = alloc.free(self.data);
+    pub fn deinit(self: *TestItem, gpa: std.mem.Allocator) void {
+        _ = gpa.free(self.data);
         self.deinit_count.* += 1;
         self.* = undefined;
     }
@@ -624,17 +637,17 @@ fn expectTestItemIds(list: *const TestItemList, expected: []const usize) !void {
 }
 
 test "ManagedArrayList init empty and append" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.gpa;
     var deinit_count: usize = 0;
 
     {
-        var list = try TestItemList.init(allocator, null);
+        var list = try TestItemList.init(gpa, null);
         defer list.deinit();
 
         try std.testing.expectEqual(@as(usize, 0), list.len());
 
         const item = try TestItem.init(
-            allocator,
+            gpa,
             67,
             &deinit_count,
         );
@@ -648,23 +661,23 @@ test "ManagedArrayList init empty and append" {
 }
 
 test "ManagedArrayList init with slice and append" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
     var deinit_count: usize = 0;
 
     {
         var initial = [_]TestItem{
-            try TestItem.init(allocator, 13, &deinit_count),
-            try TestItem.init(allocator, 42, &deinit_count),
-            try TestItem.init(allocator, 67, &deinit_count),
+            try TestItem.init(gpa, 13, &deinit_count),
+            try TestItem.init(gpa, 42, &deinit_count),
+            try TestItem.init(gpa, 67, &deinit_count),
         };
 
-        var list = try TestItemList.init(allocator, initial[0..]);
+        var list = try TestItemList.init(gpa, initial[0..]);
         defer list.deinit();
 
         try expectTestItemIds(&list, &.{ 13, 42, 67 });
 
         const item = try TestItem.init(
-            allocator,
+            gpa,
             420,
             &deinit_count,
         );
@@ -678,17 +691,17 @@ test "ManagedArrayList init with slice and append" {
 }
 
 test "ManagedArrayList init empty and appendSlice" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
     var deinit_count: usize = 0;
 
     {
-        var list = try TestItemList.init(allocator, null);
+        var list = try TestItemList.init(gpa, null);
         defer list.deinit();
 
         var appended = [_]TestItem{
-            try TestItem.init(allocator, 13, &deinit_count),
-            try TestItem.init(allocator, 42, &deinit_count),
-            try TestItem.init(allocator, 67, &deinit_count),
+            try TestItem.init(gpa, 13, &deinit_count),
+            try TestItem.init(gpa, 42, &deinit_count),
+            try TestItem.init(gpa, 67, &deinit_count),
         };
 
         try list.appendSlice(appended[0..]);
@@ -703,25 +716,25 @@ test "ManagedArrayList init empty and appendSlice" {
 }
 
 test "ManagedArrayList init with slice and appendSlice" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
     var deinit_count: usize = 0;
 
     {
         var initial = [_]TestItem{
-            try TestItem.init(allocator, 13, &deinit_count),
-            try TestItem.init(allocator, 42, &deinit_count),
-            try TestItem.init(allocator, 67, &deinit_count),
+            try TestItem.init(gpa, 13, &deinit_count),
+            try TestItem.init(gpa, 42, &deinit_count),
+            try TestItem.init(gpa, 67, &deinit_count),
         };
 
-        var list = try TestItemList.init(allocator, initial[0..]);
+        var list = try TestItemList.init(gpa, initial[0..]);
         defer list.deinit();
 
         try expectTestItemIds(&list, &.{ 13, 42, 67 });
 
         var appended = [_]TestItem{
-            try TestItem.init(allocator, 69, &deinit_count),
-            try TestItem.init(allocator, 420, &deinit_count),
-            try TestItem.init(allocator, 666, &deinit_count),
+            try TestItem.init(gpa, 69, &deinit_count),
+            try TestItem.init(gpa, 420, &deinit_count),
+            try TestItem.init(gpa, 666, &deinit_count),
         };
 
         try list.appendSlice(appended[0..]);
@@ -733,13 +746,13 @@ test "ManagedArrayList init with slice and appendSlice" {
 }
 
 test "ManagedArrayList set" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
     var deinit_count: usize = 0;
 
     {
-        const initial = try TestItem.init(allocator, 420, &deinit_count);
-        const replacement = try TestItem.init(allocator, 67, &deinit_count);
-        var list = try TestItemList.init(allocator, null);
+        const initial = try TestItem.init(gpa, 420, &deinit_count);
+        const replacement = try TestItem.init(gpa, 67, &deinit_count);
+        var list = try TestItemList.init(gpa, null);
         defer list.deinit();
 
         try std.testing.expectEqual(@as(usize, 0), list.len());
@@ -756,28 +769,28 @@ test "ManagedArrayList set" {
 }
 
 test "ManagedArrayList set error" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
     var deinit_count: usize = 0;
 
     {
-        var item = try TestItem.init(allocator, 67, &deinit_count);
-        var list = try TestItemList.init(allocator, null);
+        var item = try TestItem.init(gpa, 67, &deinit_count);
+        var list = try TestItemList.init(gpa, null);
         defer list.deinit();
 
         try std.testing.expectEqual(@as(usize, 0), list.len());
 
         try std.testing.expectError(ErrorSet.OutOfRange, list.set(1, item));
-        item.deinit(allocator);
+        item.deinit(gpa);
     }
     try std.testing.expectEqual(@as(usize, 1), deinit_count);
 }
 
 test "ManagedArrayList pop" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
     var deinit_count: usize = 0;
 
-    const item = try TestItem.init(allocator, 67, &deinit_count);
-    var list = try TestItemList.init(allocator, null);
+    const item = try TestItem.init(gpa, 67, &deinit_count);
+    var list = try TestItemList.init(gpa, null);
     defer list.deinit();
 
     try list.append(item);
@@ -787,19 +800,19 @@ test "ManagedArrayList pop" {
     // pop shouldn't destroy the item
     try std.testing.expectEqual(@as(usize, 0), deinit_count);
 
-    popped.deinit(allocator);
+    popped.deinit(gpa);
     try std.testing.expectEqual(@as(usize, 1), deinit_count);
 }
 
 test "ManagedArrayList toOwnedSlice" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
     var deinit_count: usize = 0;
 
     var initial = [_]TestItem{
-        try TestItem.init(allocator, 67, &deinit_count),
-        try TestItem.init(allocator, 420, &deinit_count),
+        try TestItem.init(gpa, 67, &deinit_count),
+        try TestItem.init(gpa, 420, &deinit_count),
     };
-    var list = try TestItemList.init(allocator, initial[0..]);
+    var list = try TestItemList.init(gpa, initial[0..]);
     defer list.deinit();
 
     try std.testing.expectEqual(@as(usize, 2), list.len());
@@ -811,9 +824,9 @@ test "ManagedArrayList toOwnedSlice" {
     // TestItemList doesn't own items anymore
     try std.testing.expectEqual(@as(usize, 0), deinit_count);
     for (owned) |*item| {
-        item.deinit(allocator);
+        item.deinit(gpa);
     }
-    _ = allocator.free(owned);
+    _ = gpa.free(owned);
     try std.testing.expectEqual(@as(usize, 2), deinit_count);
 }
 
@@ -822,16 +835,16 @@ const TestCallbackItem = struct {
     deinit_count: *usize,
     cb_deinit_count: *usize,
 
-    pub fn deinit(self: *TestCallbackItem, alloc: std.mem.Allocator) void {
-        _ = alloc.free(self.data);
+    pub fn deinit(self: *TestCallbackItem, gpa: std.mem.Allocator) void {
+        _ = gpa.free(self.data);
         self.deinit_count += 1;
         self.* = undefined;
     }
 };
 
-fn deinit_cb(alloc: std.mem.Allocator, item: ?*TestCallbackItem) void {
+fn deinit_cb(gpa: std.mem.Allocator, item: ?*TestCallbackItem) void {
     const elem = item orelse return;
-    _ = alloc.free(elem.data);
+    _ = gpa.free(elem.data);
     elem.cb_deinit_count.* += 1;
     elem.* = undefined;
 }
@@ -839,16 +852,16 @@ fn deinit_cb(alloc: std.mem.Allocator, item: ?*TestCallbackItem) void {
 const TestCallbackItemList = T_ManagedArrayList(TestCallbackItem, deinit_cb);
 
 test "ManagedArrayList with custom deinit callback" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
     var deinit_count: usize = 0;
     var cb_deinit_count: usize = 0;
 
     {
-        var list = try TestCallbackItemList.init(allocator, null);
+        var list = try TestCallbackItemList.init(gpa, null);
         defer list.deinit();
 
         try list.append(.{
-            .data = try allocator.dupe(u8, "test"),
+            .data = try gpa.dupe(u8, "test"),
             .deinit_count = &deinit_count,
             .cb_deinit_count = &cb_deinit_count,
         });

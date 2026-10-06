@@ -13,7 +13,7 @@ const MatchListBuffer = types.MatchListBuffer;
 const ExecutionContext = vm.ExecutionContext;
 
 const PatternContext = struct {
-    alloc: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     pattern: []const u8,
     instructions: []Instruction,
     captures_count: usize,
@@ -26,20 +26,20 @@ pub const PatternSubOptions = struct {
 
 pub const Pattern = opaque {
     pub fn init(
-        alloc: std.mem.Allocator,
+        gpa: std.mem.Allocator,
         pattern: []const u8,
         bytecode: *InstructionSet,
         captures_count: usize,
     ) ErrorSet!*Pattern {
-        const self: *PatternContext = alloc.create(PatternContext) catch {
+        const self: *PatternContext = gpa.create(PatternContext) catch {
             return ErrorSet.MemoryError;
         };
 
         var instructions = try bytecode.toOwnedSlice();
-        errdefer alloc.free(&instructions);
+        errdefer gpa.free(&instructions);
 
         self.* = .{
-            .alloc = alloc,
+            .gpa = gpa,
             .pattern = pattern,
             .instructions = instructions,
             .captures_count = captures_count,
@@ -50,21 +50,21 @@ pub const Pattern = opaque {
     /// Releases bytecode buffer and dereferences itself
     pub fn deinit(ptr: *Pattern) void {
         const self: *PatternContext = @ptrCast(@alignCast(ptr));
-        const alloc = self.alloc;
+        const gpa = self.gpa;
 
         for (self.instructions) |*inst| {
-            Bytecode.freeInstructionCallback(self.alloc, inst);
+            Bytecode.freeInstructionCallback(self.gpa, inst);
         }
-        alloc.free(self.instructions);
+        gpa.free(self.instructions);
         self.* = undefined;
-        alloc.destroy(self);
+        gpa.destroy(self);
     }
 
     /// Returns the first match encountered at the beginning of the input
     pub fn match(ptr: *Pattern, input: []const u8) ErrorSet!?Match {
         const self: *PatternContext = @ptrCast(@alignCast(ptr));
 
-        return try vm.execAt(self.alloc, input, 0, self.captures_count, self.instructions);
+        return try vm.execAt(self.gpa, input, 0, self.captures_count, self.instructions);
     }
 
     /// Returns the first match produced at any position within the input
@@ -73,7 +73,7 @@ pub const Pattern = opaque {
         var pos: usize = 0;
 
         while (pos <= input.len) {
-            if (try vm.execAt(self.alloc, input, pos, self.captures_count, self.instructions)) |m| return m;
+            if (try vm.execAt(self.gpa, input, pos, self.captures_count, self.instructions)) |m| return m;
 
             _ = unicode.advancePos(input, &pos) catch break;
         }
@@ -88,7 +88,7 @@ pub const Pattern = opaque {
         const self: *const PatternContext = @ptrCast(@alignCast(ctx));
 
         return vm.execAt(
-            self.alloc,
+            self.gpa,
             opts.input,
             opts.pos,
             self.captures_count,
@@ -98,12 +98,12 @@ pub const Pattern = opaque {
 
     /// Initializes and returns an instance of the lazy iterator to perform lookups
     ///
-    /// The caller owns the instance and must release it explicitly by calling `iter.deinit(alloc)`
+    /// The caller owns the instance and must release it explicitly by calling `iter.deinit(gpa)`
     pub fn findIter(ptr: *Pattern, input: []const u8) ErrorSet!*LazyIterator {
         const self: *PatternContext = @ptrCast(@alignCast(ptr));
 
         return LazyIterator.init(
-            self.alloc,
+            self.gpa,
             self,
             input,
             vmExecClosure,
@@ -117,12 +117,12 @@ pub const Pattern = opaque {
         const self: *PatternContext = @ptrCast(@alignCast(ptr));
 
         var iter = try findIter(ptr, input);
-        defer iter.deinit(self.alloc);
+        defer iter.deinit(self.gpa);
 
-        var matches = try MatchListBuffer.init(self.alloc, null);
+        var matches = try MatchListBuffer.init(self.gpa, null);
         defer matches.deinit();
 
-        while (try iter.next(self.alloc)) |m| try matches.append(m);
+        while (try iter.next(self.gpa)) |m| try matches.append(m);
 
         return try matches.toOwnedSlice();
     }
@@ -138,20 +138,20 @@ pub const Pattern = opaque {
     ) ErrorSet![]u8 {
         const self: *PatternContext = @ptrCast(@alignCast(ptr));
 
-        var out_buf = try StringBuffer.init(self.alloc, null);
+        var out_buf = try StringBuffer.init(self.gpa, null);
         defer out_buf.deinit();
 
         var iter = try findIter(ptr, input);
-        defer iter.deinit(self.alloc);
+        defer iter.deinit(self.gpa);
 
         var copy_pos: usize = 0;
         var repl_count: usize = 0;
 
         while (opts.count == 0 or opts.count > repl_count) {
-            const found = (try iter.next(self.alloc)) orelse break;
+            const found = (try iter.next(self.gpa)) orelse break;
 
             var matched = found;
-            defer matched.deinit(self.alloc);
+            defer matched.deinit(self.gpa);
 
             const start = try matched.start(0);
             const end = try matched.end(0);

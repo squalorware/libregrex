@@ -31,7 +31,7 @@ pub fn compileNode(ptr: *CompileStateBuffer, node: *syntax.Node) ErrorSet!void {
         .Sequence => |seq| {
             // const owned = try ptr.cloneSequence(seq);
 
-            // defer ptr.alloc.free(owned.nodes);
+            // defer ptr.gpa.free(owned.nodes);
 
             for (seq.nodes) |child| {
                 try compileNode(ptr, child);
@@ -120,9 +120,9 @@ fn compileCaptureGroup(ptr: *CompileStateBuffer, grp: syntax.CaptureGroup) Error
 }
 
 test "compileNode lowers alternation to Split and Jump" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
 
-    var state = try CompileStateBuffer.init(allocator, .{});
+    var state = try CompileStateBuffer.init(gpa, .{});
     defer state.deinit();
 
     var left: syntax.Node = .{ .Literal = .{ .value = 'a' } };
@@ -159,9 +159,9 @@ test "compileNode lowers alternation to Split and Jump" {
 }
 
 test "compileNode lowers optional repeat to a skippable branch" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
 
-    var state = try CompileStateBuffer.init(allocator, .{});
+    var state = try CompileStateBuffer.init(gpa, .{});
     defer state.deinit();
 
     var literal: syntax.Node = .{ .Literal = .{ .value = 'a' } };

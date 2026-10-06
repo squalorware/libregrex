@@ -5,12 +5,11 @@ const Opcode = @import("./opcodes.zig").Opcode;
 const ByteBuffer = @import("../states.zig").ByteBuffer;
 
 pub fn T_Operand(comptime opcode: Opcode) type {
-    comptime {
-        const meta = opcode.opInfo() orelse
-            compErr("Opcode {X:0>2} {s} assumes no operands", .{ opcode, opcode.id() });
-
-        return @Int(.unsigned, meta.bits);
-    }
+    return switch (opcode) {
+        .TESTR => u21,
+        .TESTA => u8,
+        else => usize,
+    };
 }
 
 pub const Operand = struct {
@@ -31,28 +30,29 @@ pub fn writeOperand(comptime opcode: Opcode, buffer: *ByteBuffer, data: anytype)
     try buffer.appendSlice(&bytes);
 }
 
-pub fn readOperand(comptime opcode: Opcode, prog: []const u8, pc: *usize) ErrorSet!u32 {
+pub fn readOperand(comptime opcode: Opcode, prog: []const u8, pc: usize) ErrorSet!T_Operand(opcode) {
     const info = opcode.opInfo().?;
     const nbytes = info.size();
 
-    if (pc.* + nbytes > prog.len) return ErrorSet.OutOfRange;
+    const T = comptime @Int(.unsigned, info.bits);
 
-    const value = std.mem.readInt(T_Operand(opcode), prog[pc.*..][0..nbytes], .little);
+    if (pc + nbytes > prog.len) return ErrorSet.OutOfRange;
 
-    pc.* += nbytes;
+    const value = std.mem.readInt(T, prog[pc..][0..nbytes], .little);
+
     return @intCast(value);
 }
 
 fn compErr(comptime fmt: []const u8, args: anytype) noreturn {
-    const alloc = std.heap.page_allocator;
-    const msg: []const u8 = try types.formatStr(alloc, fmt, args);
+    const gpa = std.heap.page_allocator;
+    const msg: []const u8 = try types.formatStr(gpa, fmt, args);
     @compileError(msg);
 }
 
 test "Should encode .SAVE operand as a two-byte integer" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
 
-    var buffer = try ByteBuffer.init(allocator, null);
+    var buffer = try ByteBuffer.init(gpa, null);
     defer buffer.deinit();
 
     try writeOperand(.Save, &buffer, 0x1234);
@@ -66,9 +66,9 @@ test "Should encode .SAVE operand as a two-byte integer" {
 }
 
 test "Should preserve a non-ASCII u21 value through u32 encoding" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
 
-    var buffer = try ByteBuffer.init(allocator, null);
+    var buffer = try ByteBuffer.init(gpa, null);
     defer buffer.deinit();
 
     try writeOperand(.Rune, &buffer, 'Ж');
